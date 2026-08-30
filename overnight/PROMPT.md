@@ -20,6 +20,24 @@ Python: `.\.venv\Scripts\python.exe` (always use this, never bare `python`)
    `rejected` or leave `todo` with a note if you ran out of time.
 5. Commit. Then stop.
 
+## Build steps versus experiments
+
+The backlog holds two kinds of item and they are handled differently.
+
+**Build steps** (everything in P2 except the last one) produce a file and a passing
+test. They do not go near the gauntlet, because there is nothing to play yet. Done
+means: the file exists, its correctness test passes, `ruff` and `mypy` are green,
+and it is committed. Several of these are sequential — P2.2 needs P2.1 — so if the
+one above yours is not finished, finish that instead.
+
+**Experiments** (P1, P3, and P2.6) change how the engine plays, and go through the
+gauntlet below.
+
+If a build step is too big for one run, that is expected: do part of it, commit
+working code with its test passing, and write in the journal exactly where you got
+to and what the next run should do first. Never commit a half-written file whose
+test does not run.
+
 ## How to test a change
 
 Never edit `agent.py` directly to try something out. `agent.py` is the champion and

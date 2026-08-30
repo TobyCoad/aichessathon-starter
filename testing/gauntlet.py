@@ -17,10 +17,10 @@ rejected without ever reaching the SPRT.
 
 import argparse
 import os
-import sys
 from pathlib import Path
 
 from testing import arena, sprt
+from testing.referee import FAILED_TERMINATIONS
 
 GATE_GAMES = 24
 GATE_BASE_MS = 4_000
@@ -49,7 +49,7 @@ def gate(challenger: Path, workers: int) -> tuple[bool, str]:
         broken = ", ".join(
             f"{name} {count}"
             for name, count in sorted(tally.terminations.items())
-            if name in arena.FAILED_TERMINATIONS
+            if name in FAILED_TERMINATIONS
         )
         return False, f"failed {tally.failures}/{tally.games} games ({broken})"
     score = (tally.wins + tally.draws / 2.0) / max(tally.games, 1)
@@ -119,4 +119,4 @@ def run_sprt(
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
