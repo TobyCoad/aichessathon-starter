@@ -9,16 +9,18 @@ Usage:  python -m tools.winshim play  --white . --black baselines/greedy
         python -m tools.winshim arena --opponent baselines/greedy --games 20
 """
 
+import subprocess
 import sys
 import threading
 import time
 from queue import Empty, Queue
+from typing import IO, Any
 
 from harness import sandbox
 from harness.rules import STDOUT_CAP
 
 
-def _pump(stream, queue, tag):
+def _pump(stream: IO[bytes], queue: "Queue[tuple[str, bytes]]", tag: str) -> None:
     try:
         while True:
             chunk = stream.read(1)
@@ -30,9 +32,7 @@ def _pump(stream, queue, tag):
     queue.put((tag, b""))
 
 
-def _start(self, init_budget_s):
-    import subprocess
-
+def _start(self: Any, init_budget_s: float) -> None:
     process = subprocess.Popen(
         self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, bufsize=0,
@@ -48,7 +48,7 @@ def _start(self, init_budget_s):
         raise sandbox.AgentFailure("init")
 
 
-def _await_line(self, deadline):
+def _await_line(self: Any, deadline: float) -> bytes | None:
     while b"\n" not in self._buffer:
         if len(self._buffer) >= STDOUT_CAP:
             raise sandbox.AgentFailure("illegal")
@@ -66,10 +66,10 @@ def _await_line(self, deadline):
         else:
             self._buffer += chunk
     line, _, self._buffer = self._buffer.partition(b"\n")
-    return line
+    return bytes(line)
 
 
-def _stop(self):
+def _stop(self: Any) -> None:
     if self._process is None:
         return
     self._process.kill()
@@ -81,10 +81,10 @@ def _stop(self):
     self._process = None
 
 
-def install():
-    sandbox.Agent.start = _start
-    sandbox.Agent._await_line = _await_line
-    sandbox.Agent.stop = _stop
+def install() -> None:
+    sandbox.Agent.start = _start  # type: ignore[method-assign]
+    sandbox.Agent._await_line = _await_line  # type: ignore[method-assign]
+    sandbox.Agent.stop = _stop  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":

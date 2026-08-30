@@ -7,3 +7,4 @@ submission.zip
 .venv/
 submission.zip
 data/
+*.html
