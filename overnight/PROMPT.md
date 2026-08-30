@@ -13,6 +13,33 @@ Python: `.\.venv\Scripts\python.exe` (always use this, never bare `python`)
 2. Read `overnight/BACKLOG.md`. Take the **topmost item marked `status: todo`**.
    Skip anything under "P0 — blocked on a human". If every item is done, run the
    P4 crash hunt instead.
+
+## If you get blocked, fall through — never burn the night
+
+A blocked run that produces nothing is a wasted slot, and there are only so many
+before the 11 September lock. So if the item you picked cannot proceed, **do not
+retry it, work around it, or stop.** Take one attempt at diagnosis, write what you
+found in the journal, mark the item `status: blocked` with the reason, and then
+**drop to the P3 items, and after those the P4 crash hunt.** Those are bounded, need
+no GPU, no training data, and no statistical validation to justify, so they are
+always available work.
+
+Blocked means, concretely:
+
+- `torch.cuda.is_available()` is False, or torch is a `+cpu` build. **Do not train
+  on CPU** — it will not finish in a night and will produce nothing. One attempt at
+  `.\.venv\Scripts\python.exe -m pip install --force-reinstall --index-url
+  https://download.pytorch.org/whl/cu128 torch` is allowed; if it still fails, mark
+  P2.3 blocked and drop to P3.
+- The Parquet file is missing or short and `training.fetch` cannot complete it.
+- A correctness test in P2.1 or P2.5 fails and you cannot find the cause within the
+  run. **Never proceed past a failing correctness test** — the whole point of those
+  tests is that the bug they catch is otherwise silent.
+- Anything else that would have you guessing at a convention rather than following
+  a specified one.
+
+Leaving a clear `blocked` note is a good outcome, not a failure: the next run, or
+Toby in the morning, picks it up knowing exactly where it stopped and why.
 3. Do that one item. Not two. A finished experiment with a recorded result is worth
    more than three half-finished ones, because the next run starts from nothing.
 4. Append what happened to `overnight/JOURNAL.md` — including failures, which are

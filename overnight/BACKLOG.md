@@ -155,9 +155,11 @@ directly into batched index tensors on the GPU, and build the sparse-sum accumul
 with `index_add_` or an `EmbeddingBag`. If GPU utilisation sits below ~50%, the
 loader is the problem, not the model.
 
-CUDA torch (cu128, for the RTX 5070's sm_120) is installed. Confirm
-`torch.cuda.is_available()` before starting; if it is False, **stop and record it in
-the journal** rather than training on CPU for a night.
+CUDA torch (cu128, for the RTX 5070's sm_120) should be installed. **Confirm
+`torch.cuda.is_available()` is True and `torch.__version__` does not end in `+cpu`
+before starting.** If either is wrong, take the one reinstall attempt described in
+`PROMPT.md`, and if it still fails, mark this item `status: blocked` and drop to P3.
+Training on CPU will not finish in a night and produces nothing.
 
 **Sanity check before the long run:** overfit 10,000 positions to near-zero loss.
 If it cannot, the encoding or the loss is wrong and a full run will only waste hours.
