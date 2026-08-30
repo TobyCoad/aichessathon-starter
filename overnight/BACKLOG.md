@@ -79,8 +79,15 @@ on the same positions. Do not proceed until both pass.
 
 `status: todo`
 
-Input: `data/standard_rated_2025_01.parquet` (already downloading; CC0; columns
-`fen`, `cp`, `mate`, `move`). Output: `data/positions.npy`, a structured array.
+Input: `data/standard_rated_2025_01.parquet` (CC0; columns `fen`, `cp`, `mate`,
+`move`). Output: `data/positions.npy`, a structured array.
+
+**First, two environment checks, so you do not discover them three hours in.**
+`pyarrow` is not installed: `.\.venv\Scripts\python.exe -m pip install pyarrow`.
+And confirm the download actually finished — compare
+`data/standard_rated_2025_01.parquet` against the ~7.50 GB the remote reports, and
+if it is short, rerun `.\.venv\Scripts\python.exe -m training.fetch --month 2025_01`
+first, which resumes rather than restarting.
 
 **Record dtype**, exactly:
 
