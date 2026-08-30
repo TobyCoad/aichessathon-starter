@@ -76,10 +76,13 @@ def evaluate(pair_scores: list[float], elo0: float = 0.0, elo1: float = 20.0) ->
 
     mean = sum(pair_scores) / count
     variance = sum((score - mean) ** 2 for score in pair_scores) / (count - 1)
-    if variance <= 0.0:
-        # Every pair scored identically. Nudge rather than divide by zero; this
-        # happens early, and with a real opponent it does not persist.
-        variance = 1e-9
+
+    # Early on, every pair can score identically and the sample variance collapses
+    # to zero, which sends the ratio to infinity and prints a meaningless number in
+    # the log. Floor it well below any real match variance -- pair scores typically
+    # vary by ~0.35 -- so this binds only in the degenerate case and is conservative
+    # everywhere else, since a larger variance makes the bounds harder to reach.
+    variance = max(variance, 0.01)
 
     mu0 = elo_to_score(elo0)
     mu1 = elo_to_score(elo1)

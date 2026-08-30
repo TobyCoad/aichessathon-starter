@@ -46,3 +46,24 @@ Measured baseline for the next run to beat:
 Notes: the evaluation is hand-crafted, so this is a fallback rather than a legal
 final submission — the rules require a learned model to materially drive move
 selection. P2 in the backlog is therefore mandatory, not optional.
+
+## 2026-08-30 23:45 — environment prepared for P2
+
+Verdict: n/a — setup, not an experiment.
+
+- **CUDA torch working.** `2.11.0+cu128`, RTX 5070 Laptop, capability (12, 0),
+  3.3 TFLOP/s on a real matmul. The first two install attempts failed silently:
+  pip treated the existing `2.13.0+cpu` as satisfying `torch` and downloaded
+  nothing, then a `--force-reinstall` hung for 25 minutes on a stalled socket with
+  zero CPU time. `--timeout 30 --retries 10` fixed it. If torch ever needs
+  reinstalling, go straight to those flags.
+- **Training data downloading**, `standard_rated_2025_01.parquet`, 7.5 GB, resumable
+  via Range requests. Almost certainly incomplete — check the size and re-run
+  `training.fetch` to resume before P2.2 touches it.
+- **`pyarrow` is not installed.** P2.2 needs it.
+- Fixed a cosmetic SPRT bug: identical early pairs collapsed the sample variance and
+  printed an LLR of 41 million. Floored the variance at 0.01, far below any real
+  match variance, so it binds only in the degenerate case. Error rates unchanged.
+
+Notes for the next run: P2.1 needs neither the GPU nor the data, so it can proceed
+regardless of how the download went. Do that first.
