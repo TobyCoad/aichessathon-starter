@@ -9,6 +9,12 @@
 # Remove with:  Unregister-ScheduledTask -TaskName "AIChessathon-Overnight"
 # Pause with:   Disable-ScheduledTask   -TaskName "AIChessathon-Overnight"
 # Run now with: Start-ScheduledTask     -TaskName "AIChessathon-Overnight"
+#
+# -FirstRunInMinutes sets when the first run fires; the 5-hour repetition follows
+# from there. Point it just after a usage-limit reset: a run that starts with the
+# quota nearly spent dies partway through an experiment and wastes the slot.
+
+param([int]$FirstRunInMinutes = 10)
 
 $ErrorActionPreference = "Stop"
 $name = "AIChessathon-Overnight"
@@ -19,9 +25,11 @@ if (-not (Test-Path $script)) { throw "missing $script" }
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script`""
 
-# Fire every 5 hours, which is the subscription's rolling usage window. The first
-# run is 10 minutes out so there is time to cancel if this was a mistake.
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) `
+# Fire every 5 hours, which is the subscription's rolling usage window. Anchoring
+# the first run just after a reset keeps every later run landing near a fresh
+# window too, since the cadence and the window are the same length.
+$first = (Get-Date).AddMinutes($FirstRunInMinutes)
+$trigger = New-ScheduledTaskTrigger -Once -At $first `
     -RepetitionInterval (New-TimeSpan -Hours 5)
 
 # WakeToRun matters: a sleeping laptop runs nothing. StartWhenAvailable catches up
