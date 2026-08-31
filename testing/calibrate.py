@@ -31,11 +31,17 @@ from testing import arena
 
 # Measured in Stockfish's own recalibration (commit a08b8d4, PR #4341): Ordo over
 # matches at 120s+1s against stash-bot versions ranked on CCRL. Not human Elo.
+# Skill 0 and 2 were dropped after the first run: we swept them 100% and 97%, so
+# they only bounded us from below, and their calibration is the ladder's weakest
+# (skill 0 scored just 31% in its own pool, making everything under ~1450
+# extrapolation). Skill 8 and 10 replace them, to find the rung where the score is
+# near 50% -- that is the only rung that actually locates strength rather than
+# bounding it.
 LADDER: dict[str, tuple[float, int]] = {
-    "sf-skill0": (1320.1, 2083),
-    "sf-skill2": (1608.4, 4389),
     "sf-skill4": (1922.9, 5399),
     "sf-skill6": (2363.2, 4379),
+    "sf-skill8": (2596.2, 4975),
+    "sf-skill10": (2788.3, 5511),
 }
 
 
