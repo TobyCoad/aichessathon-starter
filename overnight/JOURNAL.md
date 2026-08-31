@@ -67,3 +67,45 @@ Verdict: n/a — setup, not an experiment.
 
 Notes for the next run: P2.1 needs neither the GPU nor the data, so it can proceed
 regardless of how the download went. Do that first.
+
+## 2026-08-31 09:55 — 1024-wide net on 21.6M positions
+
+Verdict: **INCONCLUSIVE** — champion stays.
+
+```
++182 =259 -159   score 51.9%   over 600 games
+llr +0.59 [-2.94, 2.94]   elo +13.3 +/- 21.0
+```
+
+Scaled up on every axis that looked promising and got nothing:
+
+| | champion | challenger |
+|---|---|---|
+| training positions | 9.1M | 21.6M |
+| accumulator width | 256 | 1024 |
+| parameters | 213,313 | 853,057 |
+| best held-out loss | 0.006527 | **0.005545** |
+| measured strength | — | **+13.3 +/- 21.0** |
+
+**A 15% better validation loss converted to approximately zero Elo.** That is the
+finding worth keeping. Held-out loss says the network predicts Stockfish's
+centipawns more accurately; it does not say the engine picks better moves. Two
+candidate explanations, not mutually exclusive: the wider net costs node rate, and
+at depth 4-6 a ply is worth ~150 Elo, so the evaluation gain may have bought back
+exactly what the slowdown cost; or ranking candidate moves correctly is a different
+problem from scoring them precisely, and the extra capacity went into the latter.
+
+The confidence interval is [-8, +34], so it is not *proven* worthless -- but
+resolving a true +13 would need roughly 5,000 games, which is not affordable before
+the 11 September lock. Treat width as spent.
+
+**Do not repeat this experiment.** If the net is revisited, change the training
+signal or the data, not the parameter count.
+
+Process notes:
+- Early stopping earned its place on the first run: best epoch was 14, and epochs
+  15-18 all had lower *training* loss with worse validation. Without it we would
+  have shipped the most overfit epoch and had no way to see it.
+- `check_nnue.py` had the same hardcoded-256 width bug already fixed in
+  `export.py`. It failed loudly rather than silently comparing against a
+  differently-shaped net, which is what that file is for.
