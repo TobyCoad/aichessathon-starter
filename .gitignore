@@ -11,3 +11,5 @@ data/
 overnight/logs/
 overnight/challengers/
 data/
+_*.py
+checkpoints/

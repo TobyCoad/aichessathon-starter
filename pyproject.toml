@@ -13,6 +13,8 @@ dev = ["mypy>=1.18", "ruff>=0.14"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Scratch probes written during audits. Not part of the project.
+extend-exclude = ["_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

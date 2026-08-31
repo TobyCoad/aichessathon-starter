@@ -188,6 +188,32 @@ class Accumulator:
         return int(float((second @ W3 + B3)[0]) * OUTPUT_SCALE)
 
 
+def _to_table(score: int, ply: int) -> int:
+    """Make a mate score independent of where in the tree it was found.
+
+    Search returns mate scores relative to the root: being mated at `ply` scores
+    `-MATE + ply`, so a later mate is a better one. The transposition table
+    outlives the search -- it persists across our moves within a game -- so a
+    score stored at one ply is read back at another, and the root has shifted by
+    two plies by the next move. Storing verbatim corrupts mate *distance*, which
+    is exactly the signal needed to shorten a mate rather than shuffle.
+    """
+    if score > MATE_THRESHOLD:
+        return score + ply
+    if score < -MATE_THRESHOLD:
+        return score - ply
+    return score
+
+
+def _from_table(score: int, ply: int) -> int:
+    """Undo `_to_table`, putting a stored mate score back on this node's clock."""
+    if score > MATE_THRESHOLD:
+        return score - ply
+    if score < -MATE_THRESHOLD:
+        return score + ply
+    return score
+
+
 class Timeout(Exception):
     """Raised to unwind the search when the hard time limit passes."""
 
@@ -316,7 +342,8 @@ class Engine:
         stored = self.table.get(key)
         best_move = None
         if stored is not None:
-            stored_depth, stored_score, flag, best_move = stored
+            stored_depth, raw_score, flag, best_move = stored
+            stored_score = _from_table(raw_score, ply)
             if stored_depth >= depth and ply:
                 if flag == 0:
                     return stored_score
@@ -360,7 +387,7 @@ class Engine:
             flag = 1
         else:
             flag = 0
-        self.table[key] = (depth, best_score, flag, best_move)
+        self.table[key] = (depth, _to_table(best_score, ply), flag, best_move)
         return best_score
 
     # -- driver -------------------------------------------------------------------
