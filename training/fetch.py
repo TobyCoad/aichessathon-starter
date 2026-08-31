@@ -81,18 +81,46 @@ def download(month: str, destination: Path) -> Path:
                         flush=True,
                     )
 
-    print(f"{name}: done, {written / 1e9:.2f} GB in {(time.monotonic() - started) / 60:.1f} min")
+    minutes = (time.monotonic() - started) / 60
+    print(f"{name}: stream ended at {written / 1e9:.2f} GB after {minutes:.1f} min")
     return target
+
+
+def fetch(month: str, destination: Path, attempts: int = 20) -> Path:
+    """Download until the local file matches the remote size.
+
+    A single pass is not enough and this bit us: the server closed the connection
+    at 5.84 GB of 7.50 and the reader saw a clean end-of-stream, so the download
+    reported success on a truncated file. Parquet keeps its footer at the end, so
+    the result was silently unreadable rather than obviously broken. Never treat
+    end-of-stream as completion -- only a size match is completion.
+    """
+    name = f"standard_rated_{month}.parquet"
+    total = remote_size(BASE + name)
+    target = destination / name
+
+    for attempt in range(1, attempts + 1):
+        download(month, destination)
+        have = target.stat().st_size if target.exists() else 0
+        if have >= total:
+            print(f"{name}: COMPLETE, {have / 1e9:.2f} GB matches the remote size")
+            return target
+        short = (total - have) / 1e9
+        print(f"{name}: short by {short:.2f} GB, resuming (attempt {attempt}/{attempts})")
+        time.sleep(min(5.0 * attempt, 60.0))
+
+    raise SystemExit(f"{name}: still incomplete after {attempts} attempts")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch Lichess fishnet-evals Parquet.")
     parser.add_argument("--month", default=DEFAULT_MONTH, help="e.g. 2025_01")
     parser.add_argument("--out", type=Path, default=Path("data"))
+    parser.add_argument("--attempts", type=int, default=20)
     arguments = parser.parse_args()
 
     try:
-        download(arguments.month, arguments.out)
+        fetch(arguments.month, arguments.out, arguments.attempts)
     except KeyboardInterrupt:
         print("\ninterrupted; rerun to resume", file=sys.stderr)
         raise SystemExit(130) from None
