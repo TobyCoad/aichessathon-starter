@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Final
 
 import chess
+import chess.syzygy
 import numpy as np
 import numpy.typing as npt
 
@@ -63,6 +64,33 @@ ACC_SIZE: Final = W1.shape[1]
 # The network predicts a win-probability logit; centipawns are that times 400.
 # Getting this constant wrong scales the whole evaluation silently.
 OUTPUT_SCALE: Final = 400.0
+
+# --------------------------------------------------------------------------------
+# Endgame tablebase
+# --------------------------------------------------------------------------------
+# The complete 3- and 4-man Syzygy set, 70 files and 4.35 MB. Explicitly permitted:
+# "Books and tablebases: permitted as shipped data within the 200 MB cap;
+# chess.polyglot and chess.syzygy are in the base image."
+#
+# This is here because the network cannot convert won endgames. It scores four very
+# different KQvK positions at +1260, +1175, +1144 and +1241, so the search has no
+# gradient to follow and shuffles until the referee claims a draw -- it drew KQ vs K
+# in testing. No amount of further training fixes that; exact data does.
+#
+# Five men is deliberately not shipped: 378 MB of WDL alone, nearly twice the whole
+# cap, for a published gain of roughly +2 Elo even to Stockfish.
+_TABLEBASE: chess.syzygy.Tablebase | None = None
+try:
+    _syzygy_path = Path(__file__).with_name("weights") / "syzygy"
+    if _syzygy_path.is_dir():
+        _TABLEBASE = chess.syzygy.open_tablebase(str(_syzygy_path))
+except Exception:
+    _TABLEBASE = None
+
+TB_MEN: Final = 4
+# Above any evaluation the net can produce, below MATE_THRESHOLD so a tablebase win
+# is never mistaken for a forced mate the search actually found.
+TB_WIN: Final = 20_000
 
 MATE: Final = 30_000
 MATE_THRESHOLD: Final = MATE - 1_000
@@ -338,6 +366,19 @@ class Engine:
         if ply and board.halfmove_clock >= 100:
             return 0
 
+        # Exact result for small material. WDL is 26-75 us warm, roughly two move
+        # generations, so it is affordable at every node once the board is small
+        # enough. `get_wdl` returns None rather than raising for a table we did not
+        # ship, and a crash is a lost game.
+        if _TABLEBASE is not None and ply and chess.popcount(board.occupied) <= TB_MEN:
+            wdl = _TABLEBASE.get_wdl(board)
+            if wdl is not None:
+                if wdl > 0:
+                    return TB_WIN - ply
+                if wdl < 0:
+                    return -TB_WIN + ply
+                return 0
+
         original_alpha = alpha
         stored = self.table.get(key)
         best_move = None
@@ -438,6 +479,67 @@ class Engine:
 _ENGINE = Engine()
 
 
+def _tablebase_move(board: chess.Board) -> chess.Move | None:
+    """The best move when the whole position is tabulated.
+
+    WDL says who wins. DTZ says how many plies until the next pawn move or capture,
+    which keeps play safe against the fifty-move rule -- but it is *not* a distance
+    to mate, and that distinction is the whole difficulty. In KPvK every winning
+    move reports the same DTZ, so DTZ alone leaves the choice arbitrary and the
+    engine shuffles: measured, it drew a won KPvK while the halfmove clock climbed
+    to 18 without progress.
+
+    Worse, minimising DTZ actively blocks the winning plan. Promoting a pawn raises
+    DTZ, because after a queen appears the next capture is far away -- so a
+    DTZ-first ranking marched the a-pawn to a7 and then refused to queen it,
+    shuffling the king instead until the game was drawn.
+
+    A zeroing move resets the fifty-move clock, which makes the DTZ of the position
+    it leads to irrelevant. So zeroing ranks *above* DTZ: among moves that keep the
+    win, prefer to reset the clock, then keep DTZ small, then drive the defending
+    king toward a corner and bring our own king closer. The last two are the classic
+    mate-driver, and this order converges for every ending in a 4-man set.
+    """
+    if _TABLEBASE is None or chess.popcount(board.occupied) > TB_MEN:
+        return None
+
+    best: chess.Move | None = None
+    best_key: tuple[int, ...] | None = None
+    for move in board.legal_moves:
+        zeroing = board.is_zeroing(move)
+        board.push(move)
+        try:
+            if board.is_checkmate():
+                key: tuple[int, ...] = (-3, 0, 0, 0, 0)
+            else:
+                # After our move the opponent is to move, so a negative wdl here
+                # means they are lost and we are winning.
+                wdl = _TABLEBASE.get_wdl(board)
+                dtz = _TABLEBASE.get_dtz(board)
+                if wdl is None or dtz is None:
+                    return None
+                defender = board.king(board.turn)
+                attacker = board.king(not board.turn)
+                if defender is None or attacker is None:
+                    return None
+                corner = min(
+                    chess.square_distance(defender, c)
+                    for c in (chess.A1, chess.A8, chess.H1, chess.H8)
+                )
+                key = (
+                    wdl,
+                    0 if zeroing else 1,
+                    abs(dtz) if wdl < 0 else -abs(dtz),
+                    corner,
+                    chess.square_distance(defender, attacker),
+                )
+        finally:
+            board.pop()
+        if best_key is None or key < best_key:
+            best_key, best = key, move
+    return best
+
+
 def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     """Return (soft, hard) monotonic deadlines for this move.
 
@@ -472,6 +574,15 @@ def get_move(fen: str, time_left_ms: int) -> str:
     # won game turned into a draw without ever being told.
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
+
+    # Exact play once the position is small enough. This is what converts a won
+    # endgame; the search alone shuffles because the evaluation is flat there.
+    try:
+        exact = _tablebase_move(board)
+    except Exception:
+        exact = None
+    if exact is not None:
+        return exact.uci()
 
     _ENGINE.acc.refresh(board)
     soft, hard = _budget(board, time_left_ms)
