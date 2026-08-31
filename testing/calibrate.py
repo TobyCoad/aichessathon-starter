@@ -64,9 +64,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
 
-    import os
-
-    workers = arguments.workers or max(1, (os.cpu_count() or 4) - 2)
+    workers = arguments.workers or arena.default_workers()
     estimates: list[tuple[str, float, float, float, float]] = []
 
     for name, (rating, calibration_games) in LADDER.items():

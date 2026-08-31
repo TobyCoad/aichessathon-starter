@@ -29,6 +29,21 @@ FAST_BASE_MS = 10_000
 FAST_INCREMENT_MS = 100
 
 
+def default_workers() -> int:
+    """Concurrent games that will not oversubscribe the CPU.
+
+    Each game runs *two* agent processes, so the number of games must be half the
+    core count, not the whole of it. Getting this wrong is not merely slow: agents
+    measure their deadline in wall time but only poll it every 1024 nodes, so a
+    descheduled process blows through its budget and flags. Measured -- at 12
+    workers on 16 cores, 1.5x oversubscribed, a 222-game match produced 46 flags;
+    the same engines single-threaded overshot on zero moves out of 59.
+    """
+    import os
+
+    return max(1, ((os.cpu_count() or 4) // 2) - 1)
+
+
 def _initialise() -> None:
     """Install the Windows transport shim inside each worker process."""
     if sys.platform == "win32":
@@ -191,14 +206,15 @@ def main() -> None:
     parser.add_argument("--base-ms", type=int, default=FAST_BASE_MS)
     parser.add_argument("--increment-ms", type=int, default=FAST_INCREMENT_MS)
     parser.add_argument("--ply-cap", type=int, default=PLY_CAP)
-    parser.add_argument("--workers", type=int, default=0, help="0 picks cores-2")
+    parser.add_argument(
+        "--workers", type=int, default=0, help="concurrent games; 0 picks a safe default"
+    )
     parser.add_argument("--elo0", type=float, default=0.0)
     parser.add_argument("--elo1", type=float, default=20.0)
     arguments = parser.parse_args()
 
-    import os
 
-    workers = arguments.workers or max(1, (os.cpu_count() or 4) - 2)
+    workers = arguments.workers or default_workers()
     agent = arguments.agent.resolve()
     opponent = arguments.opponent.resolve()
 

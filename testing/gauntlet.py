@@ -16,7 +16,6 @@ rejected without ever reaching the SPRT.
 """
 
 import argparse
-import os
 from pathlib import Path
 
 from testing import arena, sprt
@@ -70,7 +69,7 @@ def main() -> None:
     parser.add_argument("--elo1", type=float, default=20.0)
     arguments = parser.parse_args()
 
-    workers = arguments.workers or max(1, (os.cpu_count() or 4) - 2)
+    workers = arguments.workers or arena.default_workers()
     challenger = arguments.challenger.resolve()
     champion = arguments.champion.resolve()
 
