@@ -152,16 +152,22 @@ def train(
     learning_rate: float,
     seed: int = 0,
     validation: np.ndarray | None = None,
+    accumulator: int = ACC,
+    patience: int = 4,
 ) -> Net:
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
-    net = Net().to(device)
+    net = Net(accumulator).to(device)
     batches = Batches(records, batch, device)
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimiser, T_max=max(epochs * len(batches), 1)
     )
+
+    best_loss = float("inf")
+    best_state: dict[str, Tensor] | None = None
+    stale = 0
 
     for epoch in range(1, epochs + 1):
         net.train()
@@ -187,7 +193,24 @@ def train(
             held_out = evaluate_loss(net, val_batches, torch.Generator().manual_seed(0))
             gap = held_out - running / seen
             line += f"  val {held_out:.6f}  gap {gap:+.6f}"
+            # Keep the epoch that generalised best, not the last one. Training loss
+            # keeps falling long after held-out loss stops improving, and the last
+            # epoch is simply the most overfit one.
+            if held_out < best_loss - 1e-7:
+                best_loss = held_out
+                best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+                stale = 0
+                line += "  *best"
+            else:
+                stale += 1
         print(line, flush=True)
+        if val_batches is not None and stale >= patience:
+            print(f"  early stop: validation has not improved for {patience} epochs")
+            break
+
+    if best_state is not None:
+        net.load_state_dict(best_state)
+        print(f"  restored the best epoch, validation loss {best_loss:.6f}")
     return net
 
 
@@ -226,6 +249,8 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch", type=int, default=16384)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--accumulator", type=int, default=ACC, help="first-layer width")
+    parser.add_argument("--patience", type=int, default=4, help="early-stop patience, epochs")
     parser.add_argument("--limit", type=int, default=0, help="use only the first N positions")
     parser.add_argument("--skip-sanity", action="store_true")
     arguments = parser.parse_args()
@@ -254,9 +279,19 @@ def main() -> None:
     else:
         print(f"validation: {arguments.val} not found -- training loss only, flying blind")
 
-    print(f"training {arguments.epochs} epochs, batch {arguments.batch}")
+    print(
+        f"training {arguments.epochs} epochs, batch {arguments.batch}, "
+        f"accumulator {arguments.accumulator}"
+    )
     net = train(
-        records, device, arguments.epochs, arguments.batch, arguments.lr, validation=validation
+        records,
+        device,
+        arguments.epochs,
+        arguments.batch,
+        arguments.lr,
+        validation=validation,
+        accumulator=arguments.accumulator,
+        patience=arguments.patience,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)

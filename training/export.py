@@ -20,16 +20,19 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from training.train import ACC, FEATURES, HIDDEN, Net
+from training.train import FEATURES, HIDDEN, Net
 
-EXPECTED = {
-    "W1": (FEATURES, ACC),
-    "b1": (ACC,),
-    "W2": (2 * ACC, HIDDEN),
-    "b2": (HIDDEN,),
-    "W3": (HIDDEN, 1),
-    "b3": (1,),
-}
+
+def expected_shapes(accumulator: int) -> dict[str, tuple[int, ...]]:
+    """The engine reads these shapes from the file, so width is a training choice."""
+    return {
+        "W1": (FEATURES, accumulator),
+        "b1": (accumulator,),
+        "W2": (2 * accumulator, HIDDEN),
+        "b2": (HIDDEN,),
+        "W3": (HIDDEN, 1),
+        "b3": (1,),
+    }
 
 
 def convert(state: dict[str, torch.Tensor]) -> dict[str, np.ndarray]:
@@ -61,8 +64,10 @@ def main() -> None:
 
     state = torch.load(arguments.checkpoint, map_location="cpu", weights_only=True)
     weights = convert(state)
+    accumulator = int(state["bag.weight"].shape[1])
+    expected = expected_shapes(accumulator)
 
-    for name, shape in EXPECTED.items():
+    for name, shape in expected.items():
         actual = weights[name].shape
         if actual != shape:
             raise SystemExit(f"{name} has shape {actual}, expected {shape}")
@@ -72,17 +77,17 @@ def main() -> None:
     # Verify the exported matrices reproduce the torch model, so a transposition or
     # a missing bias cannot slip through. Random accumulators rather than real
     # positions: this checks the arithmetic, not the chess.
-    net = Net().eval()
+    net = Net(accumulator).eval()
     net.load_state_dict(state)
     rng = np.random.default_rng(0)
-    x = rng.standard_normal((8, 2 * ACC)).astype(np.float32)
+    x = rng.standard_normal((8, 2 * accumulator)).astype(np.float32)
     with torch.no_grad():
         h1_t = torch.clamp(torch.from_numpy(x), 0.0, 1.0) ** 2
-        expected = net.l3(torch.relu(net.l2(h1_t))).squeeze(1).numpy()
+        reference = net.l3(torch.relu(net.l2(h1_t))).squeeze(1).numpy()
     h1 = np.clip(x, 0.0, 1.0) ** 2
     h2 = np.maximum(h1 @ weights["W2"] + weights["b2"], 0.0)
     actual_out = (h2 @ weights["W3"] + weights["b3"]).squeeze(1)
-    error = float(np.abs(expected - actual_out).max())
+    error = float(np.abs(reference - actual_out).max())
     if error > 1e-3:
         raise SystemExit(f"numpy head disagrees with torch by {error:.4g}")
 
@@ -90,10 +95,10 @@ def main() -> None:
     # np.savez's stub types its kwargs as bool; the runtime accepts arrays.
     np.savez(arguments.out, **weights)  # type: ignore[arg-type]
     size = arguments.out.stat().st_size
-    parameters = sum(int(np.prod(shape)) for shape in EXPECTED.values())
+    parameters = sum(int(np.prod(shape)) for shape in expected.values())
     print(f"wrote {arguments.out} ({size / 1e6:.2f} MB, {parameters:,} parameters)")
     print(f"numpy head matches torch to {error:.2g}")
-    for name, shape in EXPECTED.items():
+    for name, shape in expected.items():
         low, high = weights[name].min(), weights[name].max()
         print(f"  {name:<3} {shape!s:<12} range [{low:+.3f}, {high:+.3f}]")
 
