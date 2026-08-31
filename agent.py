@@ -91,6 +91,10 @@ TB_MEN: Final = 4
 # Above any evaluation the net can produce, below MATE_THRESHOLD so a tablebase win
 # is never mistaken for a forced mate the search actually found.
 TB_WIN: Final = 20_000
+# Anything at or above this is a distance-carrying score and must be rebased when
+# it crosses the transposition table. That includes tablebase scores, not just
+# mates -- they are ply-relative for exactly the same reason.
+DISTANCE_THRESHOLD: Final = 19_000
 
 MATE: Final = 30_000
 MATE_THRESHOLD: Final = MATE - 1_000
@@ -103,9 +107,14 @@ _MVV: Final = (100, 320, 330, 500, 900, 20000)
 CAPTURE_BONUS: Final = 1 << 20
 PROMOTION_BONUS: Final = 1 << 19
 
-# Delta pruning margin: a capture that cannot drag the static evaluation back to
-# alpha even after winning a queen is not worth searching.
-DELTA_MARGIN: Final = 975
+# Delta pruning margins. The per-capture margin is a minor piece: enough slack to
+# cover a positional swing, not so much that the test never fires. It was a queen's
+# worth (975) and was measured firing on 2 of 15,540 capture candidates -- inert.
+# At 200 the same trace prunes 11.7%.
+DELTA_MARGIN: Final = 200
+# The node-level test: if even winning a queen outright cannot reach alpha, the
+# whole capture search is hopeless and the standing evaluation stands.
+BIG_DELTA: Final = 975
 
 
 def _key(board: chess.Board) -> Hashable:
@@ -226,24 +235,33 @@ def _to_table(score: int, ply: int) -> int:
     two plies by the next move. Storing verbatim corrupts mate *distance*, which
     is exactly the signal needed to shorten a mate rather than shuffle.
     """
-    if score > MATE_THRESHOLD:
+    if score > DISTANCE_THRESHOLD:
         return score + ply
-    if score < -MATE_THRESHOLD:
+    if score < -DISTANCE_THRESHOLD:
         return score - ply
     return score
 
 
 def _from_table(score: int, ply: int) -> int:
     """Undo `_to_table`, putting a stored mate score back on this node's clock."""
-    if score > MATE_THRESHOLD:
+    if score > DISTANCE_THRESHOLD:
         return score - ply
-    if score < -MATE_THRESHOLD:
+    if score < -DISTANCE_THRESHOLD:
         return score + ply
     return score
 
 
 class Timeout(Exception):
     """Raised to unwind the search when the hard time limit passes."""
+
+
+# The table persists for the whole game, and a full 120 s + 0.5 s game is about
+# 160 s of thinking. Measured here: 3,919 new entries per second at 752 bytes each,
+# so an unbounded table reaches ~627,000 entries and 0.47 GB -- a quarter of the
+# 2 GB cap, before python-chess, numpy and the tablebase. Every SPRT so far ran at
+# 8 s controls, where it only reaches ~39,000 entries, so this has never been
+# exercised at the control the agent will actually play. Cheap insurance.
+MAX_TABLE: Final = 400_000
 
 
 class Engine:
@@ -320,6 +338,10 @@ class Engine:
         standing = self.evaluate(board)
         if standing >= beta:
             return standing
+        # If the best imaginable capture still falls short of alpha, nothing in this
+        # subtree can matter. One test, before generating any moves at all.
+        if standing + BIG_DELTA < alpha:
+            return standing
         if standing > alpha:
             alpha = standing
         if depth >= 8:
@@ -361,21 +383,33 @@ class Engine:
         # a draw we can claim -- the referee claims threefold automatically, so a
         # winning side that shuffles will have the win taken away from it.
         key = _key(board)
-        if ply and (self.history.get(key, 0) or board.is_repetition(2)):
-            return 0
-        if ply and board.halfmove_clock >= 100:
+        # A count of 1 means the position occurred once, which is not a draw. In-tree
+        # repetitions are caught by is_repetition(2); a pre-root position needs two
+        # prior sightings before a third occurrence here would let the referee claim.
+        if ply and (self.history.get(key, 0) >= 2 or board.is_repetition(2)):
             return 0
 
         # Exact result for small material. WDL is 26-75 us warm, roughly two move
         # generations, so it is affordable at every node once the board is small
         # enough. `get_wdl` returns None rather than raising for a table we did not
         # ship, and a crash is a lost game.
+        #
+        # Two subtleties. The fifty-move counter is checked first, because a
+        # theoretically won position whose clock has already expired is a draw and
+        # the referee will claim it. And Syzygy reports +/-1 for a *cursed* win --
+        # one that exists on the board but cannot be converted within fifty moves --
+        # which is likewise a draw in play, so only +/-2 counts.
+        if ply and board.halfmove_clock >= 100:
+            # Checkmate outranks the clock: a mate delivered on the hundredth
+            # halfmove is a win. `is_checkmate` is expensive, so it is only asked
+            # in this rare branch rather than at every node.
+            return -MATE + ply if board.is_checkmate() else 0
         if _TABLEBASE is not None and ply and chess.popcount(board.occupied) <= TB_MEN:
             wdl = _TABLEBASE.get_wdl(board)
             if wdl is not None:
-                if wdl > 0:
+                if wdl > 1:
                     return TB_WIN - ply
-                if wdl < 0:
+                if wdl < -1:
                     return -TB_WIN + ply
                 return 0
 
@@ -422,6 +456,10 @@ class Engine:
                     if alpha >= beta:
                         break
 
+        if len(self.table) >= MAX_TABLE:
+            # Always-replace with a hard ceiling. Dropping the table costs a little
+            # re-search; running out of memory costs the game.
+            self.table.clear()
         if best_score <= original_alpha:
             flag = 2
         elif best_score >= beta:
