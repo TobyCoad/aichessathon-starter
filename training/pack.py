@@ -130,34 +130,59 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
 
 
 def collect(
-    source: Path, group_ids: list[int], target: int, workers: int, label: str
+    source: Path, group_ids: list[int], target: int, workers: int, label: str, scratch: Path
 ) -> npt.NDArray[np.void]:
-    """Run the packer over a set of row groups and return deduplicated records."""
-    chunks: list[npt.NDArray[np.void]] = []
-    key_chunks: list[npt.NDArray[np.uint64]] = []
+    """Run the packer over a set of row groups and return deduplicated records.
+
+    Records are staged through a memory-mapped file rather than a list of chunks.
+    The obvious implementation -- collect chunks, `np.concatenate`, then gather the
+    deduplicated rows -- holds three copies at once and peaks near three times the
+    corpus: measured, that put 150M positions at ~27 GB against 31 GB of RAM, which
+    was the only thing capping how much data this project could train on.
+
+    Staged this way the memmap lives on disk (page cache, evictable), so resident
+    memory is the key array plus the final result: about 11 GB at 150M rather than
+    27, and the ceiling becomes free disk instead of RAM.
+    """
+    # Generous: dedup and filtering keep well under this, and the file is truncated.
+    capacity = int(target / 0.55) + 2_000_000
+    scratch.mkdir(parents=True, exist_ok=True)
+    staging = scratch / f".{label}_staging.dat"
+    staged = np.memmap(staging, dtype=RECORD, mode="w+", shape=(capacity,))
+    keys = np.empty(capacity, dtype=np.uint64)
     total = 0
 
     jobs = [(source, group) for group in group_ids]
-    with mp.Pool(workers) as pool:
-        for done, (records, keys) in enumerate(pool.imap(process_group, jobs), start=1):
-            chunks.append(records)
-            key_chunks.append(keys)
-            total += len(records)
-            if done % 10 == 0 or total >= target:
-                print(f"  {label} group {done}/{len(jobs)}: {total:,} positions", flush=True)
-            if total >= target:
-                pool.terminate()
-                break
+    try:
+        with mp.Pool(workers) as pool:
+            for done, (records, chunk_keys) in enumerate(pool.imap(process_group, jobs), start=1):
+                take = min(len(records), capacity - total)
+                staged[total : total + take] = records[:take]
+                keys[total : total + take] = chunk_keys[:take]
+                total += take
+                if done % 10 == 0 or total >= target or take < len(records):
+                    print(f"  {label} group {done}/{len(jobs)}: {total:,} positions", flush=True)
+                if total >= target or take < len(records):
+                    pool.terminate()
+                    break
 
-    # Deduplicate once at the end over a flat uint64 array. A running Python set
-    # would cost ~1.8 GB at this scale; 30M keys as uint64 is 240 MB.
-    records = np.concatenate(chunks)
-    keys = np.concatenate(key_chunks)
-    _, first = np.unique(keys, return_index=True)
-    duplicates = len(records) - len(first)
-    records = records[np.sort(first)]
-    print(f"{label}: {len(records):,} unique ({duplicates:,} duplicates dropped)")
-    return records
+        _, first = np.unique(keys[:total], return_index=True)
+        order = np.sort(first)
+        duplicates = total - len(order)
+
+        # Gather in slices so the staged file is read back a piece at a time rather
+        # than materialising a second full copy of it.
+        result = np.empty(len(order), dtype=RECORD)
+        step = 2_000_000
+        for start in range(0, len(order), step):
+            rows = order[start : start + step]
+            result[start : start + len(rows)] = staged[rows]
+    finally:
+        del staged
+        staging.unlink(missing_ok=True)
+
+    print(f"{label}: {len(result):,} unique ({duplicates:,} duplicates dropped)")
+    return result
 
 
 def describe(label: str, records: npt.NDArray[np.void]) -> None:
@@ -199,11 +224,15 @@ def main() -> None:
     train_ids = [group for group in range(groups) if group not in held_out]
 
     records = balance(
-        collect(arguments.source, train_ids, arguments.target, workers, "train"),
+        collect(
+            arguments.source, train_ids, arguments.target, workers, "train", arguments.out.parent
+        ),
         arguments.quiet_fraction,
     )
     validation = balance(
-        collect(arguments.source, val_ids, arguments.val_target, workers, "val"),
+        collect(
+            arguments.source, val_ids, arguments.val_target, workers, "val", arguments.out.parent
+        ),
         arguments.quiet_fraction,
     )
 
