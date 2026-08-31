@@ -57,11 +57,27 @@ def _relabelled(labels: Path | None, group: int, rows: int) -> list[int] | None:
     return out[:rows] if len(out) >= rows else None
 
 
+def ply_of(fen: str) -> int:
+    """Ply from a FEN by string inspection, without building a Board.
+
+    Parsing a FEN costs about 38 us and this decides whether the position is worth
+    parsing at all, so it has to be cheaper than the thing it guards.
+    """
+    parts = fen.split()
+    if len(parts) < 2:
+        return 10**6
+    try:
+        fullmove = int(parts[-1]) if parts[-1].isdigit() else 1
+    except ValueError:
+        fullmove = 1
+    return (fullmove - 1) * 2 + (0 if parts[1] == "w" else 1)
+
+
 def process_group(
-    job: tuple[Path, int, Path | None],
+    job: tuple[Path, int, Path | None, int],
 ) -> tuple[npt.NDArray[np.void], npt.NDArray[np.uint64]]:
     """Filter and encode one row group. Runs in a worker process."""
-    path, group, labels = job
+    path, group, labels, min_ply = job
     table = pq.ParquetFile(path).read_row_group(group, columns=["fen", "cp", "mate", "move"])
     fens = table["fen"].to_pylist()
     cps = table["cp"].to_pylist()
@@ -83,6 +99,13 @@ def process_group(
     kept = 0
 
     for fen, cp, mate, move in zip(fens, cps, mates, moves, strict=False):
+        # Opening positions the book answers at runtime. The network is never asked
+        # about them in a real game -- the book plays those plies instantly, and a
+        # search rooted after the book only ever descends to deeper plies, never back
+        # to shallower ones. They are also the most duplicated part of a human corpus,
+        # since every game starts the same way, so they consume budget twice over.
+        if min_ply and ply_of(fen) < min_ply:
+            continue
         if mate is not None:
             cp = MATE_CP if mate > 0 else -MATE_CP
         elif cp is None:
@@ -169,6 +192,7 @@ def collect(
     label: str,
     scratch: Path,
     labels: Path | None = None,
+    min_ply: int = 0,
 ) -> npt.NDArray[np.void]:
     """Run the packer over a set of row groups and return deduplicated records.
 
@@ -190,7 +214,7 @@ def collect(
     keys = np.empty(capacity, dtype=np.uint64)
     total = 0
 
-    jobs = [(source, group, labels) for group in group_ids]
+    jobs = [(source, group, labels, min_ply) for group in group_ids]
     try:
         with mp.Pool(workers) as pool:
             for done, (records, chunk_keys) in enumerate(pool.imap(process_group, jobs), start=1):
@@ -251,6 +275,12 @@ def main() -> None:
         default=None,
         help="directory of relabel shards; overrides the corpus cp/mate columns",
     )
+    parser.add_argument(
+        "--min-ply",
+        type=int,
+        default=0,
+        help="drop positions before this ply; 16 covers what the opening book plays",
+    )
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
@@ -276,6 +306,7 @@ def main() -> None:
             "train",
             arguments.out.parent,
             labels=arguments.labels,
+            min_ply=arguments.min_ply,
         ),
         arguments.quiet_fraction,
     )
@@ -288,6 +319,7 @@ def main() -> None:
             "val",
             arguments.out.parent,
             labels=arguments.labels,
+            min_ply=arguments.min_ply,
         ),
         arguments.quiet_fraction,
     )
