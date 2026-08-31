@@ -153,3 +153,58 @@ the result through one narrow channel. That is a credible explanation for the 4x
 wider net measuring +13 +/- 21, and it means the net may have been judged before it
 had anywhere to deposit an improvement. Worth re-testing a bigger net *after* the
 search package lands, rather than treating width as settled.
+
+## 2026-08-31 — search package promoted, width settled, data experiment begun
+
+### Measured
+
+| change | verdict | games |
+|---|---|---|
+| **Full search package** (RFP, killers, history, check ext, null-move) | **PASS, +199.2 +/- 104.1** | **56** |
+| Reverse futility pruning alone | PASS, +62.1 +/- 38.7 | 164 |
+| 1024-wide net vs 256 control, same data + search | ~-35, two runs, not promoted | 222 + 79 |
+
+The search package is worth about as much as the neural network was. At depth
+4-6 one ply is ~150 Elo, and these are the features that buy plies.
+
+### Width is settled: the net is data-starved, not capacity-starved
+
+The missing control finally exists -- 256 wide on the *same* 21.6M positions with
+the *same* early stopping -- and it beats the 1024 on held-out loss (0.005411 vs
+0.005545) and in games (~-35 Elo for the wider net, two runs). Earlier I called the
+"15% better loss" for the 1024 a reason to revisit width; that figure compared a
+*train* loss on one dataset to a *val* loss on another and did not survive the
+control.
+
+### A rig bug that was present in every measurement
+
+`--workers` counts *games*, and each game runs **two** agent processes. The default
+was `cores - 2`, so 16 cores ran 28 processes -- 1.75x oversubscribed. Agents time
+themselves in wall clock but poll only every 1024 nodes, so a descheduled process
+sails past its budget: a 222-game match produced **46 flags**, while the same
+engines single-threaded overshot on **zero of 59 moves**. Default is now
+`cores//2 - 1`.
+
+Load was symmetric so the verdicts stand, but every depth figure so far was
+measured on ~0.6 of a core rather than the dedicated core the platform gives.
+
+### External calibration exists now
+
+`tools/uci_opponent.py` wraps any UCI engine as an agent directory;
+`testing/calibrate.py` plays a Stockfish Skill Level ladder (1320/1608/1923/2363,
+2,000-5,400 calibration games per rung) and reports a **bracket**. Deliberately not
+a single number: a skill-limited engine has no scalar rating -- DeepMind measured
+one unchanged model at 2895 Elo vs humans and 2299 vs bots.
+
+Use `UCI_Elo` for nothing. It is a search-depth ladder whose polynomial has not
+been refit since Jan 2023, and whose same setting was labelled ~2200 in SF15 and
+~2711 in SF16.
+
+### Next: the label problem
+
+We use 7% of one downloaded file that holds 480M unique positions, and the
++/-100cp balancing discards a third of what we do collect to satisfy a floor that
+its source paper never ablated. Repacking 80M with balancing off. If more data at
+current quality moves the needle, better labels will move it further; if it does
+not, relabelling with our own Stockfish at fixed depth would not have helped either
+and the bottleneck is elsewhere.
