@@ -39,12 +39,14 @@ engine -- permitted explicitly, since the ban covers only what ships and runs in
 the submission. No engine, wrapper, or third-party weights are present.
 """
 
+import random
 import time
 from collections.abc import Hashable
 from pathlib import Path
 from typing import Any, Final
 
 import chess
+import chess.polyglot
 import chess.syzygy
 import numpy as np
 import numpy.typing as npt
@@ -104,10 +106,41 @@ TB_MEN: Final = 4
 # Above any evaluation the net can produce, below MATE_THRESHOLD so a tablebase win
 # is never mistaken for a forced mate the search actually found.
 TB_WIN: Final = 20_000
+
+# --------------------------------------------------------------------------------
+# Opening book
+# --------------------------------------------------------------------------------
+# Twenty plies of human opening moves, counted by frequency from Lichess games and
+# stored as Polyglot. Permitted as shipped data alongside the tablebase, and
+# `chess.polyglot` is in the base image.
+#
+# The clock is the main reason it is here. `_budget` allocates by expected moves
+# remaining, which front-loads: roughly 40 seconds of a 120 second clock goes into
+# the first ten moves, a phase where theory already has the answer and a depth-6
+# search is guessing. The book answers instantly and banks that time for the
+# middlegame, which is close to a node doubling where games are actually decided.
+#
+# Moves are chosen weighted-random rather than always-best. Two agents playing
+# deterministically from the standard position replay one identical game, so a
+# repeat pairing would repeat the result; sampling by popularity keeps the opening
+# sound while making the games different.
+_BOOK: chess.polyglot.MemoryMappedReader | None = None
+try:
+    _book_path = Path(__file__).with_name("weights") / "book.bin"
+    if _book_path.is_file():
+        _BOOK = chess.polyglot.open_reader(str(_book_path))
+except Exception:  # a missing or broken book must never stop play
+    _BOOK = None
+
+# Ignore moves played far less often than the position's best: frequency data has a
+# long tail, and the rare end of it is other people's mistakes.
+BOOK_MIN_SHARE: Final = 0.08
 # Anything at or above this is a distance-carrying score and must be rebased when
 # it crosses the transposition table. That includes tablebase scores, not just
 # mates -- they are ply-relative for exactly the same reason.
 DISTANCE_THRESHOLD: Final = 19_000
+
+_RANDOM: Final = random.Random()
 
 MATE: Final = 30_000
 MATE_THRESHOLD: Final = MATE - 1_000
@@ -804,6 +837,27 @@ class Engine:
 _ENGINE = Engine()
 
 
+def _book_move(board: chess.Board) -> chess.Move | None:
+    """A book move for this position, sampled by how often humans played it."""
+    if _BOOK is None:
+        return None
+    try:
+        entries = [entry for entry in _BOOK.find_all(board) if entry.weight > 0]
+    except Exception:  # a corrupt book must not cost the game
+        return None
+    if not entries:
+        return None
+    best = max(entry.weight for entry in entries)
+    viable = [entry for entry in entries if entry.weight >= best * BOOK_MIN_SHARE]
+    total = sum(entry.weight for entry in viable)
+    pick = _RANDOM.randrange(total)
+    for entry in viable:
+        pick -= entry.weight
+        if pick < 0:
+            return entry.move
+    return viable[0].move
+
+
 def _tablebase_move(board: chess.Board) -> chess.Move | None:
     """The best move when the whole position is tabulated.
 
@@ -914,6 +968,15 @@ def get_move(fen: str, time_left_ms: int) -> str:
     # won game turned into a draw without ever being told.
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
+
+    # Book first: it is instant, and the clock it saves is worth more in the
+    # middlegame than the search would be worth here.
+    try:
+        opening = _book_move(board)
+    except Exception:  # never let the book cost a game
+        opening = None
+    if opening is not None:
+        return opening.uci()
 
     # Exact play once the position is small enough. This is what converts a won
     # endgame; the search alone shuffles because the evaluation is flat there.
