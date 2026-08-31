@@ -1,7 +1,8 @@
 """The submission entrypoint. The platform imports this file and calls get_move.
 
 An iterative-deepening alpha-beta searcher with a transposition table, MVV-LVA
-move ordering, quiescence search and a tapered piece-square evaluation.
+move ordering, quiescence search and a learned evaluation: a (768 -> 256)x2 -> 32 -> 1
+network whose first layer is maintained incrementally across make and unmake.
 
 The design follows from one measurement: in Python the move generator, not the
 evaluation, is the bottleneck. `list(board.legal_moves)` costs ~25 us; a small
@@ -18,175 +19,50 @@ Three python-chess specifics that this file depends on, all measured:
   * `can_claim_threefold_repetition()` costs ~150 us -- 5x a full move generation.
     It must never appear inside the search; repetition is tracked by hand below.
 
-Note for the competition rules: the event requires that a learned model materially
-drives move selection. This evaluation is hand-crafted, so this file is a baseline
-and a fallback, not a final submission. The learned evaluation replaces `evaluate`.
+The rules require that a learned model materially drives move selection. It does:
+every leaf score in the search, and so every move chosen, comes from the network in
+`weights/net.npz`, which was trained from Lichess positions annotated by an existing
+engine -- permitted explicitly, since the ban covers only what ships and runs inside
+the submission. No engine, wrapper, or third-party weights are present.
 """
 
 import time
 from collections.abc import Hashable
+from pathlib import Path
 from typing import Final
 
 import chess
+import numpy as np
+import numpy.typing as npt
 
 # --------------------------------------------------------------------------------
-# Evaluation tables
+# The learned evaluation
 # --------------------------------------------------------------------------------
-# PeSTO's tapered piece-square tables (Ronald Friederich, rofChade), the standard
-# public set documented at chessprogramming.org/PeSTO%27s_Evaluation_Function.
-# A tapered, tuned piece-square evaluation is worth around +250 Elo over plain
-# material, and is the one evaluation feature that carries fully into games against
-# unfamiliar opponents rather than only into self-play.
+# A (768 -> 256)x2 -> 32 -> 1 network, trained on Lichess positions annotated by an
+# existing engine -- which the rules permit explicitly: "Training data: unrestricted,
+# including positions annotated by an existing engine; the ban covers only what ships
+# and runs inside the submission."
 #
-# Tables are written with a8 first, so a white piece on `square` indexes
-# `table[square ^ 56]` and a black piece indexes `table[square]`.
+# Inference is hand-written numpy, not ONNX Runtime. At batch 1, which is all a
+# depth-first search ever asks for, numpy measured ~4x faster: ORT carries a fixed
+# ~12 us dispatch cost that dominates a network this small, and only wins when
+# batching, which alpha-beta cannot do without giving up move ordering.
+#
+# Weights are float32. int16 measured *slower* in numpy because integer paths miss
+# BLAS; quantisation is a C++/SIMD trick that inverts in Python.
 
-MG_VALUE: Final = (82, 337, 365, 477, 1025, 0)
-EG_VALUE: Final = (94, 281, 297, 512, 936, 0)
-PHASE_WEIGHT: Final = (0, 1, 1, 2, 4, 0)
-TOTAL_PHASE: Final = 24
+_WEIGHTS = np.load(Path(__file__).with_name("weights") / "net.npz")
+W1: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)   # (768, 256)
+B1: Final = np.ascontiguousarray(_WEIGHTS["b1"], dtype=np.float32)   # (256,)
+W2: Final = np.ascontiguousarray(_WEIGHTS["W2"], dtype=np.float32)   # (512, 32)
+B2: Final = np.ascontiguousarray(_WEIGHTS["b2"], dtype=np.float32)   # (32,)
+W3: Final = np.ascontiguousarray(_WEIGHTS["W3"], dtype=np.float32)   # (32, 1)
+B3: Final = np.ascontiguousarray(_WEIGHTS["b3"], dtype=np.float32)   # (1,)
+ACC_SIZE: Final = W1.shape[1]
 
-MG_PAWN: Final = (
-      0,   0,   0,   0,   0,   0,   0,   0,
-     98, 134,  61,  95,  68, 126,  34, -11,
-     -6,   7,  26,  31,  65,  56,  25, -20,
-    -14,  13,   6,  21,  23,  12,  17, -23,
-    -27,  -2,  -5,  12,  17,   6,  10, -25,
-    -26,  -4,  -4, -10,   3,   3,  33, -12,
-    -35,  -1, -20, -23, -15,  24,  38, -22,
-      0,   0,   0,   0,   0,   0,   0,   0,
-)  # fmt: skip
-EG_PAWN: Final = (
-      0,   0,   0,   0,   0,   0,   0,   0,
-    178, 173, 158, 134, 147, 132, 165, 187,
-     94, 100,  85,  67,  56,  53,  82,  84,
-     32,  24,  13,   5,  -2,   4,  17,  17,
-     13,   9,  -3,  -7,  -7,  -8,   3,  -1,
-      4,   7,  -6,   1,   0,  -5,  -1,  -8,
-     13,   8,   8,  10,  13,   0,   2,  -7,
-      0,   0,   0,   0,   0,   0,   0,   0,
-)  # fmt: skip
-MG_KNIGHT: Final = (
-    -167, -89, -34, -49,  61, -97, -15, -107,
-     -73, -41,  72,  36,  23,  62,   7,  -17,
-     -47,  60,  37,  65,  84, 129,  73,   44,
-      -9,  17,  19,  53,  37,  69,  18,   22,
-     -13,   4,  16,  13,  28,  19,  21,   -8,
-     -23,  -9,  12,  10,  19,  17,  25,  -16,
-     -29, -53, -12,  -3,  -1,  18, -14,  -19,
-    -105, -21, -58, -33, -17, -28, -19,  -23,
-)  # fmt: skip
-EG_KNIGHT: Final = (
-    -58, -38, -13, -28, -31, -27, -63, -99,
-    -25,  -8, -25,  -2,  -9, -25, -24, -52,
-    -24, -20,  10,   9,  -1,  -9, -19, -41,
-    -17,   3,  22,  22,  22,  11,   8, -18,
-    -18,  -6,  16,  25,  16,  17,   4, -18,
-    -23,  -3,  -1,  15,  10,  -3, -20, -22,
-    -42, -20, -10,  -5,  -2, -20, -23, -44,
-    -29, -51, -23, -15, -22, -18, -50, -64,
-)  # fmt: skip
-MG_BISHOP: Final = (
-    -29,   4, -82, -37, -25, -42,   7,  -8,
-    -26,  16, -18, -13,  30,  59,  18, -47,
-    -16,  37,  43,  40,  35,  50,  37,  -2,
-     -4,   5,  19,  50,  37,  37,   7,  -2,
-     -6,  13,  13,  26,  34,  12,  10,   4,
-      0,  15,  15,  15,  14,  27,  18,  10,
-      4,  15,  16,   0,   7,  21,  33,   1,
-    -33,  -3, -14, -21, -13, -12, -39, -21,
-)  # fmt: skip
-EG_BISHOP: Final = (
-    -14, -21, -11,  -8,  -7,  -9, -17, -24,
-     -8,  -4,   7, -12,  -3, -13,  -4, -14,
-      2,  -8,   0,  -1,  -2,   6,   0,   4,
-     -3,   9,  12,   9,  14,  10,   3,   2,
-     -6,   3,  13,  19,   7,  10,  -3,  -9,
-    -12,  -3,   8,  10,  13,   3,  -7, -15,
-    -14, -18,  -7,  -1,   4,  -9, -15, -27,
-    -23,  -9, -23,  -5,  -9, -16,  -5, -17,
-)  # fmt: skip
-MG_ROOK: Final = (
-     32,  42,  32,  51,  63,   9,  31,  43,
-     27,  32,  58,  62,  80,  67,  26,  44,
-     -5,  19,  26,  36,  17,  45,  61,  16,
-    -24, -11,   7,  26,  24,  35,  -8, -20,
-    -36, -26, -12,  -1,   9,  -7,   6, -23,
-    -45, -25, -16, -17,   3,   0,  -5, -33,
-    -44, -16, -20,  -9,  -1,  11,  -6, -71,
-    -19, -13,   1,  17,  16,   7, -37, -26,
-)  # fmt: skip
-EG_ROOK: Final = (
-    13, 10, 18, 15, 12,  12,   8,   5,
-    11, 13, 13, 11, -3,   3,   8,   3,
-     7,  7,  7,  5,  4,  -3,  -5,  -3,
-     4,  3, 13,  1,  2,   1,  -1,   2,
-     3,  5,  8,  4, -5,  -6,  -8, -11,
-    -4,  0, -5, -1, -7, -12,  -8, -16,
-    -6, -6,  0,  2, -9,  -9, -11,  -3,
-    -9,  2,  3, -1, -5, -13,   4, -20,
-)  # fmt: skip
-MG_QUEEN: Final = (
-    -28,   0,  29,  12,  59,  44,  43,  45,
-    -24, -39,  -5,   1, -16,  57,  28,  54,
-    -13, -17,   7,   8,  29,  56,  47,  57,
-    -27, -27, -16, -16,  -1,  17,  -2,   1,
-     -9, -26,  -9, -10,  -2,  -4,   3,  -3,
-    -14,   2, -11,  -2,  -5,   2,  14,   5,
-    -35,  -8,  11,   2,   8,  15,  -3,   1,
-     -1, -18,  -9,  10, -15, -25, -31, -50,
-)  # fmt: skip
-EG_QUEEN: Final = (
-     -9,  22,  22,  27,  27,  19,  10,  20,
-    -17,  20,  32,  41,  58,  25,  30,   0,
-    -20,   6,   9,  49,  47,  35,  19,   9,
-      3,  22,  24,  45,  57,  40,  57,  36,
-    -18,  28,  19,  47,  31,  34,  39,  23,
-    -16, -27,  15,   6,   9,  17,  10,   5,
-    -22, -23, -30, -16, -16, -23, -36, -32,
-    -33, -28, -22, -43,  -5, -32, -20, -41,
-)  # fmt: skip
-MG_KING: Final = (
-    -65,  23,  16, -15, -56, -34,   2,  13,
-     29,  -1, -20,  -7,  -8,  -4, -38, -29,
-     -9,  24,   2, -16, -20,   6,  22, -22,
-    -17, -20, -12, -27, -30, -25, -14, -36,
-    -49,  -1, -27, -39, -46, -44, -33, -51,
-    -14, -14, -22, -46, -44, -30, -15, -27,
-      1,   7,  -8, -64, -43, -16,   9,   8,
-    -15,  36,  12, -54,   8, -28,  24,  14,
-)  # fmt: skip
-EG_KING: Final = (
-    -74, -35, -18, -18, -11,  15,   4, -17,
-    -12,  17,  14,  17,  17,  38,  23,  11,
-     10,  17,  23,  15,  20,  45,  44,  13,
-     -8,  22,  24,  27,  26,  33,  26,   3,
-    -18,  -4,  21,  24,  27,  23,   9, -11,
-    -19,  -3,  11,  21,  23,  16,   7,  -9,
-    -27, -11,   4,  13,  14,   4,  -5, -17,
-    -53, -34, -21, -11, -28, -14, -24, -43,
-)  # fmt: skip
-
-_MG_TABLES: Final = (MG_PAWN, MG_KNIGHT, MG_BISHOP, MG_ROOK, MG_QUEEN, MG_KING)
-_EG_TABLES: Final = (EG_PAWN, EG_KNIGHT, EG_BISHOP, EG_ROOK, EG_QUEEN, EG_KING)
-
-
-def _build(tables: tuple[tuple[int, ...], ...], values: tuple[int, ...]) -> tuple[list[int], ...]:
-    """Fold material value into each square, once, at import time.
-
-    Returns twelve 64-entry lists indexed [piece_type - 1 + 6 * is_black][square],
-    so evaluation is one list lookup per piece with no arithmetic on the hot path.
-    """
-    built: list[list[int]] = []
-    for piece in range(6):
-        built.append([values[piece] + tables[piece][square ^ 56] for square in range(64)])
-    for piece in range(6):
-        built.append([values[piece] + tables[piece][square] for square in range(64)])
-    return tuple(built)
-
-
-MG_TABLE: Final = _build(_MG_TABLES, MG_VALUE)
-EG_TABLE: Final = _build(_EG_TABLES, EG_VALUE)
+# The network predicts a win-probability logit; centipawns are that times 400.
+# Getting this constant wrong scales the whole evaluation silently.
+OUTPUT_SCALE: Final = 400.0
 
 MATE: Final = 30_000
 MATE_THRESHOLD: Final = MATE - 1_000
@@ -217,6 +93,101 @@ def _key(board: chess.Board) -> Hashable:
     return board._transposition_key()
 
 
+
+def _feature(square: int, piece_type: int, colour: chess.Color, white_pov: bool) -> int:
+    """Feature index, matching training/features.py exactly.
+
+    A disagreement here is silent: the net loads, the engine runs, and it plays
+    badly. training/check_nnue.py asserts the two agree.
+    """
+    rel = square if white_pov else square ^ 56
+    own = (colour == chess.WHITE) if white_pov else (colour == chess.BLACK)
+    return (0 if own else 384) + (piece_type - 1) * 64 + rel
+
+
+class Accumulator:
+    """Both perspectives' first-layer sums, maintained incrementally.
+
+    A full refresh costs ~5-10 us; an incremental update is ~0.6 us, and the search
+    does one per node. `push` stores the previous vectors so `pop` is a restore
+    rather than a recompute.
+    """
+
+    __slots__ = ("black", "stack", "white")
+
+    def __init__(self) -> None:
+        self.white = B1.copy()
+        self.black = B1.copy()
+        self.stack: list[tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]] = []
+
+    def refresh(self, board: chess.Board) -> None:
+        white = B1.copy()
+        black = B1.copy()
+        for piece_type in range(1, 7):
+            for colour in (chess.WHITE, chess.BLACK):
+                mask = board.pieces_mask(piece_type, colour)
+                while mask:
+                    square = (mask & -mask).bit_length() - 1
+                    white += W1[_feature(square, piece_type, colour, True)]
+                    black += W1[_feature(square, piece_type, colour, False)]
+                    mask &= mask - 1
+        self.white = white
+        self.black = black
+        self.stack.clear()
+
+    def _add(self, square: int, piece_type: int, colour: chess.Color) -> None:
+        self.white += W1[_feature(square, piece_type, colour, True)]
+        self.black += W1[_feature(square, piece_type, colour, False)]
+
+    def _remove(self, square: int, piece_type: int, colour: chess.Color) -> None:
+        self.white -= W1[_feature(square, piece_type, colour, True)]
+        self.black -= W1[_feature(square, piece_type, colour, False)]
+
+    def push(self, board: chess.Board, move: chess.Move) -> None:
+        """Apply a move's feature deltas. Must be called *before* board.push."""
+        self.stack.append((self.white.copy(), self.black.copy()))
+        mover = board.turn
+        piece_type = board.piece_type_at(move.from_square)
+        if piece_type is None:  # should not happen; leave the accumulator stale
+            return
+
+        self._remove(move.from_square, piece_type, mover)
+
+        captured = board.piece_type_at(move.to_square)
+        if captured is not None:
+            self._remove(move.to_square, captured, not mover)
+        elif piece_type == chess.PAWN and move.to_square == board.ep_square:
+            # En passant: the captured pawn is not on the destination square.
+            behind = move.to_square + (-8 if mover == chess.WHITE else 8)
+            self._remove(behind, chess.PAWN, not mover)
+
+        self._add(move.to_square, move.promotion or piece_type, mover)
+
+        if piece_type == chess.KING and abs(move.to_square - move.from_square) == 2:
+            rank = 0 if mover == chess.WHITE else 56
+            if move.to_square > move.from_square:
+                rook_from, rook_to = 7 + rank, 5 + rank
+            else:
+                rook_from, rook_to = 0 + rank, 3 + rank
+            self._remove(rook_from, chess.ROOK, mover)
+            self._add(rook_to, chess.ROOK, mover)
+
+    def pop(self) -> None:
+        self.white, self.black = self.stack.pop()
+
+    def evaluate(self, turn: chess.Color) -> int:
+        """Centipawns from the side to move's point of view."""
+        if turn == chess.WHITE:
+            own, opponent = self.white, self.black
+        else:
+            own, opponent = self.black, self.white
+        hidden = np.concatenate((own, opponent))
+        np.clip(hidden, 0.0, 1.0, out=hidden)
+        hidden *= hidden  # SCReLU
+        second = np.maximum(hidden @ W2 + B2, 0.0)
+        return int(float((second @ W3 + B3)[0]) * OUTPUT_SCALE)
+
+
 class Timeout(Exception):
     """Raised to unwind the search when the hard time limit passes."""
 
@@ -230,7 +201,7 @@ class Engine:
     per process rather than at module scope.
     """
 
-    __slots__ = ("deadline", "history", "nodes", "root_key", "table")
+    __slots__ = ("acc", "deadline", "history", "nodes", "root_key", "table")
 
     def __init__(self) -> None:
         # key -> (depth, score, flag, best_move); flag 0 exact, 1 lower, 2 upper.
@@ -241,49 +212,13 @@ class Engine:
         self.deadline = 0.0
         self.nodes = 0
         self.root_key: Hashable = None
+        self.acc = Accumulator()
 
     # -- evaluation ---------------------------------------------------------------
 
     def evaluate(self, board: chess.Board) -> int:
-        """Tapered piece-square evaluation, from the side to move's point of view.
-
-        Iterating the twelve piece bitboards with a bit-scan is roughly four times
-        cheaper than `board.piece_map()`, which allocates a dict of Piece objects.
-        """
-        middlegame = 0
-        endgame = 0
-        phase = 0
-        occupied_co = board.occupied_co
-        for piece in range(1, 7):
-            mask = board.pieces_mask(piece, chess.WHITE) & occupied_co[chess.WHITE]
-            white_table_mg = MG_TABLE[piece - 1]
-            white_table_eg = EG_TABLE[piece - 1]
-            weight = PHASE_WEIGHT[piece - 1]
-            while mask:
-                square = (mask & -mask).bit_length() - 1
-                middlegame += white_table_mg[square]
-                endgame += white_table_eg[square]
-                phase += weight
-                mask &= mask - 1
-
-            mask = board.pieces_mask(piece, chess.BLACK) & occupied_co[chess.BLACK]
-            black_table_mg = MG_TABLE[piece + 5]
-            black_table_eg = EG_TABLE[piece + 5]
-            while mask:
-                square = (mask & -mask).bit_length() - 1
-                middlegame -= black_table_mg[square]
-                endgame -= black_table_eg[square]
-                phase += weight
-                mask &= mask - 1
-
-        if phase > TOTAL_PHASE:
-            phase = TOTAL_PHASE  # early promotions can exceed the starting material
-        blended = middlegame * phase + endgame * (TOTAL_PHASE - phase)
-        # Truncate toward zero, not toward negative infinity: floor division would
-        # make the evaluation asymmetric, scoring a position and its mirror image
-        # differently by a point, which shows up as a phantom colour bias.
-        score = blended // TOTAL_PHASE if blended >= 0 else -(-blended // TOTAL_PHASE)
-        return score if board.turn == chess.WHITE else -score
+        """The learned evaluation, from the incrementally maintained accumulator."""
+        return self.acc.evaluate(board.turn)
 
     # -- move ordering ------------------------------------------------------------
 
@@ -347,11 +282,13 @@ class Engine:
                 and standing + _MVV[victim - 1] + DELTA_MARGIN < alpha
             ):
                 continue
+            self.acc.push(board, move)
             board.push(move)
             try:
                 score = -self.quiesce(board, -beta, -alpha, depth + 1)
             finally:
                 board.pop()
+                self.acc.pop()
             if score >= beta:
                 return score
             if score > alpha:
@@ -402,11 +339,13 @@ class Engine:
         best_score = -INFINITY
         best_move = None
         for move in moves:
+            self.acc.push(board, move)
             board.push(move)
             try:
                 score = -self.search(board, depth - 1, -beta, -alpha, ply + 1)
             finally:
                 board.pop()
+                self.acc.pop()
             if score > best_score:
                 best_score = score
                 best_move = move
@@ -443,11 +382,13 @@ class Engine:
                 self._order(board, moves, best)
                 iteration_best = moves[0]
                 for move in moves:
+                    self.acc.push(board, move)
                     board.push(move)
                     try:
                         value = -self.search(board, depth - 1, -INFINITY, -alpha, 1)
                     finally:
                         board.pop()
+                        self.acc.pop()
                     if value > score:
                         score = value
                         iteration_best = move
@@ -505,6 +446,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
 
+    _ENGINE.acc.refresh(board)
     soft, hard = _budget(board, time_left_ms)
     try:
         move = _ENGINE.choose(board, soft, hard)
