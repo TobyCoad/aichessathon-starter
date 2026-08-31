@@ -153,7 +153,9 @@ def main() -> None:
 
     # 3. The engine's numpy forward pass versus the torch model.
     state = torch.load(arguments.checkpoint, map_location="cpu", weights_only=True)
-    net = Net().eval()
+    # Width is a property of the checkpoint, not a constant: the engine reads it
+    # from the weight file, so this must too or it compares against a different net.
+    net = Net(int(state["bag.weight"].shape[1])).eval()
     net.load_state_dict(state)
 
     board = chess.Board()
