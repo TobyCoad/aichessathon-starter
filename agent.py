@@ -105,6 +105,9 @@ INFINITY: Final = 1 << 20
 # plies, and the single highest-value item in the whole engine per line of code.
 _MVV: Final = (100, 320, 330, 500, 900, 20000)
 CAPTURE_BONUS: Final = 1 << 20
+# Below every capture, above every history-scored quiet move.
+KILLER_FIRST: Final = (1 << 20) - 1
+KILLER_SECOND: Final = (1 << 20) - 2
 PROMOTION_BONUS: Final = 1 << 19
 
 # Delta pruning margins. The per-capture margin is a minor piece: enough slack to
@@ -263,6 +266,26 @@ class Timeout(Exception):
 # exercised at the control the agent will actually play. Cheap insurance.
 MAX_TABLE: Final = 400_000
 
+# Reverse futility pruning. If the static evaluation is far enough above beta that
+# even a sizeable positional swing could not bring it below, the node is assumed to
+# fail high and is cut without searching. Measured at +145.83 +/- 24.41 in one
+# engine's SPRT series and +57.1 +/- 16.9 in another's, and it fires at shallow
+# depth -- which is all this engine has.
+#
+# It is also the first consumer of evaluation quality outside quiescence leaves.
+# Until now a better network had almost nowhere to deposit its improvement, which
+# is a candidate explanation for the 4x wider net measuring +13 +/- 21.
+RFP_MAX_DEPTH: Final = 6
+RFP_MARGIN: Final = 80
+
+# Null-move pruning: give the opponent a free move; if the position still fails
+# high, the real move would too. Measured +51.4 +/- 14.6 and +116.0 +/- 25.2 in two
+# independent engines. Requires non-pawn material, because in a pawn endgame
+# zugzwang makes the null-move assumption false.
+NMP_MIN_DEPTH: Final = 3
+NMP_REDUCTION: Final = 2
+MAX_PLY: Final = 72
+
 
 class Engine:
     """Search state that persists for the lifetime of one game.
@@ -273,7 +296,16 @@ class Engine:
     per process rather than at module scope.
     """
 
-    __slots__ = ("acc", "deadline", "history", "nodes", "root_key", "table")
+    __slots__ = (
+        "acc",
+        "butterfly",
+        "deadline",
+        "history",
+        "killers",
+        "nodes",
+        "root_key",
+        "table",
+    )
 
     def __init__(self) -> None:
         # key -> (depth, score, flag, best_move); flag 0 exact, 1 lower, 2 upper.
@@ -285,6 +317,12 @@ class Engine:
         self.nodes = 0
         self.root_key: Hashable = None
         self.acc = Accumulator()
+        # Two quiet moves per ply that last caused a beta cutoff there. They carry
+        # information the position alone does not, and cost nothing to try first.
+        self.killers: list[list[chess.Move | None]] = [[None, None] for _ in range(MAX_PLY)]
+        # from-square x to-square, credited by depth squared on a cutoff: a deeper
+        # cutoff is stronger evidence that a move is generally good.
+        self.butterfly: list[list[int]] = [[0] * 64 for _ in range(64)]
 
     # -- evaluation ---------------------------------------------------------------
 
@@ -294,8 +332,9 @@ class Engine:
 
     # -- move ordering ------------------------------------------------------------
 
-    @staticmethod
-    def _order(board: chess.Board, moves: list[chess.Move], best: chess.Move | None) -> None:
+    def _order(
+        self, board: chess.Board, moves: list[chess.Move], best: chess.Move | None, ply: int
+    ) -> None:
         """Sort moves in place: transposition move, then captures by MVV-LVA.
 
         A transposition table earns about +100 Elo used this way and only about +40
@@ -303,9 +342,11 @@ class Engine:
         matters more than the table's stored bounds.
         """
         piece_type_at = board.piece_type_at
+        killers = self.killers[ply] if ply < MAX_PLY else [None, None]
+        butterfly = self.butterfly
 
         def score(move: chess.Move) -> int:
-            if move == best:
+            if best is not None and move == best:
                 return 1 << 30
             value = 0
             victim = piece_type_at(move.to_square)
@@ -316,6 +357,12 @@ class Engine:
                     + _MVV[victim - 1] * 16
                     - (_MVV[attacker - 1] if attacker is not None else 0)
                 )
+            elif move == killers[0]:
+                value = KILLER_FIRST
+            elif move == killers[1]:
+                value = KILLER_SECOND
+            else:
+                value = butterfly[move.from_square][move.to_square]
             if move.promotion is not None:
                 value += PROMOTION_BONUS + move.promotion * 100
             return value
@@ -348,7 +395,7 @@ class Engine:
             return standing
 
         captures = list(board.generate_legal_captures())
-        self._order(board, captures, None)
+        self._order(board, captures, None, 0)
         for move in captures:
             # Delta pruning: skip a capture that cannot reach alpha even generously.
             victim = board.piece_type_at(move.to_square)
@@ -429,14 +476,47 @@ class Engine:
                 if alpha >= beta:
                     return stored_score
 
+        in_check = board.is_check()
+        # Check extension. A position in check has a tiny, forcing move list, so the
+        # extra ply is cheap, and resolving the check is exactly where tactics live.
+        # Measured +55.7 +/- 14.9 -- and about +1 Elo in Stockfish, because it is a
+        # shallow-depth feature, which is all this engine has.
+        if in_check and ply < MAX_PLY - 8:
+            depth += 1
+
         if depth <= 0:
             return self.quiesce(board, alpha, beta)
+
+        # Reverse futility pruning. Not in check, because the evaluation of a
+        # position in check is unreliable -- the training data drops those
+        # positions entirely, so the network has never seen one.
+        if depth <= RFP_MAX_DEPTH and not in_check:
+            standing = self.evaluate(board)
+            if standing - RFP_MARGIN * depth >= beta:
+                return standing
+
+        # Null-move pruning. A null move leaves every piece where it is, so the
+        # accumulator does not change -- only whose perspective is "own", which
+        # evaluate() already takes from board.turn. Nothing to push or pop.
+        if (
+            depth >= NMP_MIN_DEPTH
+            and not in_check
+            and abs(beta) < DISTANCE_THRESHOLD
+            and _has_non_pawn_material(board, board.turn)
+        ):
+            board.push(chess.Move.null())
+            try:
+                score = -self.search(board, depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1)
+            finally:
+                board.pop()
+            if score >= beta:
+                return beta
 
         moves = list(board.legal_moves)
         if not moves:
             return -MATE + ply if board.is_check() else 0
 
-        self._order(board, moves, best_move)
+        self._order(board, moves, best_move, ply)
 
         best_score = -INFINITY
         best_move = None
@@ -454,6 +534,14 @@ class Engine:
                 if score > alpha:
                     alpha = score
                     if alpha >= beta:
+                        # A quiet move that causes a cutoff is worth remembering:
+                        # here at this ply, and generally by from/to square.
+                        if board.piece_type_at(move.to_square) is None:
+                            slot = self.killers[ply] if ply < MAX_PLY else None
+                            if slot is not None and slot[0] != move:
+                                slot[1] = slot[0]
+                                slot[0] = move
+                            self.butterfly[move.from_square][move.to_square] += depth * depth
                         break
 
         if len(self.table) >= MAX_TABLE:
@@ -485,7 +573,7 @@ class Engine:
             try:
                 score = -INFINITY
                 alpha = -INFINITY
-                self._order(board, moves, best)
+                self._order(board, moves, best, 0)
                 iteration_best = moves[0]
                 for move in moves:
                     self.acc.push(board, move)
@@ -576,6 +664,21 @@ def _tablebase_move(board: chess.Board) -> chess.Move | None:
         if best_key is None or key < best_key:
             best_key, best = key, move
     return best
+
+
+def _has_non_pawn_material(board: chess.Board, colour: chess.Color) -> bool:
+    """Whether `colour` has a piece other than king and pawns.
+
+    Null-move pruning assumes that having the move is worth something. In a king
+    and pawn endgame that is false -- zugzwang means the obligation to move can
+    itself be losing -- so the pruning is disabled there.
+    """
+    return bool(
+        board.pieces_mask(chess.KNIGHT, colour)
+        | board.pieces_mask(chess.BISHOP, colour)
+        | board.pieces_mask(chess.ROOK, colour)
+        | board.pieces_mask(chess.QUEEN, colour)
+    )
 
 
 def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
