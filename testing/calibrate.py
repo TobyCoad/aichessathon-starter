@@ -40,8 +40,11 @@ from testing import arena
 LADDER: dict[str, tuple[float, int]] = {
     "sf-skill4": (1922.9, 5399),
     "sf-skill6": (2363.2, 4379),
+    "sf-skill7": (2499.5, 4178),
     "sf-skill8": (2596.2, 4975),
+    "sf-skill9": (2702.8, 5018),
     "sf-skill10": (2788.3, 5511),
+    "sf-skill12": (2923.1, 5165),
 }
 
 
