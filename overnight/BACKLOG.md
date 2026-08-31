@@ -82,12 +82,10 @@ on the same positions. Do not proceed until both pass.
 Input: `data/standard_rated_2025_01.parquet` (CC0; columns `fen`, `cp`, `mate`,
 `move`). Output: `data/positions.npy`, a structured array.
 
-**First, two environment checks, so you do not discover them three hours in.**
-`pyarrow` is not installed: `.\.venv\Scripts\python.exe -m pip install pyarrow`.
-And confirm the download actually finished — compare
-`data/standard_rated_2025_01.parquet` against the ~7.50 GB the remote reports, and
-if it is short, rerun `.\.venv\Scripts\python.exe -m training.fetch --month 2025_01`
-first, which resumes rather than restarting.
+**Environment is ready.** `pyarrow 25.0.1` installed; the Parquet is complete and
+size-verified at 7.50 GB with **627,353,822 rows across 599 row groups**; schema is
+`fen: string, cp: int32, mate: int32, move: string`. At 627M rows you need only a
+fraction, so read row groups until you have enough and stop -- do not scan the file.
 
 **Record dtype**, exactly:
 
@@ -104,9 +102,10 @@ beyond `count`. `stm` is 1 for white to move.
 1. Drop rows where `fen` fails to parse.
 2. If `mate` is non-null, set `cp = sign(mate) * 2000`. Do not use ±10000: it
    saturates the sigmoid to zero gradient and wastes the row.
-3. Clamp `cp` to [-2000, 2000]. `cp` is from **white's** point of view in this
-   dataset -- verify that on a handful of rows before trusting it, and store it
-   from white's point of view; the training step flips it by `stm`.
+3. Clamp `cp` to [-2000, 2000]. `cp` is from **white's** point of view -- this is
+   now measured, not assumed: over 4,669 positions with a material imbalance above
+   200cp, correlation with material is +0.758 read as white-POV and -0.010 read as
+   side-to-move. Store it white-POV; the training step flips it by `stm`.
 4. Drop positions that are check-to-move or have a capture available as the best
    move, to bias toward quiet positions the evaluation can actually learn.
 5. Target **at least 50% of kept rows with `|cp| <= 100`.** Quiet, near-equal
