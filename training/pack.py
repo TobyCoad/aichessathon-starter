@@ -116,32 +116,23 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
     return out
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Pack Parquet evaluations into a flat array.")
-    parser.add_argument("--source", type=Path, default=Path("data/standard_rated_2025_01.parquet"))
-    parser.add_argument("--out", type=Path, default=Path("data/positions.npy"))
-    parser.add_argument("--target", type=int, default=30_000_000)
-    parser.add_argument("--quiet-fraction", type=float, default=0.5)
-    parser.add_argument("--workers", type=int, default=0)
-    arguments = parser.parse_args()
-
-    workers = arguments.workers or max(1, (mp.cpu_count() or 4) - 2)
-    groups = pq.ParquetFile(arguments.source).metadata.num_row_groups
-    print(f"{arguments.source.name}: {groups} row groups, target {arguments.target:,} positions")
-
+def collect(
+    source: Path, group_ids: list[int], target: int, workers: int, label: str
+) -> npt.NDArray[np.void]:
+    """Run the packer over a set of row groups and return deduplicated records."""
     chunks: list[npt.NDArray[np.void]] = []
     key_chunks: list[npt.NDArray[np.uint64]] = []
     total = 0
 
-    jobs = [(arguments.source, group) for group in range(groups)]
+    jobs = [(source, group) for group in group_ids]
     with mp.Pool(workers) as pool:
         for done, (records, keys) in enumerate(pool.imap(process_group, jobs), start=1):
             chunks.append(records)
             key_chunks.append(keys)
             total += len(records)
-            if done % 10 == 0 or total >= arguments.target:
-                print(f"  group {done}/{groups}: {total:,} positions kept", flush=True)
-            if total >= arguments.target:
+            if done % 10 == 0 or total >= target:
+                print(f"  {label} group {done}/{len(jobs)}: {total:,} positions", flush=True)
+            if total >= target:
                 pool.terminate()
                 break
 
@@ -152,17 +143,65 @@ def main() -> None:
     _, first = np.unique(keys, return_index=True)
     duplicates = len(records) - len(first)
     records = records[np.sort(first)]
-    print(f"collected {len(records):,} unique positions ({duplicates:,} duplicates dropped)")
+    print(f"{label}: {len(records):,} unique ({duplicates:,} duplicates dropped)")
+    return records
 
-    records = balance(records, arguments.quiet_fraction)
+
+def describe(label: str, records: npt.NDArray[np.void]) -> None:
     quiet = int((np.abs(records["cp"]) <= QUIET_BAND).sum())
-    print(f"after balancing: {len(records):,} positions, {quiet / len(records):.1%} quiet")
-    print(f"mean pieces {records['count'].mean():.1f}, white to move {records['stm'].mean():.1%}")
+    print(
+        f"{label}: {len(records):,} positions, {quiet / len(records):.1%} quiet, "
+        f"mean pieces {records['count'].mean():.1f}, "
+        f"white to move {records['stm'].mean():.1%}"
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Pack Parquet evaluations into a flat array.")
+    parser.add_argument("--source", type=Path, default=Path("data/standard_rated_2025_01.parquet"))
+    parser.add_argument("--out", type=Path, default=Path("data/positions.npy"))
+    parser.add_argument("--val-out", type=Path, default=Path("data/validation.npy"))
+    parser.add_argument("--target", type=int, default=30_000_000)
+    parser.add_argument("--val-target", type=int, default=500_000)
+    parser.add_argument(
+        "--val-groups",
+        type=int,
+        default=8,
+        help="row groups held out for validation, taken from the end of the file",
+    )
+    parser.add_argument("--quiet-fraction", type=float, default=0.5)
+    parser.add_argument("--workers", type=int, default=0)
+    arguments = parser.parse_args()
+
+    workers = arguments.workers or max(1, (mp.cpu_count() or 4) - 2)
+    groups = pq.ParquetFile(arguments.source).metadata.num_row_groups
+    print(f"{arguments.source.name}: {groups} row groups, target {arguments.target:,}")
+
+    # Validation comes from row groups the training set never sees. Rows in this file
+    # are consecutive plies of the same game, so splitting positions at random would
+    # put one game on both sides and report a validation loss that is optimistic by
+    # however much the network memorised that game.
+    val_ids = list(range(groups - arguments.val_groups, groups))
+    held_out = set(val_ids)
+    train_ids = [group for group in range(groups) if group not in held_out]
+
+    records = balance(
+        collect(arguments.source, train_ids, arguments.target, workers, "train"),
+        arguments.quiet_fraction,
+    )
+    validation = balance(
+        collect(arguments.source, val_ids, arguments.val_target, workers, "val"),
+        arguments.quiet_fraction,
+    )
+
+    describe("train", records)
+    describe("val  ", validation)
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     np.save(arguments.out, records)
-    size = arguments.out.stat().st_size
-    print(f"wrote {arguments.out} ({size / 1e9:.2f} GB)")
+    np.save(arguments.val_out, validation)
+    print(f"wrote {arguments.out} ({arguments.out.stat().st_size / 1e9:.2f} GB)")
+    print(f"wrote {arguments.val_out} ({len(validation):,} positions from disjoint games)")
 
 
 if __name__ == "__main__":

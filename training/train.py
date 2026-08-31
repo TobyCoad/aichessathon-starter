@@ -132,6 +132,18 @@ def loss_fn(prediction: Tensor, target: Tensor) -> Tensor:
     )
 
 
+@torch.no_grad()
+def evaluate_loss(net: Net, batches: "Batches", generator: torch.Generator) -> float:
+    net.eval()
+    total = 0.0
+    seen = 0
+    for white, black, mask, stm, target in batches.epoch(generator):
+        total += float(loss_fn(net(white, black, mask, stm), target)) * len(target)
+        seen += len(target)
+    net.train()
+    return total / max(seen, 1)
+
+
 def train(
     records: np.ndarray,
     device: torch.device,
@@ -139,11 +151,13 @@ def train(
     batch: int,
     learning_rate: float,
     seed: int = 0,
+    validation: np.ndarray | None = None,
 ) -> Net:
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
     net = Net().to(device)
     batches = Batches(records, batch, device)
+    val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimiser, T_max=max(epochs * len(batches), 1)
@@ -165,11 +179,15 @@ def train(
             seen += len(target)
         elapsed = time.perf_counter() - started
         rate = seen / elapsed
-        print(
-            f"  epoch {epoch}/{epochs}  loss {running / seen:.6f}  "
-            f"{rate / 1e6:.2f}M pos/s  {elapsed:.0f}s",
-            flush=True,
+        line = (
+            f"  epoch {epoch}/{epochs}  train {running / seen:.6f}  "
+            f"{rate / 1e6:.2f}M pos/s  {elapsed:.0f}s"
         )
+        if val_batches is not None:
+            held_out = evaluate_loss(net, val_batches, torch.Generator().manual_seed(0))
+            gap = held_out - running / seen
+            line += f"  val {held_out:.6f}  gap {gap:+.6f}"
+        print(line, flush=True)
     return net
 
 
@@ -203,6 +221,7 @@ def overfit_check(records: np.ndarray, device: torch.device) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the evaluation network.")
     parser.add_argument("--data", type=Path, default=Path("data/positions.npy"))
+    parser.add_argument("--val", type=Path, default=Path("data/validation.npy"))
     parser.add_argument("--out", type=Path, default=Path("weights/net.pt"))
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch", type=int, default=16384)
@@ -228,8 +247,17 @@ def main() -> None:
     if not arguments.skip_sanity and not overfit_check(records, device):
         raise SystemExit("sanity check failed; not starting the full run")
 
+    validation = None
+    if arguments.val.exists():
+        validation = np.asarray(np.load(arguments.val, mmap_mode="r"))
+        print(f"validation: {len(validation):,} positions from games not in training")
+    else:
+        print(f"validation: {arguments.val} not found -- training loss only, flying blind")
+
     print(f"training {arguments.epochs} epochs, batch {arguments.batch}")
-    net = train(records, device, arguments.epochs, arguments.batch, arguments.lr)
+    net = train(
+        records, device, arguments.epochs, arguments.batch, arguments.lr, validation=validation
+    )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(net.state_dict(), arguments.out)
