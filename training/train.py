@@ -8,12 +8,18 @@ Architecture, fixed by the spec so training and inference cannot drift apart:
     h2  = relu(h1 @ W2 + b2)            # W2 (512, 32), b2 (32,)
     out = h2 @ W3 + b3                  # W3 (32, 1),  b3 (1,)
 
-`out` is centipawns from the side to move's point of view, on the same scale as the
-hand-crafted evaluation it replaces, so the engine can swap one for the other.
+`out` is a **win-probability logit**, not centipawns. The engine multiplies it by
+SCALE to get centipawns on the same footing as the hand-crafted evaluation.
 
-Loss is mean squared error in win-probability space, `sigmoid(cp / 400)`, not in raw
-centipawns: a 50cp error matters enormously around equality and not at all at +1500,
-and training on raw centipawns spends all its capacity on won positions.
+That indirection is not cosmetic. Having the network emit centipawns directly leaves
+it needing an output range of +/-2000 while initialising near zero -- measured output
+std 0.0024 against a target std of 558 -- so training spends its first epochs merely
+inflating the scale, and the sanity check plateaued at 0.0126 rather than converging.
+In logit space the required range is about +/-5 and the problem is well conditioned.
+
+Loss is mean squared error in win-probability space, not in raw centipawns: a 50cp
+error matters enormously around equality and not at all at +1500, and training on
+raw centipawns spends all its capacity on already-won positions.
 
 Both perspectives share one weight matrix -- that is what makes the accumulator
 incrementally updatable at run time, which is the whole reason for this shape.
@@ -49,7 +55,11 @@ class Net(nn.Module):
         self.acc_bias = nn.Parameter(torch.zeros(accumulator))
         self.l2 = nn.Linear(2 * accumulator, hidden)
         self.l3 = nn.Linear(hidden, 1)
-        nn.init.normal_(self.bag.weight, std=0.02)
+        # Sized so the accumulator lands inside SCReLU's active band. Summing ~22
+        # pieces, an accumulator std of about 0.5 needs a per-weight std near 0.1;
+        # at 0.02 the accumulator sat at std 0.094 and squaring it threw away
+        # another order of magnitude before the first hidden layer saw anything.
+        nn.init.normal_(self.bag.weight, std=0.1)
 
     def forward(self, white: Tensor, black: Tensor, mask: Tensor, stm: Tensor) -> Tensor:
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
@@ -113,8 +123,12 @@ class Batches:
 
 
 def loss_fn(prediction: Tensor, target: Tensor) -> Tensor:
+    """MSE between predicted and target win probability.
+
+    `prediction` is a logit; `target` is in centipawns and is squashed by SCALE.
+    """
     return torch.nn.functional.mse_loss(
-        torch.sigmoid(prediction / SCALE), torch.sigmoid(target / SCALE)
+        torch.sigmoid(prediction), torch.sigmoid(target / SCALE)
     )
 
 

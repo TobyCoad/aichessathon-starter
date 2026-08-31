@@ -136,12 +136,23 @@ h2  = relu(h1 @ W2 + b2)                # W2 (512, 32), b2 (32,)
 out = h2 @ W3 + b3                      # W3 (32, 1),  b3 (1,)
 ```
 
-`out` is **centipawns from the side to move's point of view**, so the engine can use
-it directly on the same scale as the current evaluation.
+`out` is a **win-probability logit** from the side to move's point of view.
+**The engine must multiply it by 400 to get centipawns.** This is the single most
+important number to get right in P2.5: mismatch it and the evaluation is silently
+scaled wrong.
 
-**Loss:** `MSE(sigmoid(out / 400), sigmoid(target_cp / 400))` where `target_cp` is
-`cp` if `stm` is white else `-cp`. Sigmoid space, not raw centipawns: an error of
-50cp matters enormously at 0 and not at all at 1500.
+**Loss:** `MSE(sigmoid(out), sigmoid(target_cp / 400))` where `target_cp` is `cp` if
+`stm` is white else `-cp`.
+
+The logit indirection is not cosmetic, and was found the hard way. Having the network
+emit centipawns directly left it needing a +/-2000 output range while initialised
+near zero -- measured output std 0.0024 against a target std of 558 -- so it spent
+training merely inflating the scale and the overfit check **plateaued at 0.0126**.
+Predicting logits needs a range of about +/-5, and the same check then reached
+**0.000300**, a 42x improvement. Init matters for the same reason: `bag.weight` uses
+std 0.1, sized so that summing ~22 pieces lands the accumulator inside SCReLU's
+active band. At std 0.02 the accumulator sat at 0.094 and squaring threw away another
+order of magnitude before the first hidden layer saw anything.
 
 **Hyperparameters** to start from: AdamW, lr 1e-3 with cosine decay, batch 16384,
 8-10 epochs, float32 throughout. **Do not quantise** -- int16 measured *slower* than
