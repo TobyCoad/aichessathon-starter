@@ -99,6 +99,19 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
     set dominated by already-won ones teaches it to recognise that a queen is good,
     which it would learn from material alone.
     """
+    if quiet_fraction <= 0.0:
+        # Balancing disabled. The rule this implements -- "at least 50% of the data
+        # should have evaluation values between -100 and 100" -- comes from a single
+        # paper that publishes no ablation of it, and the natural fraction here is
+        # 34%, so enforcing it costs a third of the corpus, all of it decided
+        # positions. That is a large price for an unmeasured convention, and the
+        # engine is data-starved: same data, 4x the parameters, measurably worse.
+        # So it is now a switch, and the two settings get compared like anything
+        # else -- by playing games.
+        out = records.copy()
+        np.random.default_rng(1).shuffle(out)
+        return out
+
     quiet_mask = np.abs(records["cp"]) <= QUIET_BAND
     quiet = records[quiet_mask]
     loud = records[~quiet_mask]
