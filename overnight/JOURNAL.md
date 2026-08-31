@@ -109,3 +109,47 @@ Process notes:
 - `check_nnue.py` had the same hardcoded-256 width bug already fixed in
   `export.py`. It failed loudly rather than silently comparing against a
   differently-shaped net, which is what that file is for.
+
+## 2026-08-31 — audit fixes, tablebase, and the search package
+
+Three adversarial audits (rules compliance, literature gap analysis, bug hunt) plus
+the fixes that came out of them.
+
+### Measured
+
+| change | verdict | games |
+|---|---|---|
+| 3-4-man Syzygy tablebase | +18.3 +/- 21.7, inconclusive | 400 |
+| **Reverse futility pruning** | **PASS, +62.1 +/- 38.7** | **164** |
+
+RFP is the first clearly positive result since the network itself, and it lands in
+the published range (+57.1 Blunder, +145.8 int0x80).
+
+### Bugs fixed, all of them silent
+
+- **Delta pruning was inert**: the margin was a queen's value, so it fired on 2 of
+  15,540 capture candidates. At 200 the same trace prunes 11.7%.
+- **Tablebase scores were not rebased across the transposition table.** The mate
+  rebasing keyed off MATE_THRESHOLD and TB_WIN sits below it, so 106 of 1,075
+  entries carried a ply-dependent score that survived unchanged.
+- **Repetition history was off by one**: one prior sighting is not a draw.
+- **Checkmate lost to the fifty-move counter.**
+- **Syzygy cursed wins (+/-1) were scored as wins.** They are draws in play.
+- **The transposition table was unbounded**: 0.47 GB in a full game against a 2 GB
+  cap, and every SPRT so far ran at 8 s where it reaches 39k entries, not 627k.
+
+### The measurement rig was overstating confidence
+
+There were 40 openings. A 600-game match is 300 pairs, so each was replayed sixteen
+times and counted as sixteen independent samples. Now 119, with a warning when a
+match outruns the set. **Verdicts already recorded stay valid -- inconclusive stays
+inconclusive -- but the error bars were too tight.**
+
+### The insight worth keeping
+
+Before RFP, the engine had **no consumer of evaluation quality outside quiescence
+leaves**. No reverse futility, no futility, no razoring -- every leaf score reached
+the result through one narrow channel. That is a credible explanation for the 4x
+wider net measuring +13 +/- 21, and it means the net may have been judged before it
+had anywhere to deposit an improvement. Worth re-testing a bigger net *after* the
+search package lands, rather than treating width as settled.
