@@ -21,3 +21,9 @@ ignore = ["N818"]
 [tool.mypy]
 strict = true
 files = ["agent.py", "harness", "testing", "tools", "training"]
+
+# pyarrow ships no type stubs. It is training-time tooling that never enters the
+# submission, so this is not worth a stub package.
+[[tool.mypy.overrides]]
+module = ["pyarrow.*"]
+ignore_missing_imports = true
