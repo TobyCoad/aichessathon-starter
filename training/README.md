@@ -56,6 +56,11 @@ cp weights/net.npz overnight/challengers/NNN-name/weights/
 .venv/Scripts/python -m testing.gauntlet --challenger overnight/challengers/NNN-name
 ```
 
+**Training overwrites `weights/net.pt` in place.** If the new net turns out worse,
+`git checkout -- weights/net.pt` restores the promoted one; `net.npz` is only
+overwritten when you run `export`, so the engine keeps playing the old net until you
+explicitly replace it. Train to a different `--out` if you want to keep both.
+
 Steps 3 and 6 are not optional. Every failure mode in this pipeline is silent: a
 wrong feature index, a wrong accumulator update or a wrong output scale produces an
 engine that loads, plays legal moves, passes the crash gate, and merely plays worse.
@@ -86,6 +91,12 @@ There is no exception to catch.
 | Trained on | 16.4M positions, 8 epochs, final train loss 0.005883 |
 | Network | (768 -> 256)x2 -> 32 -> 1, 213,313 parameters, 0.85 MB |
 | Measured | **+199.5 Elo** over the tapered piece-square evaluation, 77.2% over 57 games |
+
+Validation, on a 9.1M-position run with 472k held-out positions from disjoint games:
+the train/validation gap crosses zero at epoch 4 and grows monotonically (+0.000084,
++0.000124, +0.000170 at epochs 4-6). Validation loss is still falling there, so it is
+not yet harmful, but it marks where memorisation starts at that data volume. More
+data pushes that point later; a wider net on the same data pulls it earlier.
 
 The size cap is 200 MB and the network uses 0.85 MB of it, so there is room for a far
 larger one. Widening the accumulator is close to free at inference, because the cost
