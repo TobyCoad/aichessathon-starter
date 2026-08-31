@@ -67,13 +67,30 @@ LINES: tuple[str, ...] = (
 
 @lru_cache(maxsize=1)
 def opening_fens() -> tuple[str, ...]:
-    """Return one FEN per line in LINES, validated by replaying the SAN."""
+    """Distinct positions from LINES, each line also cut short at several depths.
+
+    One position per line is not enough. A 600-game SPRT is 300 pairs, so 40
+    openings would each be replayed sixteen times and counted as sixteen
+    independent samples. Correlated repeats inflate the likelihood ratio -- the
+    very failure this module exists to prevent, reintroduced at 80 games rather
+    than at 1. Cutting each line short multiplies the set without inventing
+    positions that are unbalanced or off-book.
+    """
+    seen: set[str] = set()
     fens: list[str] = []
     for line in LINES:
+        moves = line.split()
         board = chess.Board()
-        for san in line.split():
+        for played, san in enumerate(moves, start=1):
             board.push_san(san)
-        fens.append(board.fen())
+            # Both parities. Whether White or Black is to move in the starting
+            # position does not bias a paired match, because the pair swaps which
+            # engine holds which colour, not which colour moves first.
+            if played >= 6:
+                fen = board.fen()
+                if fen not in seen:
+                    seen.add(fen)
+                    fens.append(fen)
     return tuple(fens)
 
 
@@ -85,6 +102,13 @@ def pairs(games: int) -> list[tuple[str, bool]]:
     does not want a colour bias reported as an improvement.
     """
     fens = opening_fens()
+    pairs_needed = (games + 1) // 2
+    if pairs_needed > len(fens):
+        print(
+            f"  note: {pairs_needed} pairs over {len(fens)} openings, "
+            f"{pairs_needed / len(fens):.1f} repeats each -- the SPRT will read "
+            "more confident than the evidence warrants"
+        )
     out: list[tuple[str, bool]] = []
     for index in range(games):
         out.append((fens[(index // 2) % len(fens)], index % 2 == 0))
