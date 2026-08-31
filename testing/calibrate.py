@@ -38,14 +38,19 @@ from testing import arena
 # near 50% -- that is the only rung that actually locates strength rather than
 # bounding it.
 LADDER: dict[str, tuple[float, int]] = {
-    "sf-skill4": (1922.9, 5399),
     "sf-skill6": (2363.2, 4379),
-    "sf-skill7": (2499.5, 4178),
     "sf-skill8": (2596.2, 4975),
-    "sf-skill9": (2702.8, 5018),
     "sf-skill10": (2788.3, 5511),
-    "sf-skill12": (2923.1, 5165),
 }
+
+# A second engine family, at fixed depth. These have no published rating, so they
+# are rated here by playing a rung of known strength against them -- `--anchor`.
+#
+# The point is not another number but a check on the first one. The Stockfish rungs
+# disagreed with each other by 500 Elo, climbing monotonically with opponent
+# strength, and four rungs of one engine share failure modes so they cannot say
+# whether that is Stockfish's calibration or our matchup. A different engine can.
+CROSSCHECK: tuple[str, ...] = ("weiss-d4", "weiss-d6", "weiss-d8")
 
 
 def elo_difference(score: float, games: int) -> tuple[float, float]:
@@ -71,9 +76,39 @@ def main() -> None:
     parser.add_argument("--base-ms", type=int, default=20_000)
     parser.add_argument("--increment-ms", type=int, default=200)
     parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument(
+        "--anchor",
+        default="",
+        help="rate the CROSSCHECK opponents by playing this rung against them, then stop",
+    )
     arguments = parser.parse_args()
 
     workers = arguments.workers or arena.default_workers()
+
+    if arguments.anchor:
+        reference = (arguments.opponents / arguments.anchor).resolve()
+        rating = LADDER[arguments.anchor][0]
+        print(f"anchoring against {arguments.anchor} (nominal {rating:.0f})\n")
+        for name in CROSSCHECK:
+            directory = (arguments.opponents / name).resolve()
+            if not (directory / "agent.py").is_file():
+                continue
+            tally, _ = arena.run(
+                reference, directory, arguments.games, arguments.base_ms,
+                arguments.increment_ms, 300, workers, 0.0, 20.0, quiet=True,
+            )
+            if not tally.games:
+                continue
+            score = (tally.wins + tally.draws / 2.0) / tally.games
+            difference, margin = elo_difference(score, tally.games)
+            # The reference scored `score` against this opponent, so the opponent
+            # sits that far below it.
+            print(
+                f"  {name:<12} reference scored {score:>5.1%} over {tally.games:>3} games"
+                f"  -> {rating - difference:.0f} +/- {margin:.0f}"
+            )
+        return
+
     estimates: list[tuple[str, float, float, float, float]] = []
 
     for name, (rating, calibration_games) in LADDER.items():
