@@ -4,11 +4,24 @@ An iterative-deepening alpha-beta searcher with a transposition table, MVV-LVA
 move ordering, quiescence search and a learned evaluation: a (768 -> 256)x2 -> 32 -> 1
 network whose first layer is maintained incrementally across make and unmake.
 
-The design follows from one measurement: in Python the move generator, not the
-evaluation, is the bottleneck. `list(board.legal_moves)` costs ~25 us; a small
-neural evaluation with an incremental accumulator costs ~3 us. So strength comes
-from generating fewer moves -- ordering and pruning -- rather than from evaluating
-faster. At the depths this reaches, one extra ply is worth roughly 150 Elo.
+Where the time actually goes, measured per *node* rather than per call -- the
+distinction matters, and getting it wrong sent this project after the wrong
+bottleneck for a while:
+
+    NNUE evaluate        29.4%    7.08 us x 0.617 calls/node
+    accumulator push/pop 15.4%    3.62 us x 0.630
+    board push/pop       14.4%    3.06 us x 0.630
+    move generation      13.4%   23.30 us x 0.151
+    everything else      27.4%
+
+Move generation is the most expensive thing per call and only the fourth largest
+per node, because most nodes fall straight through to quiescence or are cut by the
+transposition table or reverse futility before any moves are generated. The
+evaluation is four times cheaper per call and runs four times as often. So the
+evaluation, not the move generator, is the thing worth making fast.
+
+At the depths this reaches, a node doubling is worth roughly 120 Elo (range
+80-190), given a measured effective branching factor near 3.
 
 Three python-chess specifics that this file depends on, all measured:
 

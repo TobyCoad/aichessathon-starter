@@ -15,3 +15,4 @@ _*.py
 checkpoints/
 engines/
 opponents/
+challengers/

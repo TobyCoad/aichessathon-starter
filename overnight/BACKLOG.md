@@ -10,14 +10,32 @@ says otherwise.
 
 ---
 
-## P0 — blocked on a human, do not start
+## P0 — ANSWERED by the organisers, 2026-08-31
 
-- [ ] **Ask the organisers about `rust-chess` and `numba`.** Worth more than
-  everything below combined: a pip-installable compiled move generator measured
-  2.2x end-to-end and a full extra ply (~150 Elo) over python-chess, and a
-  numba-JIT'd movegen benchmarks ~40x on the generator alone. Both hinge on
-  whether the rules' "compiled dependencies come from PyPI" covers them.
-  **Toby must email hello@aichessathon.com.** Do not build on either until answered.
+Advit, by email:
+
+> The environment is sealed. The container preinstalls torch (CPU), numpy,
+> python-chess, onnxruntime and numba and installs nothing at validation, so no
+> PyPI package gets in, rust-chess included. Move generation is python-chess or
+> your own, and numba is how your own gets fast.
+>
+> Yes. numba is preinstalled and it is the supported fast path. Warm every jitted
+> function once at import so compilation lands in the init budget rather than on
+> your clock.
+
+Two consequences:
+
+- **`rust-chess` is out.** So is every other PyPI package. **`requirements.txt` is
+  inert** -- note this contradicts the published docs, which say it is "installed
+  from PyPI". Only torch, numpy, python-chess, onnxruntime and numba exist.
+- **numba is in, and is the endorsed route.** Move generation is the measured
+  bottleneck -- ~37% of node cost, with push/pop another ~29% -- and it is the
+  only part of the engine numba can help, because the evaluation is already numpy
+  hitting BLAS. Capturing it means a bitboard board representation of our own,
+  which is also the highest-risk change available: a movegen bug is an illegal
+  move and an instant loss.
+  **Warm every jitted function at import.** Their words, and it matters: an
+  un-warmed function compiles on the clock mid-game.
 
 ---
 
