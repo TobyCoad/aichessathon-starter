@@ -37,14 +37,46 @@ QUIET_BAND = 100
 MATE_CP = 2000
 
 
-def process_group(job: tuple[Path, int]) -> tuple[npt.NDArray[np.void], npt.NDArray[np.uint64]]:
+def _relabelled(labels: Path | None, group: int, rows: int) -> list[int] | None:
+    """Scores for one row group from relabel shards, or None if not fully covered.
+
+    Partial coverage returns None rather than a half-filled array: silently mixing
+    two labelling regimes inside one group is exactly the inconsistency relabelling
+    exists to remove, and it would be invisible afterwards.
+    """
+    if labels is None:
+        return None
+    shard = 100_000
+    needed = -(-rows // shard)
+    out: list[int] = []
+    for index in range(needed):
+        path = labels / f"g{group:04d}_s{index:03d}.npy"
+        if not path.is_file():
+            return None
+        out.extend(int(v) for v in np.load(path))
+    return out[:rows] if len(out) >= rows else None
+
+
+def process_group(
+    job: tuple[Path, int, Path | None],
+) -> tuple[npt.NDArray[np.void], npt.NDArray[np.uint64]]:
     """Filter and encode one row group. Runs in a worker process."""
-    path, group = job
+    path, group, labels = job
     table = pq.ParquetFile(path).read_row_group(group, columns=["fen", "cp", "mate", "move"])
     fens = table["fen"].to_pylist()
     cps = table["cp"].to_pylist()
     mates = table["mate"].to_pylist()
     moves = table["move"].to_pylist()
+
+    # Our own labels replace both cp and mate: they are one engine at one depth, and
+    # the mate encoding is already folded into the score.
+    replacement = _relabelled(labels, group, len(fens))
+    if replacement is not None:
+        # NO_LABEL marks a position the labeller could not score. It becomes None so
+        # the existing "cp is None -> skip" path drops it, rather than being trained
+        # on as a real evaluation.
+        cps = [None if v == -2_147_483_648 else v for v in replacement]
+        mates = [None] * len(fens)
 
     records = np.zeros(len(fens), dtype=RECORD)
     keys = np.zeros(len(fens), dtype=np.uint64)
@@ -130,7 +162,13 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
 
 
 def collect(
-    source: Path, group_ids: list[int], target: int, workers: int, label: str, scratch: Path
+    source: Path,
+    group_ids: list[int],
+    target: int,
+    workers: int,
+    label: str,
+    scratch: Path,
+    labels: Path | None = None,
 ) -> npt.NDArray[np.void]:
     """Run the packer over a set of row groups and return deduplicated records.
 
@@ -152,7 +190,7 @@ def collect(
     keys = np.empty(capacity, dtype=np.uint64)
     total = 0
 
-    jobs = [(source, group) for group in group_ids]
+    jobs = [(source, group, labels) for group in group_ids]
     try:
         with mp.Pool(workers) as pool:
             for done, (records, chunk_keys) in enumerate(pool.imap(process_group, jobs), start=1):
@@ -207,6 +245,12 @@ def main() -> None:
         default=8,
         help="row groups held out for validation, taken from the end of the file",
     )
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        default=None,
+        help="directory of relabel shards; overrides the corpus cp/mate columns",
+    )
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
@@ -225,13 +269,25 @@ def main() -> None:
 
     records = balance(
         collect(
-            arguments.source, train_ids, arguments.target, workers, "train", arguments.out.parent
+            arguments.source,
+            train_ids,
+            arguments.target,
+            workers,
+            "train",
+            arguments.out.parent,
+            labels=arguments.labels,
         ),
         arguments.quiet_fraction,
     )
     validation = balance(
         collect(
-            arguments.source, val_ids, arguments.val_target, workers, "val", arguments.out.parent
+            arguments.source,
+            val_ids,
+            arguments.val_target,
+            workers,
+            "val",
+            arguments.out.parent,
+            labels=arguments.labels,
         ),
         arguments.quiet_fraction,
     )
