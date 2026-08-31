@@ -13,3 +13,5 @@ overnight/challengers/
 data/
 _*.py
 checkpoints/
+engines/
+opponents/
