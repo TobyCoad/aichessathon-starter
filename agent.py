@@ -24,7 +24,8 @@ and a fallback, not a final submission. The learned evaluation replaces `evaluat
 """
 
 import time
-from typing import Final, cast
+from collections.abc import Hashable
+from typing import Final
 
 import chess
 
@@ -203,15 +204,17 @@ PROMOTION_BONUS: Final = 1 << 19
 DELTA_MARGIN: Final = 975
 
 
-def _key(board: chess.Board) -> int:
+def _key(board: chess.Board) -> Hashable:
     """The position's transposition key.
 
     `_transposition_key` is private, but it costs 0.46 us where
     `chess.polyglot.zobrist_hash` costs 12 us and `board.fen()` 23 us. At tens of
-    thousands of nodes per second nothing else is affordable. It is typed as
-    Hashable and is in fact an int.
+    thousands of nodes per second nothing else is affordable.
+
+    It returns a tuple of bitboards plus turn, castling rights and the en passant
+    square, not an int -- a fine dict key, but never treat it as a number.
     """
-    return cast(int, board._transposition_key())
+    return board._transposition_key()
 
 
 class Timeout(Exception):
@@ -231,13 +234,13 @@ class Engine:
 
     def __init__(self) -> None:
         # key -> (depth, score, flag, best_move); flag 0 exact, 1 lower, 2 upper.
-        self.table: dict[int, tuple[int, int, int, chess.Move | None]] = {}
+        self.table: dict[Hashable, tuple[int, int, int, chess.Move | None]] = {}
         # Transposition keys of positions we have actually been asked about, so the
         # search can recognise a repetition without paying 150 us to ask python-chess.
-        self.history: dict[int, int] = {}
+        self.history: dict[Hashable, int] = {}
         self.deadline = 0.0
         self.nodes = 0
-        self.root_key = 0
+        self.root_key: Hashable = None
 
     # -- evaluation ---------------------------------------------------------------
 
