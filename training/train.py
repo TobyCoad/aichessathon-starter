@@ -31,6 +31,7 @@ the (batch, 32, 256) intermediate that a naive gather would.
 """
 
 import argparse
+import json
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -144,8 +145,18 @@ def evaluate_loss(net: Net, batches: "Batches", generator: torch.Generator) -> f
     return total / max(seen, 1)
 
 
+Source = Path | np.ndarray
+
+
+def _records(source: Source, limit: int = 0) -> np.ndarray:
+    """A shard as an array. Paths are memory-mapped, so only what `Batches` copies
+    out is ever resident: at 145M positions that is ~10 GB instead of ~20."""
+    records = np.load(source, mmap_mode="r") if isinstance(source, Path) else source
+    return records[:limit] if limit else records
+
+
 def train(
-    records: np.ndarray,
+    sources: list[Source],
     device: torch.device,
     epochs: int,
     batch: int,
@@ -154,22 +165,47 @@ def train(
     validation: np.ndarray | None = None,
     accumulator: int = ACC,
     patience: int = 4,
-) -> Net:
+    resume: Path | None = None,
+    limit: int = 0,
+) -> tuple[Net, dict[str, float]]:
+    """Train, cycling through `sources` one shard per epoch.
+
+    Several shards rather than one big array because the trainer holds a shard in
+    RAM (`Batches` copies the index columns out of the memmap), and two shards of
+    145M is the most this machine's 31 GB can rotate through; one array of 290M
+    would not load at all. Returns the net and a summary the caller can write down.
+    """
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
     net = Net(accumulator).to(device)
-    batches = Batches(records, batch, device)
+    if resume is not None:
+        net.load_state_dict(torch.load(resume, map_location=device, weights_only=True))
+        print(f"  resumed from {resume}")
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
-    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimiser, T_max=max(epochs * len(batches), 1)
-    )
+    sizes = [len(_records(source, limit)) for source in sources]
+    steps = sum(-(-sizes[(epoch - 1) % len(sizes)] // batch) for epoch in range(1, epochs + 1))
+    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=max(steps, 1))
 
     best_loss = float("inf")
     best_state: dict[str, Tensor] | None = None
     stale = 0
+    initial = float("nan")
+    if val_batches is not None and resume is not None:
+        # The resumed net sets the bar: a continuation that never beats it hands
+        # back the checkpoint it started from, not a worse one.
+        initial = evaluate_loss(net, val_batches, torch.Generator().manual_seed(0))
+        best_loss = initial
+        best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        print(f"  initial validation loss {initial:.6f}")
 
+    epochs_run = 0
     for epoch in range(1, epochs + 1):
+        epochs_run = epoch
+        source = sources[(epoch - 1) % len(sources)]
+        batches = Batches(_records(source, limit), batch, device)
+        if len(sources) > 1:
+            print(f"  shard {source if isinstance(source, Path) else 'array'}", flush=True)
         net.train()
         started = time.perf_counter()
         running = 0.0
@@ -204,6 +240,7 @@ def train(
             else:
                 stale += 1
         print(line, flush=True)
+        del batches
         if val_batches is not None and stale >= patience:
             print(f"  early stop: validation has not improved for {patience} epochs")
             break
@@ -211,7 +248,8 @@ def train(
     if best_state is not None:
         net.load_state_dict(best_state)
         print(f"  restored the best epoch, validation loss {best_loss:.6f}")
-    return net
+    summary = {"best_val": best_loss, "initial_val": initial, "epochs": float(epochs_run)}
+    return net, summary
 
 
 def overfit_check(records: np.ndarray, device: torch.device) -> bool:
@@ -222,8 +260,8 @@ def overfit_check(records: np.ndarray, device: torch.device) -> bool:
     produce an expensive, confidently wrong net.
     """
     print("sanity: overfitting 10,000 positions")
-    subset = records[:10_000]
-    net = train(subset, device, epochs=30, batch=1024, learning_rate=3e-3)
+    subset = np.asarray(records[:10_000])
+    net, _ = train([subset], device, epochs=30, batch=1024, learning_rate=3e-3)
     net.eval()
     batches = Batches(subset, 4096, device)
     generator = torch.Generator().manual_seed(0)
@@ -243,9 +281,18 @@ def overfit_check(records: np.ndarray, device: torch.device) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the evaluation network.")
-    parser.add_argument("--data", type=Path, default=Path("data/positions.npy"))
+    parser.add_argument(
+        "--data",
+        type=Path,
+        nargs="+",
+        default=[Path("data/positions.npy")],
+        help="one or more packed shards, cycled one per epoch",
+    )
     parser.add_argument("--val", type=Path, default=Path("data/validation.npy"))
     parser.add_argument("--out", type=Path, default=Path("weights/net.pt"))
+    parser.add_argument(
+        "--resume", type=Path, default=None, help="checkpoint to continue from"
+    )
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch", type=int, default=16384)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -263,13 +310,14 @@ def main() -> None:
     device = torch.device("cuda")
     print(f"device: {torch.cuda.get_device_name(0)}  torch {torch.__version__}")
 
-    records = np.load(arguments.data, mmap_mode="r")
-    if arguments.limit:
-        records = records[: arguments.limit]
-    records = np.asarray(records)
-    print(f"data: {len(records):,} positions from {arguments.data}")
+    for shard in arguments.data:
+        if not shard.exists():
+            raise SystemExit(f"missing shard {shard}")
+        print(f"data: {len(_records(shard, arguments.limit)):,} positions from {shard}")
 
-    if not arguments.skip_sanity and not overfit_check(records, device):
+    if not arguments.skip_sanity and not overfit_check(
+        _records(arguments.data[0], arguments.limit), device
+    ):
         raise SystemExit("sanity check failed; not starting the full run")
 
     validation = None
@@ -283,8 +331,8 @@ def main() -> None:
         f"training {arguments.epochs} epochs, batch {arguments.batch}, "
         f"accumulator {arguments.accumulator}"
     )
-    net = train(
-        records,
+    net, summary = train(
+        list(arguments.data),
         device,
         arguments.epochs,
         arguments.batch,
@@ -292,11 +340,18 @@ def main() -> None:
         validation=validation,
         accumulator=arguments.accumulator,
         patience=arguments.patience,
+        resume=arguments.resume,
+        limit=arguments.limit,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(net.state_dict(), arguments.out)
     print(f"wrote {arguments.out}")
+    # A machine-readable verdict beside the checkpoint, so an unattended pipeline
+    # can decide whether the continuation actually beat what it started from.
+    report = arguments.out.with_suffix(".json")
+    report.write_text(json.dumps(summary, indent=2))
+    print(f"wrote {report}: {summary}")
 
 
 if __name__ == "__main__":

@@ -314,6 +314,13 @@ def main() -> None:
         help="drop positions before this ply; 16 covers what the opening book plays",
     )
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
+    parser.add_argument(
+        "--skip-groups",
+        type=int,
+        default=0,
+        help="start the training scan this many row groups in, to pack a second, "
+        "disjoint shard after an earlier pack consumed the first groups",
+    )
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
 
@@ -328,6 +335,9 @@ def main() -> None:
     val_ids = list(range(groups - arguments.val_groups, groups))
     held_out = set(val_ids)
     train_ids = [group for group in range(groups) if group not in held_out]
+    train_ids = train_ids[arguments.skip_groups :]
+    if not train_ids:
+        raise SystemExit(f"--skip-groups {arguments.skip_groups} leaves no row groups")
 
     records = balance(
         collect(

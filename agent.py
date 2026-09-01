@@ -70,7 +70,7 @@ for _var in (
 
 import random
 import time
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator
 from pathlib import Path
 from typing import Any, Final
 
@@ -558,6 +558,39 @@ NMP_MIN_DEPTH: Final = 3
 NMP_REDUCTION: Final = 2
 MAX_PLY: Final = 72
 
+# --------------------------------------------------------------------------------
+# Experiment switches
+# --------------------------------------------------------------------------------
+# One change each, off by default, so the champion plays exactly as the promoted
+# build did. overnight/night.sh builds a challenger by turning a single switch on,
+# runs the gauntlet, and on a PASS the switch stays on in the champion. Once every
+# switch has a verdict the losing branches are deleted.
+#
+# TIME_V2        stop deepening when the next iteration is predicted to overrun the
+#                soft budget, cap one move at 12% of the clock instead of 35%, and
+#                hold back a reserve. The shipped budget measured 98% of a 120 s game
+#                spent and single moves at 4x their soft budget.
+# QS_EVASIONS    in quiescence, a side in check searches its evasions instead of
+#                standing pat on an evaluation that was never trained on checks.
+# STAGED_MOVEGEN try the hash move before generating any moves: legal generation is
+#                28 us, about half of a node, and a hash move cuts most nodes.
+# HYGIENE        halve the history table each move, record the position after our
+#                move for repetition detection, and never let reverse futility
+#                answer a mate-bound window.
+TIME_V2: Final = False
+QS_EVASIONS: Final = False
+STAGED_MOVEGEN: Final = False
+HYGIENE: Final = False
+
+# TIME_V2: the clock is never allowed below this fraction of its starting value,
+# which is inferred as the largest time_left_ms seen in the game. 12 s at 120 s.
+RESERVE_FRACTION: Final = 0.10
+_MAX_CLOCK_MS: float = 0.0
+# How often the search looks at the clock. time.monotonic() costs well under a
+# microsecond, so polling four times as often under TIME_V2 is free and quarters
+# the worst-case overrun past a deadline.
+_POLL_MASK: Final = 255 if TIME_V2 else 1023
+
 
 class Engine:
     """Search state that persists for the lifetime of one game.
@@ -643,7 +676,9 @@ class Engine:
 
     # -- quiescence ---------------------------------------------------------------
 
-    def quiesce(self, board: chess.Board, alpha: int, beta: int, depth: int = 0) -> int:
+    def quiesce(
+        self, board: chess.Board, alpha: int, beta: int, depth: int = 0, ply: int = 0
+    ) -> int:
         """Search captures only, so evaluation never lands mid-exchange.
 
         This is the largest single measured feature in the engine literature -- an
@@ -651,8 +686,34 @@ class Engine:
         taken halfway through a trade and is simply wrong.
         """
         self.nodes += 1
-        if not self.nodes & 1023 and time.monotonic() > self.deadline:
+        if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
             raise Timeout
+
+        if QS_EVASIONS and depth < 8 and board.is_check():
+            # In check there is no "do nothing", so standing pat is a fiction, and the
+            # evaluation is untrained here besides: the packer drops every in-check
+            # position. Search the evasions; none at all is mate, on the true ply so
+            # it compares correctly with mates the main search found.
+            evasions = list(board.legal_moves)
+            if not evasions:
+                return -MATE + ply
+            self._order(board, evasions, None, 0)
+            best = -INFINITY
+            for move in evasions:
+                self.acc.push(board, move)
+                board.push(move)
+                try:
+                    score = -self.quiesce(board, -beta, -alpha, depth + 1, ply + 1)
+                finally:
+                    board.pop()
+                    self.acc.pop()
+                if score > best:
+                    best = score
+                    if score > alpha:
+                        alpha = score
+                        if alpha >= beta:
+                            break
+            return best
 
         standing = self.evaluate(board)
         if standing >= beta:
@@ -680,7 +741,7 @@ class Engine:
             self.acc.push(board, move)
             board.push(move)
             try:
-                score = -self.quiesce(board, -beta, -alpha, depth + 1)
+                score = -self.quiesce(board, -beta, -alpha, depth + 1, ply + 1)
             finally:
                 board.pop()
                 self.acc.pop()
@@ -690,12 +751,31 @@ class Engine:
                 alpha = score
         return alpha
 
+    def _staged(
+        self, board: chess.Board, hash_move: chess.Move | None, ply: int
+    ) -> Iterator[chess.Move]:
+        """Yield the hash move first, and only then generate the rest.
+
+        Legal move generation costs ~28 us, about half of a node's time, and at a
+        node with a hash move that move produces the cutoff most of the time -- so
+        the list is only built if the search comes back for a second move. The key
+        identifies the position exactly, so a stored move is legal here; `is_legal`
+        is the guard against ever handing python-chess a move it would reject.
+        """
+        if hash_move is not None and board.is_legal(hash_move):
+            yield hash_move
+            moves = [move for move in board.legal_moves if move != hash_move]
+        else:
+            moves = list(board.legal_moves)
+        self._order(board, moves, None, ply)
+        yield from moves
+
     # -- main search --------------------------------------------------------------
 
     def search(self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
         """Fail-soft negamax with alpha-beta and a transposition table."""
         self.nodes += 1
-        if not self.nodes & 1023 and time.monotonic() > self.deadline:
+        if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
             raise Timeout
 
         # A position repeated inside the search, or one already seen in the game, is
@@ -757,12 +837,18 @@ class Engine:
             depth += 1
 
         if depth <= 0:
-            return self.quiesce(board, alpha, beta)
+            return self.quiesce(board, alpha, beta, 0, ply)
 
         # Reverse futility pruning. Not in check, because the evaluation of a
         # position in check is unreliable -- the training data drops those
-        # positions entirely, so the network has never seen one.
-        if depth <= RFP_MAX_DEPTH and not in_check:
+        # positions entirely, so the network has never seen one. Under HYGIENE,
+        # not against a mate-bound window either: a static score can never answer
+        # "is this better than being mated", and returning one there hides mates.
+        if (
+            depth <= RFP_MAX_DEPTH
+            and not in_check
+            and (not HYGIENE or abs(beta) < DISTANCE_THRESHOLD)
+        ):
             standing = self.evaluate(board)
             if standing - RFP_MARGIN * depth >= beta:
                 return standing
@@ -784,15 +870,22 @@ class Engine:
             if score >= beta:
                 return beta
 
-        moves = list(board.legal_moves)
-        if not moves:
-            return -MATE + ply if board.is_check() else 0
-
-        self._order(board, moves, best_move, ply)
+        hash_move = best_move
+        candidates: Iterator[chess.Move]
+        if STAGED_MOVEGEN:
+            candidates = self._staged(board, hash_move, ply)
+        else:
+            moves = list(board.legal_moves)
+            if not moves:
+                return -MATE + ply if board.is_check() else 0
+            self._order(board, moves, hash_move, ply)
+            candidates = iter(moves)
 
         best_score = -INFINITY
         best_move = None
-        for move in moves:
+        searched = 0
+        for move in candidates:
+            searched += 1
             self.acc.push(board, move)
             board.push(move)
             try:
@@ -815,6 +908,9 @@ class Engine:
                                 slot[0] = move
                             self.butterfly[move.from_square][move.to_square] += depth * depth
                         break
+        if not searched:
+            # Only reachable on the staged path, which generates lazily.
+            return -MATE + ply if board.is_check() else 0
 
         if len(self.table) >= MAX_TABLE:
             # Always-replace with a hard ceiling. Dropping the table costs a little
@@ -841,7 +937,16 @@ class Engine:
         moves = list(board.legal_moves)
         best = moves[0]
 
+        if HYGIENE:
+            # Halve the history each move. It is never otherwise reset during a game,
+            # so without decay early preferences keep outranking what works now.
+            for row in self.butterfly:
+                for index in range(64):
+                    row[index] >>= 1
+
+        started = time.monotonic()
         for depth in range(1, 64):
+            iteration_started = time.monotonic()
             try:
                 score = -INFINITY
                 alpha = -INFINITY
@@ -867,8 +972,19 @@ class Engine:
             # A mate is found; deeper search cannot improve on it.
             if score > MATE_THRESHOLD or score < -MATE_THRESHOLD:
                 break
+            now = time.monotonic()
+            if TIME_V2:
+                # The next iteration costs about one effective branching factor more
+                # than this one, so starting it merely because the soft limit has not
+                # passed yet means finishing it at the hard limit almost every move:
+                # measured, a mean spend of 3x the soft budget. Start it only if it is
+                # predicted to end within one and a half soft budgets.
+                elapsed = now - started
+                predicted = (now - iteration_started) * 2.5
+                if elapsed + predicted > 1.5 * (soft_limit - started):
+                    break
             # Starting a further iteration that cannot finish only wastes clock.
-            if time.monotonic() > soft_limit:
+            elif now > soft_limit:
                 break
 
         return best
@@ -974,6 +1090,38 @@ def _has_non_pawn_material(board: chess.Board, colour: chess.Color) -> bool:
     )
 
 
+def _note_clock(time_left_ms: int) -> None:
+    """Track the largest clock seen: the starting clock, which is never passed in."""
+    global _MAX_CLOCK_MS
+    if time_left_ms > _MAX_CLOCK_MS:
+        _MAX_CLOCK_MS = float(time_left_ms)
+
+
+def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
+    """TIME_V2 deadlines. The soft budget is what a move should cost on average;
+    `choose` now stops deepening when the next iteration would overrun it, so the
+    hard limit is a genuine emergency stop rather than the usual spend.
+
+    Three bounds on one move: 12% of the clock, three soft budgets, and whatever
+    keeps the clock above the reserve. The reserve floor is `soft`, not zero --
+    once the clock is inside the reserve the right move is a normal one, not a
+    panicked 20 ms one that loses the game a different way.
+    """
+    now = time.monotonic()
+    remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
+
+    expected = max(20.0, 40.0 - board.fullmove_number * 0.5)
+    increment = 0.5 if remaining > 5.0 else 0.0
+    soft = remaining / expected + 0.5 * increment
+    hard = min(remaining * 0.12, soft * 3.0)
+    reserve = _MAX_CLOCK_MS * RESERVE_FRACTION / 1000.0
+    if reserve > 0.0:
+        hard = min(hard, max(soft, remaining - reserve))
+    hard = max(hard, 0.02)
+    soft = min(soft, hard)
+    return now + soft, now + hard
+
+
 def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     """Return (soft, hard) monotonic deadlines for this move.
 
@@ -982,6 +1130,8 @@ def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     wall time and applies the increment only *after* the move, so the increment
     cannot be spent in advance; it is counted at a discount.
     """
+    if TIME_V2:
+        return _budget_v2(board, time_left_ms)
     now = time.monotonic()
     remaining = max(time_left_ms - 300.0, 50.0) / 1000.0  # 300 ms for the watchdog
 
@@ -1013,6 +1163,9 @@ def get_move(fen: str, time_left_ms: int) -> str:
     if not board.legal_moves:
         return "0000"
 
+    if TIME_V2:
+        _note_clock(time_left_ms)
+
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
 
@@ -1043,4 +1196,15 @@ def get_move(fen: str, time_left_ms: int) -> str:
         move = _ENGINE.choose(board, soft, hard)
     except Exception:
         return next(iter(board.legal_moves)).uci()
+
+    if HYGIENE:
+        # The position after our move counts toward a threefold claim just as much
+        # as the ones we are asked about, and nothing else ever records it.
+        try:
+            board.push(move)
+            after = _key(board)
+            _ENGINE.history[after] = _ENGINE.history.get(after, 0) + 1
+            board.pop()
+        except Exception:
+            pass
     return move.uci()
