@@ -20,7 +20,7 @@ if (-not (Test-Path $bash)) { throw "missing $bash" }
 if (-not (Test-Path $script)) { throw "missing $script" }
 
 $action = New-ScheduledTaskAction -Execute $bash `
-    -Argument "-lc `"cd /c/dev/aichessathon/starter && ./overnight/night.sh >> overnight/night/task.out 2>&1`""
+    -Argument "-lc `"cd /c/dev/aichessathon/starter && ./overnight/night.sh >> overnight/night.task.out 2>&1`""
 
 if ($At) {
     $start = [datetime]::ParseExact($At, "HH:mm", $null)
@@ -49,4 +49,4 @@ Write-Host "  next run : $($info.NextRunTime)"
 Write-Host "  claude loop 'AIChessathon-Overnight' : $((Get-ScheduledTask -TaskName 'AIChessathon-Overnight').State)"
 Write-Host ""
 Write-Host "Leave the laptop plugged in and logged on (locking the screen is fine)."
-Write-Host "Progress: overnight\night\night.log and overnight\night\SUMMARY.md"
+Write-Host "Progress: overnight\night.task.out, overnight\night\night.log, overnight\night\SUMMARY.md"
