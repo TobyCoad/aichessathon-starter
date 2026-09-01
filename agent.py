@@ -1,7 +1,7 @@
 """The submission entrypoint. The platform imports this file and calls get_move.
 
 An iterative-deepening alpha-beta searcher with a transposition table, MVV-LVA
-move ordering, quiescence search and a learned evaluation: a (768 -> 256)x2 -> 32 -> 1
+move ordering, quiescence search and a learned evaluation: a (768 -> 512)x2 -> 32 -> 1
 network whose first layer is maintained incrementally across make and unmake.
 
 Where the time actually goes, measured per *node* rather than per call -- the
@@ -13,6 +13,13 @@ bottleneck for a while:
     board push/pop       14.4%    3.06 us x 0.630
     move generation      13.4%   23.30 us x 0.151
     everything else      27.4%
+
+These proportions were measured on the 256-wide net and have not been re-measured
+since the accumulator was widened to 512, which roughly doubles the evaluate and
+push/pop rows in absolute terms. Treat the ordering as current and the percentages
+as indicative. Node rate is about 98 knps single-process on one idle core; figures
+near 29 knps that appear in older commit messages were measured on a contended
+machine and understate it by roughly three times.
 
 Move generation is the most expensive thing per call and only the fourth largest
 per node, because most nodes fall straight through to quiescence or are cut by the
@@ -106,7 +113,13 @@ OUTPUT_SCALE: Final = 400.0
 # Endgame tablebase
 # --------------------------------------------------------------------------------
 # The complete 3- and 4-man Syzygy set, 70 files and 4.35 MB. Explicitly permitted:
-# "Books and tablebases: permitted as shipped data within the 200 MB cap;
+# Books and tablebases are permitted as shipped data within the size cap, and
+# chess.polyglot and chess.syzygy are in the base image. The repo's own docs give
+# that cap as 200 MB; a review reading the live rules put it at 50 MB. The exact
+# wording is not reproduced here because it could not be confirmed from a source in
+# this repo -- and it does not matter, because the whole submission is 15.9 MB.
+# Original note, retained for context:
+# "Books and tablebases: permitted as shipped data within the cap;
 # chess.polyglot and chess.syzygy are in the base image."
 #
 # This is here because the network cannot convert won endgames. It scores four very
@@ -223,9 +236,14 @@ def _feature(square: int, piece_type: int, colour: chess.Color, white_pov: bool)
 # organisers name it as the supported way to make Python fast here.
 #
 # Eager signatures, so compilation happens at import inside the 60 second budget
-# rather than on the clock at move one. No fastmath: it permits the compiler to
-# reassociate floating-point arithmetic, which would make the evaluation
-# hardware-dependent, and this file is checked for bit-identical output.
+# rather than on the clock at move one. fastmath IS enabled, and this comment used
+# to claim the opposite. The concern behind the original wording was real --
+# fastmath lets the compiler reassociate floating-point arithmetic, so the
+# evaluation is not bit-identical across hardware. It was enabled anyway because
+# the alternative was measured and it cost too much: without it a float reduction
+# cannot vectorise at all, and the engine ran at 75 knps against 103. The accuracy
+# it buys back is one mismatch of 1cp in 7,808 positions, in either direction. That
+# is a good trade for a 37% node rate, but it is a trade, not a free lunch.
 #
 # If numba is unavailable or fails to compile, the pure-numpy path below is used
 # instead. An unguarded import here would raise at module load, which the platform
@@ -988,6 +1006,13 @@ def get_move(fen: str, time_left_ms: int) -> str:
     # Remember every position we have been asked about. The referee claims threefold
     # repetition automatically, so an engine that is winning and shuffling can have a
     # won game turned into a draw without ever being told.
+    # A position with no legal moves is checkmate or stalemate, and the referee is
+    # not supposed to ask about one. If it ever does, every path below raises --
+    # `moves[0]` in the search, `next(iter(...))` in the fallback -- and an exception
+    # here forfeits the game. UCI's null move is the honest answer.
+    if not board.legal_moves:
+        return "0000"
+
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
 
@@ -1009,9 +1034,12 @@ def get_move(fen: str, time_left_ms: int) -> str:
     if exact is not None:
         return exact.uci()
 
-    _ENGINE.acc.refresh(board)
-    soft, hard = _budget(board, time_left_ms)
+    # refresh() and _budget() were outside this guard, so an exception in either was
+    # a crash rather than a fallback -- and a crash is a lost game where a legal move
+    # would only have been a bad one. There is no failure in here worth a full point.
     try:
+        _ENGINE.acc.refresh(board)
+        soft, hard = _budget(board, time_left_ms)
         move = _ENGINE.choose(board, soft, hard)
     except Exception:
         return next(iter(board.legal_moves)).uci()

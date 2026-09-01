@@ -59,15 +59,21 @@ CROSSCHECK: tuple[str, ...] = ("weiss-d4", "weiss-d6", "weiss-d8")
 # weiss-d4 is deliberately excluded. Skill 8 scored 91.2% against it, which puts the
 # upper confidence bound against 100% where the Elo formula diverges: +/-1665, a
 # number that bounds rather than locates and would only add noise to the ladder.
-# d8 carried 3 failures in 40 games, because a fixed-depth engine ignores the clock
-# and overruns on complex positions, so its 2479 is likely understated.
+# The 3 failures logged while anchoring d8 were STOCKFISH's, not Weiss's: in
+# --anchor mode the reference rung is the "agent" whose failures get counted, so
+# reading them as the opponent's was backwards.
 # d6 dropped too: at 2258 it sits below where this engine measures, so it would be
 # swept and bound from below rather than locate anything, the same reason d4 went.
 # That leaves a single rung of the second family. One point cannot show a trend --
 # it can only say whether the two families agree at one strength -- so the
 # cross-check is now much weaker than it was designed to be.
 WEISS: dict[str, tuple[float, int]] = {
-    "weiss-d8": (2479.0, 40),
+    # 2373 from the completed 53-game anchor in overnight/logs/anchor.log. An
+    # earlier 40-game run that was killed part-way said 2479, and that stale number
+    # sat here long enough to be reported as a cross-check agreeing with the
+    # Stockfish rungs. At the measured rating it does not agree -- it implies 2593,
+    # below all three of them, which is the opposite conclusion.
+    "weiss-d8": (2373.0, 53),
 }
 
 
@@ -162,8 +168,20 @@ def main() -> None:
             f"  +{tally.wins} ={tally.draws} -{tally.losses}  score {score:.1%}  "
             f"-> {difference:+.0f} Elo  => {estimate:.0f} +/- {margin:.0f}"
         )
+        # Terminations cover BOTH sides; `failures` counts only games we lost that
+        # way. Printing just the latter hid the fact that the opponent was flagging
+        # too, which for a while made a shared time-management problem look like a
+        # defect in one engine.
+        bad = ("flag", "crash", "illegal", "init")
+        interesting = {k: v for k, v in tally.terminations.items() if k in bad}
+        if interesting:
+            detail = ", ".join(f"{k} {v}" for k, v in sorted(interesting.items()))
+            print(f"     terminations (both sides): {detail}")
         if tally.failures:
-            print(f"  !! {tally.failures} failures -- this rung is a bug report, not a result")
+            print(
+                f"  !! {tally.failures} of those were ours -- "
+                "this rung is a bug report, not a result"
+            )
         estimates.append((name, rating, score, estimate, margin))
 
     if not estimates:
