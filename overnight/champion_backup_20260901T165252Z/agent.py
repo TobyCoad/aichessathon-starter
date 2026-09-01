@@ -39,28 +39,6 @@ engine -- permitted explicitly, since the ban covers only what ships and runs in
 the submission. No engine, wrapper, or third-party weights are present.
 """
 
-# ruff: noqa: E402
-#   The thread-limit variables below are read by OpenMP/BLAS when their shared
-#   libraries load, which happens on `import numpy`. Setting them afterwards is
-#   silently ignored, so they have to precede the imports and the imports are
-#   therefore not at the top of the file. This is the one place that ordering
-#   matters more than the convention.
-import os
-
-# Pin the maths libraries to one thread each, before numpy is imported -- after
-# import the setting is ignored. A referee that runs several games at once puts
-# many agents on the same cores, and a BLAS that helpfully spawns a thread per core
-# in each of them turns a fast engine into a flagging one. The search is
-# single-threaded by design; nothing here wants a thread pool.
-for _var in (
-    "OMP_NUM_THREADS",
-    "OPENBLAS_NUM_THREADS",
-    "MKL_NUM_THREADS",
-    "NUMEXPR_NUM_THREADS",
-    "VECLIB_MAXIMUM_THREADS",
-):
-    os.environ.setdefault(_var, "1")
-
 import random
 import time
 from collections.abc import Hashable

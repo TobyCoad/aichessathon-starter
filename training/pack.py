@@ -23,6 +23,17 @@ from pathlib import Path
 import chess
 import chess.polyglot
 import numpy as np
+
+# numpy.random is a lazy import: it loads a DLL the first time it is touched, which
+# in this pipeline was after all the packing work was finished. Windows Application
+# Control blocked that DLL once, mid-run, and destroyed 145M packed positions at the
+# final shuffle. Touching it here means a block fails in the first second instead of
+# the fifteenth minute -- and _shuffle below survives it either way.
+try:
+    np.random.default_rng(0).random(1)
+    _NUMPY_RNG = True
+except Exception:  # blocked DLL, restricted environment
+    _NUMPY_RNG = False
 import numpy.typing as npt
 import pyarrow.parquet as pq
 
@@ -147,6 +158,27 @@ def process_group(
     return records[:kept], keys[:kept]
 
 
+def _shuffle(out: npt.NDArray[np.void], seed: int) -> None:
+    """Shuffle in place, without depending on numpy.random being loadable.
+
+    The fallback permutes by sorting a splitmix64 hash of each index. That is a
+    deterministic, well-distributed bijection built from integer arithmetic alone,
+    so it needs no RNG at all. Slower than a real shuffle, and worth it: the
+    alternative is discarding an hour of packing because a DLL was unavailable for
+    a moment.
+    """
+    if _NUMPY_RNG:
+        np.random.default_rng(seed).shuffle(out)
+        return
+    keys = np.arange(len(out), dtype=np.uint64) + np.uint64(seed * 0x9E3779B97F4A7C15)
+    keys ^= keys >> np.uint64(30)
+    keys *= np.uint64(0xBF58476D1CE4E5B9)
+    keys ^= keys >> np.uint64(27)
+    keys *= np.uint64(0x94D049BB133111EB)
+    keys ^= keys >> np.uint64(31)
+    out[:] = out[np.argsort(keys, kind="stable")]
+
+
 def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray[np.void]:
     """Subsample decided positions until quiet ones are at least `quiet_fraction`.
 
@@ -164,7 +196,7 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
         # So it is now a switch, and the two settings get compared like anything
         # else -- by playing games.
         out = records.copy()
-        np.random.default_rng(1).shuffle(out)
+        _shuffle(out, 1)
         return out
 
     quiet_mask = np.abs(records["cp"]) <= QUIET_BAND
@@ -180,7 +212,7 @@ def balance(records: npt.NDArray[np.void], quiet_fraction: float) -> npt.NDArray
         loud = loud[rng.choice(len(loud), allowed, replace=False)]
 
     out = np.concatenate([quiet, loud])
-    np.random.default_rng(1).shuffle(out)
+    _shuffle(out, 1)
     return out
 
 

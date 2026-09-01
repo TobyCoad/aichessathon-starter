@@ -52,6 +52,24 @@ LADDER: dict[str, tuple[float, int]] = {
 # whether that is Stockfish's calibration or our matchup. A different engine can.
 CROSSCHECK: tuple[str, ...] = ("weiss-d4", "weiss-d6", "weiss-d8")
 
+# Measured by --anchor against sf-skill8 (nominal 2596), 40 games each. These are
+# derived numbers, not published ones, and inherit skill 8's own calibration error
+# on top of their own -- treat them as a second opinion on shape, not as authority.
+#
+# weiss-d4 is deliberately excluded. Skill 8 scored 91.2% against it, which puts the
+# upper confidence bound against 100% where the Elo formula diverges: +/-1665, a
+# number that bounds rather than locates and would only add noise to the ladder.
+# d8 carried 3 failures in 40 games, because a fixed-depth engine ignores the clock
+# and overruns on complex positions, so its 2479 is likely understated.
+# d6 dropped too: at 2258 it sits below where this engine measures, so it would be
+# swept and bound from below rather than locate anything, the same reason d4 went.
+# That leaves a single rung of the second family. One point cannot show a trend --
+# it can only say whether the two families agree at one strength -- so the
+# cross-check is now much weaker than it was designed to be.
+WEISS: dict[str, tuple[float, int]] = {
+    "weiss-d8": (2479.0, 40),
+}
+
 
 def elo_difference(score: float, games: int) -> tuple[float, float]:
     """Elo difference implied by a score, and its 95% half-width.
@@ -83,7 +101,11 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    workers = arguments.workers or arena.default_workers()
+    # A ladder game is not two processes but four: each side is a wrapper script
+    # plus the engine binary it drives. default_workers() assumes two, which put 28
+    # processes on 16 cores here -- the same oversubscription that once cost 46
+    # games to timeout flags and silently invalidated the result.
+    workers = arguments.workers or max(1, arena.default_workers() // 2)
 
     if arguments.anchor:
         reference = (arguments.opponents / arguments.anchor).resolve()
@@ -103,15 +125,17 @@ def main() -> None:
             difference, margin = elo_difference(score, tally.games)
             # The reference scored `score` against this opponent, so the opponent
             # sits that far below it.
+            warning = f"   !! {tally.failures} failures" if tally.failures else ""
             print(
                 f"  {name:<12} reference scored {score:>5.1%} over {tally.games:>3} games"
-                f"  -> {rating - difference:.0f} +/- {margin:.0f}"
+                f"  -> {rating - difference:.0f} +/- {margin:.0f}{warning}"
             )
         return
 
     estimates: list[tuple[str, float, float, float, float]] = []
 
-    for name, (rating, calibration_games) in LADDER.items():
+    rungs = {**LADDER, **WEISS}
+    for name, (rating, calibration_games) in rungs.items():
         directory = (arguments.opponents / name).resolve()
         if not (directory / "agent.py").is_file():
             print(f"  {name}: not built, skipping")
