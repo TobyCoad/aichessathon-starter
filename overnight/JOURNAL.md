@@ -208,3 +208,31 @@ its source paper never ablated. Repacking 80M with balancing off. If more data a
 current quality moves the needle, better labels will move it further; if it does
 not, relabelling with our own Stockfish at fixed depth would not have helped either
 and the bottleneck is elsewhere.
+
+## 2026-09-01 — the unrecorded day, and the night that follows
+
+Verdict: mixed; recorded after the fact from the logs, which is the process failure.
+
+Runs on 1 Sep that never reached this file:
+- **021-w512-150m**: 512-wide accumulator on 145M positions, min-ply 16, balancing
+  off. PROMOTE, +89 +/- 49 over 96 games (pinned run). A second, slower run reached
+  the same +89 but was REJECTED on 15 failures: 32 flags across both sides at
+  20 s + 0.2 s. That flag count is the finding, not the Elo.
+- **022-reserve / 023-timefix**: clock reserve and 256-node polling. Inconclusive
+  and unfinished. An 8 s SPRT cannot measure a 120 s time manager; wrong tool.
+- **024-lmr**: late move reductions with null-window scouting. ~0 +/- 30 after
+  226 games, inconclusive at 8 s. Retest at 30 s after staged move generation.
+- **025-tune**: four changes bundled (losing-capture demotion, check evasions in
+  quiescence, history decay, fail-soft mate). First run trending -22 +/- 33; the
+  rerun was 223 of 250 games both-failed, mean length 13 plies -- an environment
+  failure. **Verdict invalid**, and a bundle teaches nothing either way.
+
+Evening review (`overnight/REVIEW_2026-09-01.md`): the champion spends 98% of a
+120 s game and single moves at 4x soft budget; move generation is now ~46% of node
+time (fresh benchmark 107 knps); the skill-ladder rating is inflated. Four switches
+added to `agent.py`, all off, flags-off proven identical to fa10f1c on 12 probes.
+
+Tonight `overnight/night.sh` runs unattended: TIME_V2 clock replay + not-worse SPRT,
+second 145M shard, 512 net continued on both shards, then QS_EVASIONS, STAGED_MOVEGEN
+and HYGIENE one at a time, then a Claude Fable review into `overnight/night/REVIEW.md`.
+The five-hourly Claude loop is disabled for the night; re-enable it in the morning.

@@ -58,3 +58,19 @@ machine but cannot help a shut-down one. `run.ps1` aborts if the working tree is
 dirty, on the assumption that a previous run died mid-edit and a human should look.
 And the loop cannot answer the P0 question in `BACKLOG.md` -- whether `rust-chess`
 and `numba` are permitted -- which is worth more than everything it can do.
+
+## Night mode
+
+`night.sh` is the other way to use the machine: a fixed chain of gated stages rather
+than one Claude-chosen experiment. Register it with `install-night.ps1`, which also
+pauses the five-hourly loop so the two never share the cores.
+
+```powershell
+.\overnight\install-night.ps1 -At "23:30"                    # tonight
+NIGHT_DRY=1 NIGHT_TAG=-dry ./overnight/night.sh              # from Git bash: 15-minute rehearsal
+Enable-ScheduledTask -TaskName "AIChessathon-Overnight"      # next morning
+```
+
+State lives in `overnight/night/`: `night.log`, `SUMMARY.md`, one log per stage, a
+`.done` marker per finished stage so a rerun resumes, and `REVIEW.md` from the
+Claude Fable review that closes the night. Promotions are commits, as always.
