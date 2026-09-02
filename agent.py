@@ -345,6 +345,43 @@ try:
         return result
 
     @njit(
+        float32(
+            float32[:], float32[:], int64,
+            float32[:, :, ::1], float32[:, ::1], float32[:, :, ::1], float32[:, ::1],
+        ),
+        cache=False,
+        fastmath=True,
+    )
+    def _eval_bucket_kernel(
+        own: npt.NDArray[np.float32],
+        opponent: npt.NDArray[np.float32],
+        k: int,
+        w2t: npt.NDArray[np.float32],
+        b2: npt.NDArray[np.float32],
+        w3: npt.NDArray[np.float32],
+        b3: npt.NDArray[np.float32],
+    ) -> np.float32:
+        """_eval_kernel with the head chosen inside: slicing the four head arrays
+        in Python cost more than the arithmetic once there were eight of them."""
+        hidden = np.empty(2 * ACC_SIZE, dtype=np.float32)
+        for i in range(ACC_SIZE):
+            x = own[i]
+            x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+            hidden[i] = x * x
+            y = opponent[i]
+            y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
+            hidden[ACC_SIZE + i] = y * y
+        out = b3[k, 0]
+        for j in range(32):
+            total = b2[k, j]
+            for i in range(2 * ACC_SIZE):
+                total += hidden[i] * w2t[k, j, i]
+            if total > 0.0:
+                out += total * w3[k, j, 0]
+        result: np.float32 = out
+        return result
+
+    @njit(
         _nbt.void(
             float32[:], float32[:], float32[:, :, ::1], int64,
             float32[:, ::1], int32[:], int64, int32[:], int64, int64, int64,
@@ -419,6 +456,7 @@ try:
     _warm_stack = np.zeros((2, 2, ACC_SIZE), dtype=np.float32)
     _warm_idx = np.zeros(8, dtype=np.int32)
     _eval_kernel(_warm_a, _warm_b, _W2T[0], B2[0], W3[0], B3[0])
+    _eval_bucket_kernel(_warm_a, _warm_b, 0, _W2T, B2, W3, B3)
     _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1, 0, 0)
     _warm_feats = np.zeros(32, dtype=np.int32)
     _refresh_kernel(_warm_a, B1, W1, _warm_feats, 1)
@@ -645,7 +683,7 @@ class Accumulator:
             own, opponent = self.black, self.white
         k = _bucket(pieces)
         if self.fast:
-            compiled: float = float(_eval_kernel(own, opponent, _W2T[k], B2[k], W3[k], B3[k]))
+            compiled: float = float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3))
             return int(compiled * OUTPUT_SCALE)
         hidden = np.concatenate((own, opponent))
         np.clip(hidden, 0.0, 1.0, out=hidden)
@@ -1149,6 +1187,323 @@ class Engine:
 _ENGINE = Engine()
 
 
+# --------------------------------------------------------------------------------
+# The compiled board
+# --------------------------------------------------------------------------------
+# python-chess costs about six of the ten microseconds a node takes: ~28 us for a
+# legal move list, ~2.6 us per push and pop. fastboard.py is the same bitboard
+# representation compiled with numba -- the organisers' named fast path -- with
+# the accumulator update folded into make. FastEngine below is the same search as
+# Engine over that board. python-chess keeps the root: the FEN, the book, the
+# tablebase, and a legality check of every move before it leaves this file.
+#
+# Any exception on the compiled path, and any move it proposes that python-chess
+# does not accept, falls back to Engine for that move. The failure mode is a slower
+# move, never a lost game.
+FAST_BOARD: Final = False
+_FAST_OK = False
+try:
+    if FAST_BOARD and _COMPILED:
+        import fastboard as _fb
+
+        _fb.warm_up()
+        _FAST_OK = True
+except Exception:
+    _FAST_OK = False
+
+
+class FastEngine:
+    """Engine's search over the compiled board. Moves are packed ints, keys are
+    polyglot Zobrist ints, and the position lives in fastboard.Position's arrays."""
+
+    __slots__ = (
+        "astack",
+        "black",
+        "bufs",
+        "butterfly",
+        "deadline",
+        "history",
+        "killers",
+        "nodes",
+        "pos",
+        "scores",
+        "table",
+        "white",
+        "zones",
+    )
+
+    def __init__(self) -> None:
+        # key -> (depth, score, flag, move); flag 0 exact, 1 lower, 2 upper.
+        self.table: dict[int, tuple[int, int, int, int]] = {}
+        self.history: dict[int, int] = {}
+        self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
+        self.butterfly = np.zeros(4096, dtype=np.int32)
+        # One move buffer per ply, sliced once: a fresh view per node is not free.
+        buffer = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
+        self.bufs: list[npt.NDArray[np.int32]] = [buffer[i] for i in range(_fb.MAX_PLY)]
+        self.scores = np.zeros(_fb.MOVE_CAP, dtype=np.int64)
+        self.white = B1.copy()
+        self.black = B1.copy()
+        self.astack = np.zeros((_fb.MAX_PLY, 2, ACC_SIZE), dtype=np.float32)
+        self.zones = np.zeros(2, dtype=np.int64)
+        self.pos = _fb.Position(chess.Board())
+        self.deadline = 0.0
+        self.nodes = 0
+
+    # -- primitives ---------------------------------------------------------------
+
+    def _make(self, move: int) -> None:
+        pos = self.pos
+        _fb.make_full(
+            pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, move,
+            W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
+        )
+
+    def _unmake(self) -> None:
+        pos = self.pos
+        _fb.unmake_full(
+            pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
+            self.white, self.black, self.astack, self.zones,
+        )
+
+    def evaluate(self) -> int:
+        meta = self.pos.meta
+        if meta[0] == 0:
+            own, opponent = self.white, self.black
+        else:
+            own, opponent = self.black, self.white
+        k = _bucket(int(meta[5]))
+        return int(float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3)) * OUTPUT_SCALE)
+
+    # -- quiescence ---------------------------------------------------------------
+
+    def quiesce(self, alpha: int, beta: int, depth: int, ply: int) -> int:
+        self.nodes += 1
+        if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
+            raise Timeout
+
+        standing = self.evaluate()
+        if standing >= beta:
+            return standing
+        if standing + BIG_DELTA < alpha:
+            return standing
+        if standing > alpha:
+            alpha = standing
+        if depth >= 8 or ply >= _fb.MAX_PLY - 2:
+            return standing
+
+        pos = self.pos
+        sq = pos.sq
+        captures = self.bufs[ply]
+        n = _fb.gen_legal(pos.bb, sq, pos.meta, captures, True)
+        _fb.order_moves(captures, n, sq, 0, 0, 0, self.butterfly, self.scores)
+        for i in range(n):
+            move = int(captures[i])
+            victim = int(sq[(move >> 6) & 63])
+            if (
+                victim >= 0
+                and not (move >> 12)
+                and standing + _MVV[victim % 6] + DELTA_MARGIN < alpha
+            ):
+                continue
+            self._make(move)
+            try:
+                score = -self.quiesce(-beta, -alpha, depth + 1, ply + 1)
+            finally:
+                self._unmake()
+            if score >= beta:
+                return score
+            if score > alpha:
+                alpha = score
+        return alpha
+
+    # -- main search --------------------------------------------------------------
+
+    def search(self, depth: int, alpha: int, beta: int, ply: int) -> int:
+        self.nodes += 1
+        if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
+            raise Timeout
+
+        pos = self.pos
+        bb = pos.bb
+        meta = pos.meta
+        keys = pos.keys
+        key = int(keys[meta[4]])
+
+        if ply:
+            if self.history.get(key, 0) >= 2 or _fb.repeats(meta, keys):
+                return 0
+            if meta[3] >= 100:
+                n = _fb.gen_legal(bb, pos.sq, meta, self.bufs[ply], False)
+                if n == 0 and _fb.in_check(bb, meta):
+                    return -MATE + ply
+                return 0
+            if _TABLEBASE is not None and meta[5] <= TB_MEN:
+                wdl = _TABLEBASE.get_wdl(pos.to_board())
+                if wdl is not None:
+                    if wdl > 1:
+                        return TB_WIN - ply
+                    if wdl < -1:
+                        return -TB_WIN + ply
+                    return 0
+        if ply >= _fb.MAX_PLY - 8:
+            return self.evaluate()
+
+        original_alpha = alpha
+        stored = self.table.get(key)
+        hash_move = 0
+        if stored is not None:
+            stored_depth, raw_score, flag, hash_move = stored
+            stored_score = _from_table(raw_score, ply)
+            if stored_depth >= depth and ply:
+                if flag == 0:
+                    return stored_score
+                if flag == 1 and stored_score > alpha:
+                    alpha = stored_score
+                elif flag == 2 and stored_score < beta:
+                    beta = stored_score
+                if alpha >= beta:
+                    return stored_score
+
+        in_check = bool(_fb.in_check(bb, meta))
+        if in_check and ply < MAX_PLY - 8:
+            depth += 1
+
+        if depth <= 0:
+            return self.quiesce(alpha, beta, 0, ply)
+
+        if (
+            depth <= RFP_MAX_DEPTH
+            and not in_check
+            and (not HYGIENE or abs(beta) < DISTANCE_THRESHOLD)
+        ):
+            standing = self.evaluate()
+            if standing - RFP_MARGIN * depth >= beta:
+                return standing
+
+        if (
+            depth >= NMP_MIN_DEPTH
+            and not in_check
+            and abs(beta) < DISTANCE_THRESHOLD
+            and _fb.non_pawn_material(bb, int(meta[0]))
+        ):
+            _fb.make_null(bb, meta, pos.undo, keys)
+            try:
+                score = -self.search(depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1)
+            finally:
+                _fb.unmake_null(meta, pos.undo)
+            if score >= beta:
+                return beta
+
+        moves = self.bufs[ply]
+        n = _fb.gen_legal(bb, pos.sq, meta, moves, False)
+        if n == 0:
+            return -MATE + ply if in_check else 0
+        killers = self.killers[ply]
+        _fb.order_moves(
+            moves, n, pos.sq, hash_move, killers[0], killers[1], self.butterfly, self.scores
+        )
+
+        best_score = -INFINITY
+        best_move = 0
+        sq = pos.sq
+        for i in range(n):
+            move = int(moves[i])
+            quiet = sq[(move >> 6) & 63] < 0
+            self._make(move)
+            try:
+                score = -self.search(depth - 1, -beta, -alpha, ply + 1)
+            finally:
+                self._unmake()
+            if score > best_score:
+                best_score = score
+                best_move = move
+                if score > alpha:
+                    alpha = score
+                    if alpha >= beta:
+                        if quiet:
+                            if killers[0] != move:
+                                killers[1] = killers[0]
+                                killers[0] = move
+                            self.butterfly[(move & 63) * 64 + ((move >> 6) & 63)] += depth * depth
+                        break
+
+        if len(self.table) >= MAX_TABLE:
+            self.table.clear()
+        if best_score <= original_alpha:
+            flag = 2
+        elif best_score >= beta:
+            flag = 1
+        else:
+            flag = 0
+        self.table[key] = (depth, _to_table(best_score, ply), flag, best_move)
+        return best_score
+
+    # -- driver -------------------------------------------------------------------
+
+    def choose(self, soft_limit: float, hard_limit: float) -> int:
+        self.deadline = hard_limit
+        pos = self.pos
+        moves = self.bufs[0]
+        n = _fb.gen_legal(pos.bb, pos.sq, pos.meta, moves, False)
+        if n == 0:
+            raise ValueError("no legal moves")
+        best = int(moves[0])
+
+        if HYGIENE:
+            self.butterfly >>= 1
+
+        started = time.monotonic()
+        for depth in range(1, 64):
+            iteration_started = time.monotonic()
+            try:
+                score = -INFINITY
+                alpha = -INFINITY
+                _fb.order_moves(moves, n, pos.sq, best, 0, 0, self.butterfly, self.scores)
+                iteration_best = int(moves[0])
+                for i in range(n):
+                    move = int(moves[i])
+                    self._make(move)
+                    try:
+                        value = -self.search(depth - 1, -INFINITY, -alpha, 1)
+                    finally:
+                        self._unmake()
+                    if value > score:
+                        score = value
+                        iteration_best = move
+                        if value > alpha:
+                            alpha = value
+                best = iteration_best
+            except Timeout:
+                break
+
+            if score > MATE_THRESHOLD or score < -MATE_THRESHOLD:
+                break
+            now = time.monotonic()
+            if TIME_V2:
+                elapsed = now - started
+                predicted = (now - iteration_started) * 2.5
+                if elapsed + predicted > 1.5 * (soft_limit - started):
+                    break
+            elif now > soft_limit:
+                break
+
+        return best
+
+    def play(self, board: chess.Board, soft_limit: float, hard_limit: float) -> chess.Move:
+        """Search `board` and return the move as python-chess understands it."""
+        pos = self.pos
+        pos.load(board)
+        _fb.refresh(
+            pos.bb, pos.sq, pos.meta, W1, B1, self.white, self.black, self.zones, KING_ZONES
+        )
+        move = self.choose(soft_limit, hard_limit)
+        return chess.Move.from_uci(_fb.move_to_uci(move))
+
+
+_FAST: FastEngine | None = FastEngine() if _FAST_OK else None
+
+
 def _book_move(board: chess.Board) -> chess.Move | None:
     """A book move for this position, sampled by how often humans played it."""
     if _BOOK is None:
@@ -1328,6 +1683,9 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     key = _key(board)
     _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
+    if _FAST is not None:
+        fast_key = chess.polyglot.zobrist_hash(board)
+        _FAST.history[fast_key] = _FAST.history.get(fast_key, 0) + 1
 
     # Book first: it is instant, and the clock it saves is worth more in the
     # middlegame than the search would be worth here.
@@ -1347,15 +1705,28 @@ def get_move(fen: str, time_left_ms: int) -> str:
     if exact is not None:
         return exact.uci()
 
-    # refresh() and _budget() were outside this guard, so an exception in either was
-    # a crash rather than a fallback -- and a crash is a lost game where a legal move
-    # would only have been a bad one. There is no failure in here worth a full point.
-    try:
-        _ENGINE.acc.refresh(board)
-        soft, hard = _budget(board, time_left_ms)
-        move = _ENGINE.choose(board, soft, hard)
-    except Exception:
-        return next(iter(board.legal_moves)).uci()
+    move: chess.Move | None = None
+    if _FAST is not None:
+        # The compiled board. A move python-chess would reject, or any exception,
+        # hands this move to the python-chess engine instead.
+        try:
+            soft, hard = _budget(board, time_left_ms)
+            candidate = _FAST.play(board, soft, hard)
+            if candidate in board.legal_moves:
+                move = candidate
+        except Exception:
+            move = None
+
+    if move is None:
+        # refresh() and _budget() were outside this guard, so an exception in either
+        # was a crash rather than a fallback -- and a crash is a lost game where a
+        # legal move would only have been a bad one. Nothing in here is worth a point.
+        try:
+            _ENGINE.acc.refresh(board)
+            soft, hard = _budget(board, time_left_ms)
+            move = _ENGINE.choose(board, soft, hard)
+        except Exception:
+            return next(iter(board.legal_moves)).uci()
 
     if HYGIENE:
         # The position after our move counts toward a threefold claim just as much
@@ -1364,6 +1735,9 @@ def get_move(fen: str, time_left_ms: int) -> str:
             board.push(move)
             after = _key(board)
             _ENGINE.history[after] = _ENGINE.history.get(after, 0) + 1
+            if _FAST is not None:
+                fast_after = chess.polyglot.zobrist_hash(board)
+                _FAST.history[fast_after] = _FAST.history.get(fast_after, 0) + 1
             board.pop()
         except Exception:
             pass
