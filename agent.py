@@ -788,10 +788,20 @@ HYGIENE: Final = True
 # expensive habit left. The referee also adjudicates on raw material at ply 300,
 # so being ahead late makes a draw cost a whole point.
 CONTEMPT: Final = False
+# FUTILITY: at depth 1-2, not in check, skip quiet moves when the static score plus
+# a margin cannot reach alpha. Reverse futility, the mirror image, measured +62.
+FUTILITY: Final = False
+# TT_AGE: replace transposition entries by age and depth instead of clearing the
+# whole table every 400k entries -- about once a minute at the compiled node rate.
+TT_AGE: Final = False
+# PVS: after the first move, search the rest with a null window and re-search
+# only when one surprises. Never tested here on its own, only bundled with LMR.
+PVS: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
 # toward the adjudication ply; being behind makes a draw welcome.
+FUTILITY_MARGIN: Final = (0, 150, 300)
 CONTEMPT_LEVEL: Final = 10
 CONTEMPT_AHEAD: Final = 25
 CONTEMPT_AHEAD_LATE: Final = 50
@@ -1241,6 +1251,7 @@ class FastEngine:
     polyglot Zobrist ints, and the position lives in fastboard.Position's arrays."""
 
     __slots__ = (
+        "age",
         "astack",
         "black",
         "bufs",
@@ -1259,8 +1270,9 @@ class FastEngine:
     )
 
     def __init__(self) -> None:
-        # key -> (depth, score, flag, move); flag 0 exact, 1 lower, 2 upper.
-        self.table: dict[int, tuple[int, int, int, int]] = {}
+        # key -> (depth, score, flag, move, age); flag 0 exact, 1 lower, 2 upper.
+        self.table: dict[int, tuple[int, int, int, int, int]] = {}
+        self.age = 0
         self.history: dict[int, int] = {}
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
         self.butterfly = np.zeros(4096, dtype=np.int32)
@@ -1388,7 +1400,7 @@ class FastEngine:
         stored = self.table.get(key)
         hash_move = 0
         if stored is not None:
-            stored_depth, raw_score, flag, hash_move = stored
+            stored_depth, raw_score, flag, hash_move, _ = stored
             stored_score = _from_table(raw_score, ply)
             if stored_depth >= depth and ply:
                 if flag == 0:
@@ -1407,6 +1419,7 @@ class FastEngine:
         if depth <= 0:
             return self.quiesce(alpha, beta, 0, ply)
 
+        standing = -INFINITY
         if (
             depth <= RFP_MAX_DEPTH
             and not in_check
@@ -1415,6 +1428,12 @@ class FastEngine:
             standing = self.evaluate()
             if standing - RFP_MARGIN * depth >= beta:
                 return standing
+
+        futile = False
+        if FUTILITY and depth <= 2 and not in_check and abs(alpha) < DISTANCE_THRESHOLD:
+            if standing == -INFINITY:
+                standing = self.evaluate()
+            futile = standing + FUTILITY_MARGIN[depth] <= alpha
 
         if (
             depth >= NMP_MIN_DEPTH
@@ -1441,15 +1460,26 @@ class FastEngine:
 
         best_score = -INFINITY
         best_move = 0
+        searched = 0
         sq = pos.sq
         for i in range(n):
             move = int(moves[i])
             quiet = sq[(move >> 6) & 63] < 0
+            if futile and quiet and not (move >> 12):
+                # A quiet move from a position this far below alpha is not going to
+                # raise it; only captures and promotions get a look.
+                continue
             self._make(move)
             try:
-                score = -self.search(depth - 1, -beta, -alpha, ply + 1)
+                if PVS and searched:
+                    score = -self.search(depth - 1, -alpha - 1, -alpha, ply + 1)
+                    if alpha < score < beta:
+                        score = -self.search(depth - 1, -beta, -alpha, ply + 1)
+                else:
+                    score = -self.search(depth - 1, -beta, -alpha, ply + 1)
             finally:
                 self._unmake()
+            searched += 1
             if score > best_score:
                 best_score = score
                 best_move = move
@@ -1463,15 +1493,31 @@ class FastEngine:
                             self.butterfly[(move & 63) * 64 + ((move >> 6) & 63)] += depth * depth
                         break
 
+        if not searched:
+            # Every move was futility-pruned: the position is at least as bad as
+            # the static score says, which is below alpha.
+            return standing
+
         if len(self.table) >= MAX_TABLE:
-            self.table.clear()
+            if TT_AGE:
+                # Keep what this move and the last one learned; drop the rest.
+                age = self.age
+                self.table = {k: v for k, v in self.table.items() if v[4] >= age - 1}
+                if len(self.table) >= MAX_TABLE:
+                    self.table.clear()
+            else:
+                self.table.clear()
         if best_score <= original_alpha:
             flag = 2
         elif best_score >= beta:
             flag = 1
         else:
             flag = 0
-        self.table[key] = (depth, _to_table(best_score, ply), flag, best_move)
+        if TT_AGE:
+            old = self.table.get(key)
+            if old is not None and old[4] == self.age and old[0] > depth:
+                return best_score  # a deeper result from this same search stays
+        self.table[key] = (depth, _to_table(best_score, ply), flag, best_move, self.age)
         return best_score
 
     # -- driver -------------------------------------------------------------------
@@ -1500,7 +1546,12 @@ class FastEngine:
                     move = int(moves[i])
                     self._make(move)
                     try:
-                        value = -self.search(depth - 1, -INFINITY, -alpha, 1)
+                        if PVS and i:
+                            value = -self.search(depth - 1, -alpha - 1, -alpha, 1)
+                            if value > alpha:
+                                value = -self.search(depth - 1, -INFINITY, -alpha, 1)
+                        else:
+                            value = -self.search(depth - 1, -INFINITY, -alpha, 1)
                     finally:
                         self._unmake()
                     if value > score:
@@ -1534,6 +1585,7 @@ class FastEngine:
         )
         self.root_side = int(pos.meta[0])
         self.draw_root = _contempt(board, self.evaluate()) if CONTEMPT else 0
+        self.age += 1
         move = self.choose(soft_limit, hard_limit)
         return chess.Move.from_uci(_fb.move_to_uci(move))
 
