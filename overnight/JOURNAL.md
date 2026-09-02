@@ -236,3 +236,45 @@ Tonight `overnight/night.sh` runs unattended: TIME_V2 clock replay + not-worse S
 second 145M shard, 512 net continued on both shards, then QS_EVASIONS, STAGED_MOVEGEN
 and HYGIENE one at a time, then a Claude Fable review into `overnight/night/REVIEW.md`.
 The five-hourly Claude loop is disabled for the night; re-enable it in the morning.
+
+## 2026-09-02 — first clean night: one promotion, one near-miss, one refuted schedule
+
+Verdict: night.sh ran end to end with zero flags, crashes, or init failures across
+~1,240 games; one promotion (030-hygiene); the engine is still not clock-safe.
+
+**Clock.** At 120 s + 0.5 s charged x1.5, the champion bottomed at 1.2 s (longest
+move 20.9 s) — confirmation of the review's flaw #1. TIME_V2 bottomed at 4.6 s,
+longest move 16.3 s, and failed the ≥5 s bar by 0.4 s; at x1.0 it passes (6.0 s
+floor). Its floor is near-constant across games, so this is a reserve constant,
+not variance. SPRT[-25, 0] at 8 s: inconclusive at 300 games, −4.6 ± 25, llr +1.21
+toward pass. Not promoted (safety exit 1). Fix the reserve, re-replay, promote by
+hand — the SPRT regime cannot see what this switch does anyway.
+
+**Shard.** Packed 145,283,816 positions from row groups 279+ (quiet-fraction 0 by
+design, 29.2% quiet), 4.9M duplicates dropped, disjoint validation of 532,307.
+check_pack green; its "balancer may not have run" warning is intentional-off noise.
+
+**Train.** Resumed net_w512-150m (val 0.0051766) at lr 3e-4 over both shards.
+Val rose to 0.005262 then descended monotonically to 0.005185; patience 6 against
+the initial value fired at epoch 6/24 and best_val = initial_val. Nothing exported,
+nothing tested — correctly skipped. The run refutes "resume at 3e-4", not "more
+data": the early stop was structurally guaranteed by the warm restart. Next attempt
+should be output buckets, not a re-tuned continuation.
+
+**028-qs-evasions.** REJECT at 267 games, −18.3 ± 26.5, llr −3.08. Consistent
+with 025's trend. The stand-pat-in-check flaw is real but the fix needs an eval
+trained or corrected for in-check positions; parked.
+
+**029-staged-movegen.** Ran out of its 400-game cap at +9.6 ± 25.0, llr −0.05 —
+inconclusive, plausibly positive, and the least informative ending possible.
+Retest with 800–1000 games; movegen is 46% of node time, so the mechanism is there.
+
+**030-hygiene.** PASS on SPRT[-25, 0] at 246 games, +15.5 ± 30.5, llr +2.95 vs
+bound 2.94, crash gate clean. Promoted (e96222f, backup taken). It is a not-worse
+result, not a +16 Elo result — and it is a three-change bundle, against our own
+rule; risk accepted because all three are correctness fixes.
+
+**Gate.** ruff/mypy green, submission.zip 10,482,842 bytes with HYGIENE on. Do not
+upload it: the shipped time manager is the one that bottomed at 1.2 s. Before
+4 Sep: fix TIME_V2 reserve + re-replay, then one 120 s + 0.5 s match against the
+pre-512 champion, then a 500-game crash hunt.
