@@ -363,3 +363,34 @@ move 16.9 s. Crash gate 24/24. SPRT[0, 20]: **PASS at 96 games, +35 =50 -11,
 Process note: a closed laptop lid suspended the first validation run mid-flight
 and produced six fake flags and seven fake init failures; the rerun on an awake
 machine was clean. Sleep is the one failure mode no test in this repo can survive.
+
+## 2026-09-02 night — upload validated, king zones revisited, contempt built
+
+**Compiled board shipped.** 040-fastboard promoted (94744cb): SPRT PASS +89 +/- 49 at
+8 s; 120 s match +17 =19 -4 (66.2%, +117 +/- 82), 500-game crash hunt +500 =0 -0,
+clock replay floor 10.1 s. Independent code review found nothing critical; its
+three fixes landed. Fresh-context rules judge and reliability auditor both said
+upload as is (66 awkward-position probes legal, 490k lockstep nodes vs python-chess
+exact, four fallback tiers verified, RSS peak 0.5 GB). **Platform validation
+passed**: `compiled board: on` in both smoke games, both won by checkmate in 20
+plies, upload 16.85 MB.
+
+**Tournament control, 30 games each, opponents on 500 ms increment:**
+vs Stockfish skill 10: +10 =12 -8, 53.3%, +23 +/- 98, 11 repetition draws.
+vs Weiss d8: +24 =5 -1, 88.3%. PGNs under overnight/pgn/, viewer testing/viewer.py.
+
+**King zones on the compiled board.** The 8-zone net that lost -19 +/- 27 on the
+python-chess engine PASSED on the compiled one: +144 =342 -104 over 590 games,
++23.6 +/- 18.8. Promoted (weights only). The 4-zone net (val 0.004889) trained
+after a CUDA index assert exposed that the zone map was hard-wired to eight; the
+map is now selected by zone count in trainer, features, engine and board, and
+cross-checked. Its match against the 8-zone champion runs tonight.
+
+**Strength assessment (fresh context):** bracket 2300-2500 CCRL-like, centre ~2400;
+the ladder's 2700 is Stockfish's recalibration scale, not CCRL. Field estimate:
+top-48 ~97%, top-10 ~80%, top-3 ~40-50%. Main Swiss-relevant weakness: draws by
+repetition from equal or better positions, zero contempt. Built as CONTEMPT switch
+(level -10, ahead -25..-50 toward ply 300, behind +20); tested vs weiss-d6.
+
+Also: arena saves PGNs by default; get_move coerces the clock argument; the zip
+target includes fastboard.py.
