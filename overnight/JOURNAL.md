@@ -278,3 +278,48 @@ rule; risk accepted because all three are correctness fixes.
 upload it: the shipped time manager is the one that bottomed at 1.2 s. Before
 4 Sep: fix TIME_V2 reserve + re-replay, then one 120 s + 0.5 s match against the
 pre-512 champion, then a 500-game crash hunt.
+
+## 2026-09-02 — the day session: clock, buckets, and the list worked in order
+
+Verdict: two promotions (032-time-v2-lowclock, 034-buckets), three rejections or
+inconclusives, and the first validation of the whole chain at 120 s + 0.5 s.
+
+**Clock (item 1).** 031 (reserve 0.15) bottomed at 4.4 s under a 1.5x charge --
+lower than reserve 0.10, so the reserve was never what set the floor. The floor was
+an equilibrium: below 5 s the old rule credited half the increment, and 1.5x that
+spend equalled the 0.5 s income at ~4.5 s. 032 adds LOW_CLOCK = 15 s below which the
+budget is remaining/30 with no credit; floor 9.4 s charged, longest move 16.1 s, no
+flags. 031 vs champion in the real harness at 120 s: 48.8% over 40, -9 +/- 77, no
+failures. Promoted cce7b3c. The champion itself beat the pre-512 build 57.5% over 40
+games at 120 s (+52 +/- 80), so the promotion chain holds at the real control.
+
+**Staged move generation (item 2).** 800-game budget, REJECT at 245 games,
+-18.5 +/- 26.8. Two readings at 8 s now agree (400-game run: +10 +/- 25). The
+is_legal check and the generator overhead cost more than the skipped generations
+save at this depth. Parked.
+
+**Output buckets (item 3).** Eight heads by piece count, warm-started from the 512
+net (every head initialised to the old head; verified identical to 1e-6). 16 epochs
+on both 145M shards at lr 1.5e-4: val 0.005177 -> 0.005025, still falling. Engine
+side reads either layout; head selection verified against a checkpoint with heads
+offset by 20 cp steps. SPRT[0, 20]: INCONCLUSIVE at 600, +150 =323 -127, +13.3
++/- 19.2. Promoted dac2dae on the not-worse bar plus the independent loss gain and
+zero inference cost -- stated as such in the commit, not as a [0, 20] pass.
+Node rate 101 knps, unchanged within noise.
+
+**LMR at 30 s + 0.3 s (item 4).** Ported onto the bucketed champion. INCONCLUSIVE
+at 300 games, +11.6 +/- 27.8. Not promoted; the third inconclusive reading for LMR.
+
+**Book pruning by child evaluation (item 5).** build_book --max-drop 30 pruned
+84,911 of ~459k moves (18%); mainlines intact, Stafford-style traps reduced to the
+refutation. SPRT[-10, 10]: exactly 50.0% over 400 games. Not promoted; the paired
+openings start at ply 6-10 so the book barely features in the rig. Kept as an option.
+
+**Crash hunt (item 6).** 500 games vs random at 4 s + 0.05 s: +498 =2 -0, zero
+failures. (First attempt stopped at 51 games because SPRT[0, 20] accepted; rerun
+with unreachable bounds.)
+
+**Process.** Matches at 5 workers ran alongside GPU training without flags; the
+loader-bound trainer slowed from 235 s to 480 s per epoch while sharing the CPU.
+The five-hourly Claude loop stayed disabled all day; re-enable it when the machine
+is not being used for matches.
