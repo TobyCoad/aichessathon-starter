@@ -790,7 +790,7 @@ HYGIENE: Final = True
 CONTEMPT: Final = False
 # FUTILITY: at depth 1-2, not in check, skip quiet moves when the static score plus
 # a margin cannot reach alpha. Reverse futility, the mirror image, measured +62.
-FUTILITY: Final = False
+FUTILITY: Final = True
 # TT_AGE: replace transposition entries by age and depth instead of clearing the
 # whole table every 400k entries -- about once a minute at the compiled node rate.
 TT_AGE: Final = False
