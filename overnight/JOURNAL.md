@@ -323,3 +323,10 @@ with unreachable bounds.)
 loader-bound trainer slowed from 235 s to 480 s per epoch while sharing the CPU.
 The five-hourly Claude loop stayed disabled all day; re-enable it when the machine
 is not being used for matches.
+
+**Final validation of the shipped build (buckets + TIME_V2 + HYGIENE) at 120 s.**
+Stress replay charged x1.5: 0 flags, lowest clock 10.0 s, longest move 15.2 s.
+40 games vs the pre-bucket champion in the real harness: 48.8%, -9 +/- 73, no
+failures. The bucket net is neutral within noise at the real control; the 8 s
+evidence (+13 +/- 19 over 600) remains the only positive strength reading for it.
+submission.zip (11.3 MB compressed) is built from this build and is the upload.
