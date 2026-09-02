@@ -580,7 +580,7 @@ MAX_PLY: Final = 72
 TIME_V2: Final = False
 QS_EVASIONS: Final = False
 STAGED_MOVEGEN: Final = False
-HYGIENE: Final = False
+HYGIENE: Final = True
 
 # TIME_V2: the clock is never allowed below this fraction of its starting value,
 # which is inferred as the largest time_left_ms seen in the game. 12 s at 120 s.
