@@ -816,6 +816,8 @@ def make_null(bb: Any, meta: Any, undo: Any, keys: Any) -> Any:
     meta[EP] = -1
     meta[SIDE] = 1 - meta[SIDE]
     meta[HALFMOVE] += 1
+    if meta[SIDE] == 0:
+        meta[FULLMOVE] += 1
     meta[PLY] = ply + 1
     keys[ply + 1] = key
 
@@ -825,6 +827,8 @@ def unmake_null(meta: Any, undo: Any) -> Any:
     ply = meta[PLY] - 1
     meta[EP] = undo[ply, U_EP]
     meta[HALFMOVE] = undo[ply, U_HALFMOVE]
+    if meta[SIDE] == 0:
+        meta[FULLMOVE] -= 1
     meta[SIDE] = 1 - meta[SIDE]
     meta[PLY] = ply
 

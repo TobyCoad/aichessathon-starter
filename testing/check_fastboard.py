@@ -82,10 +82,11 @@ def compare(pos: fb.Position, board: chess.Board, where: str) -> list[str]:
         problems.append(
             f"{where}: piece count {pos.meta[fb.PIECES]} != {chess.popcount(board.occupied)}"
         )
+    # All six FEN fields: to_board() feeds the tablebase and the fifty-move rule,
+    # so the ep square, halfmove clock and move number must survive the round trip.
     mine_fen = pos.to_board().fen()
     theirs_fen = board.fen()
-    # python-chess drops an unusable ep square from its FEN; we keep the raw one.
-    if mine_fen.split()[:3] != theirs_fen.split()[:3]:
+    if mine_fen != theirs_fen:
         problems.append(f"{where}: fen {mine_fen} != {theirs_fen}")
     return problems
 

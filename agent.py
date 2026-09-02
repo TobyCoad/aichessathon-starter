@@ -1501,7 +1501,15 @@ class FastEngine:
         return chess.Move.from_uci(_fb.move_to_uci(move))
 
 
-_FAST: FastEngine | None = FastEngine() if _FAST_OK else None
+_FAST: FastEngine | None = None
+if _FAST_OK:
+    try:
+        _FAST = FastEngine()
+    except Exception:  # an init failure would lose every game; a fallback loses none
+        _FAST = None
+# The platform shows import-time output in the validation log, so this is how to
+# see from the dashboard whether the compiled path came up on their image.
+print(f"compiled board: {'on' if _FAST is not None else 'off'}")
 
 
 def _book_move(board: chess.Board) -> chess.Move | None:
@@ -1706,6 +1714,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
         return exact.uci()
 
     move: chess.Move | None = None
+    started = time.monotonic()
     if _FAST is not None:
         # The compiled board. A move python-chess would reject, or any exception,
         # hands this move to the python-chess engine instead.
@@ -1721,9 +1730,12 @@ def get_move(fen: str, time_left_ms: int) -> str:
         # refresh() and _budget() were outside this guard, so an exception in either
         # was a crash rather than a fallback -- and a crash is a lost game where a
         # legal move would only have been a bad one. Nothing in here is worth a point.
+        # The fallback budgets from what is left after the compiled attempt, not
+        # from the clock as it stood when the move began.
         try:
+            spent = int((time.monotonic() - started) * 1000.0)
             _ENGINE.acc.refresh(board)
-            soft, hard = _budget(board, time_left_ms)
+            soft, hard = _budget(board, max(time_left_ms - spent, 50))
             move = _ENGINE.choose(board, soft, hard)
         except Exception:
             return next(iter(board.legal_moves)).uci()
