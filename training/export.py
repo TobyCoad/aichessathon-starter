@@ -1,13 +1,18 @@
 """Export a trained checkpoint to the flat .npz the engine loads.
 
-The engine ships no torch: inference is hand-written numpy, because at batch 1 --
-which is all a depth-first search ever asks for -- numpy measured about four times
-faster than ONNX Runtime, whose fixed per-call dispatch overhead dominates a network
-this small. So the checkpoint is transposed once here into the exact matrices the
-engine multiplies, and torch never appears at run time.
+The engine ships no torch: inference is hand-written numpy and numba, because at
+batch 1 -- which is all a depth-first search ever asks for -- numpy measured about
+four times faster than ONNX Runtime, whose fixed per-call dispatch overhead
+dominates a network this small. So the checkpoint is transposed once here into the
+exact matrices the engine multiplies, and torch never appears at run time.
 
-Shapes are fixed by the spec and asserted below, because a silently transposed
-matrix would still load, still run, and merely play badly.
+Shapes are fixed and asserted below, because a silently transposed matrix would
+still load, still run, and merely play badly. Two layouts exist:
+
+    single head      W2 (2A, H)     b2 (H,)     W3 (H, 1)     b3 (1,)
+    B output buckets W2 (B, 2A, H)  b2 (B, H)   W3 (B, H, 1)  b3 (B, 1)
+
+The engine reads the number of buckets from W2's rank, so either file loads.
 
 Float32 throughout. Quantisation is deliberately not done: int16 measured *slower*
 than float32 in numpy, since integer paths miss the BLAS route. It is a C++/SIMD
@@ -20,40 +25,66 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from training.train import FEATURES, HIDDEN, Net
+from training.train import FEATURES, Net, bucket_of, load_checkpoint
 
 
-def expected_shapes(accumulator: int) -> dict[str, tuple[int, ...]]:
+def expected_shapes(accumulator: int, hidden: int, buckets: int) -> dict[str, tuple[int, ...]]:
     """The engine reads these shapes from the file, so width is a training choice."""
+    if buckets == 1:
+        return {
+            "W1": (FEATURES, accumulator),
+            "b1": (accumulator,),
+            "W2": (2 * accumulator, hidden),
+            "b2": (hidden,),
+            "W3": (hidden, 1),
+            "b3": (1,),
+        }
     return {
         "W1": (FEATURES, accumulator),
         "b1": (accumulator,),
-        "W2": (2 * accumulator, HIDDEN),
-        "b2": (HIDDEN,),
-        "W3": (HIDDEN, 1),
-        "b3": (1,),
+        "W2": (buckets, 2 * accumulator, hidden),
+        "b2": (buckets, hidden),
+        "W3": (buckets, hidden, 1),
+        "b3": (buckets, 1),
     }
 
 
-def convert(state: dict[str, torch.Tensor]) -> dict[str, np.ndarray]:
+def convert(net: Net) -> dict[str, np.ndarray]:
     """Torch parameters to the engine's matrices.
 
-    torch.nn.Linear stores weights as (out, in) and computes `x @ W.T`; the engine
-    computes `x @ W`, so the linear layers are transposed here rather than at every
-    node of every search.
+    The heads are stored as (B, 2A, H) and the engine computes `x @ W2[k]`, which
+    is already the orientation stored, so nothing is transposed here; the single
+    head case squeezes the bucket axis away to keep the old file layout.
     """
-    weights = {
-        "W1": state["bag.weight"],
-        "b1": state["acc_bias"],
-        "W2": state["l2.weight"].t(),
-        "b2": state["l2.bias"],
-        "W3": state["l3.weight"].t(),
-        "b3": state["l3.bias"],
+    tensors = {
+        "W1": net.bag.weight,
+        "b1": net.acc_bias,
+        "W2": net.head_w2,
+        "b2": net.head_b2,
+        "W3": net.head_w3.unsqueeze(-1),
+        "b3": net.head_b3.unsqueeze(-1),
     }
+    if net.buckets == 1:
+        heads = ("W2", "b2", "W3", "b3")
+        tensors = {name: (t[0] if name in heads else t) for name, t in tensors.items()}
     return {
-        name: tensor.detach().cpu().numpy().astype(np.float32)
-        for name, tensor in weights.items()
+        name: tensor.detach().cpu().numpy().astype(np.float32) for name, tensor in tensors.items()
     }
+
+
+def head_numpy(weights: dict[str, np.ndarray], x: np.ndarray, count: np.ndarray) -> np.ndarray:
+    """The engine's head arithmetic, in numpy, for the self-check below."""
+    h1 = np.clip(x, 0.0, 1.0) ** 2
+    if weights["W2"].ndim == 2:
+        h2 = np.maximum(h1 @ weights["W2"] + weights["b2"], 0.0)
+        return np.asarray((h2 @ weights["W3"] + weights["b3"]).squeeze(1))
+    buckets = weights["W2"].shape[0]
+    out = np.empty(len(x), dtype=np.float32)
+    for i in range(len(x)):
+        k = min(max((int(count[i]) - 1) * buckets // 32, 0), buckets - 1)
+        h2 = np.maximum(h1[i] @ weights["W2"][k] + weights["b2"][k], 0.0)
+        out[i] = (h2 @ weights["W3"][k] + weights["b3"][k])[0]
+    return out
 
 
 def main() -> None:
@@ -62,10 +93,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("weights/net.npz"))
     arguments = parser.parse_args()
 
-    state = torch.load(arguments.checkpoint, map_location="cpu", weights_only=True)
-    weights = convert(state)
-    accumulator = int(state["bag.weight"].shape[1])
-    expected = expected_shapes(accumulator)
+    net = load_checkpoint(arguments.checkpoint).eval()
+    weights = convert(net)
+    accumulator = int(net.bag.weight.shape[1])
+    hidden = int(net.head_w2.shape[2])
+    expected = expected_shapes(accumulator, hidden, net.buckets)
 
     for name, shape in expected.items():
         actual = weights[name].shape
@@ -76,17 +108,18 @@ def main() -> None:
 
     # Verify the exported matrices reproduce the torch model, so a transposition or
     # a missing bias cannot slip through. Random accumulators rather than real
-    # positions: this checks the arithmetic, not the chess.
-    net = Net(accumulator).eval()
-    net.load_state_dict(state)
+    # positions: this checks the arithmetic, not the chess. Piece counts span every
+    # bucket so each head is compared at least once.
     rng = np.random.default_rng(0)
-    x = rng.standard_normal((8, 2 * accumulator)).astype(np.float32)
+    x = rng.standard_normal((64, 2 * accumulator)).astype(np.float32)
+    count = np.arange(1, 65) % 32 + 1
     with torch.no_grad():
         h1_t = torch.clamp(torch.from_numpy(x), 0.0, 1.0) ** 2
-        reference = net.l3(torch.relu(net.l2(h1_t))).squeeze(1).numpy()
-    h1 = np.clip(x, 0.0, 1.0) ** 2
-    h2 = np.maximum(h1 @ weights["W2"] + weights["b2"], 0.0)
-    actual_out = (h2 @ weights["W3"] + weights["b3"]).squeeze(1)
+        h2_t = torch.relu(torch.einsum("bi,kih->bkh", h1_t, net.head_w2) + net.head_b2)
+        all_heads = (h2_t * net.head_w3).sum(-1) + net.head_b3
+        bucket = bucket_of(torch.from_numpy(count).long(), net.buckets)
+        reference = all_heads.gather(1, bucket.unsqueeze(1)).squeeze(1).numpy()
+    actual_out = head_numpy(weights, x, count)
     error = float(np.abs(reference - actual_out).max())
     if error > 1e-3:
         raise SystemExit(f"numpy head disagrees with torch by {error:.4g}")
@@ -96,11 +129,14 @@ def main() -> None:
     np.savez(arguments.out, **weights)  # type: ignore[arg-type]
     size = arguments.out.stat().st_size
     parameters = sum(int(np.prod(shape)) for shape in expected.values())
-    print(f"wrote {arguments.out} ({size / 1e6:.2f} MB, {parameters:,} parameters)")
+    print(
+        f"wrote {arguments.out} ({size / 1e6:.2f} MB, {parameters:,} parameters, "
+        f"{net.buckets} output bucket(s))"
+    )
     print(f"numpy head matches torch to {error:.2g}")
     for name, shape in expected.items():
         low, high = weights[name].min(), weights[name].max()
-        print(f"  {name:<3} {shape!s:<12} range [{low:+.3f}, {high:+.3f}]")
+        print(f"  {name:<3} {shape!s:<14} range [{low:+.3f}, {high:+.3f}]")
 
 
 if __name__ == "__main__":

@@ -47,20 +47,49 @@ HIDDEN = 32
 SCALE = 400.0
 
 
+def bucket_of(count: Tensor, buckets: int) -> Tensor:
+    """Output head for a position with `count` pieces on the board, 1..32.
+
+    Mirrors `_bucket` in agent.py exactly: equal-width bands of piece count, so
+    the endgame gets heads of its own. One shared head scored four different
+    KQvK positions within 120 cp of each other and could not convert; a head
+    that only ever sees few-piece positions has the capacity to tell them apart.
+    """
+    return torch.clamp((count - 1) * buckets // MAX_PIECES, 0, buckets - 1)
+
+
 class Net(nn.Module):
-    def __init__(self, accumulator: int = ACC, hidden: int = HIDDEN) -> None:
+    """(768 -> A)x2 -> H -> 1, with `buckets` independent heads after the accumulator.
+
+    The heads are stored stacked -- head_w2 (B, 2A, H), head_b2 (B, H),
+    head_w3 (B, H), head_b3 (B,) -- and every head is evaluated for every sample,
+    then the sample's own head is gathered. Gathering per-sample weight matrices
+    instead would materialise (batch, 2A, H) floats, 2 GB at batch 16384.
+    """
+
+    def __init__(self, accumulator: int = ACC, hidden: int = HIDDEN, buckets: int = 1) -> None:
         super().__init__()
+        self.buckets = buckets
         # padding_idx is not used: padding is masked by per-sample weights instead,
         # because index 0 is a real feature (own pawn on a1) even if unreachable.
         self.bag = nn.EmbeddingBag(FEATURES, accumulator, mode="sum")
         self.acc_bias = nn.Parameter(torch.zeros(accumulator))
-        self.l2 = nn.Linear(2 * accumulator, hidden)
-        self.l3 = nn.Linear(hidden, 1)
+        self.head_w2 = nn.Parameter(torch.empty(buckets, 2 * accumulator, hidden))
+        self.head_b2 = nn.Parameter(torch.empty(buckets, hidden))
+        self.head_w3 = nn.Parameter(torch.empty(buckets, hidden))
+        self.head_b3 = nn.Parameter(torch.empty(buckets))
         # Sized so the accumulator lands inside SCReLU's active band. Summing ~22
         # pieces, an accumulator std of about 0.5 needs a per-weight std near 0.1;
         # at 0.02 the accumulator sat at std 0.094 and squaring it threw away
         # another order of magnitude before the first hidden layer saw anything.
         nn.init.normal_(self.bag.weight, std=0.1)
+        # The same uniform(+/- 1/sqrt(fan_in)) that nn.Linear uses.
+        bound2 = 1.0 / (2 * accumulator) ** 0.5
+        bound3 = 1.0 / hidden**0.5
+        nn.init.uniform_(self.head_w2, -bound2, bound2)
+        nn.init.uniform_(self.head_b2, -bound2, bound2)
+        nn.init.uniform_(self.head_w3, -bound3, bound3)
+        nn.init.uniform_(self.head_b3, -bound3, bound3)
 
     def forward(self, white: Tensor, black: Tensor, mask: Tensor, stm: Tensor) -> Tensor:
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
@@ -70,9 +99,40 @@ class Net(nn.Module):
         opp = torch.where(white_to_move, acc_b, acc_w)
         x = torch.cat([own, opp], dim=1)
         h1 = torch.clamp(x, 0.0, 1.0) ** 2
-        h2 = torch.relu(self.l2(h1))
-        out: Tensor = self.l3(h2).squeeze(1)
+        # (batch, B, H): every head, then keep the one this position belongs to.
+        h2 = torch.relu(torch.einsum("bi,kih->bkh", h1, self.head_w2) + self.head_b2)
+        all_heads = (h2 * self.head_w3).sum(-1) + self.head_b3
+        bucket = bucket_of(mask.sum(1).long(), self.buckets)
+        out: Tensor = all_heads.gather(1, bucket.unsqueeze(1)).squeeze(1)
         return out
+
+
+def load_checkpoint(path: Path, buckets: int | None = None) -> Net:
+    """Build a Net from a checkpoint, whichever layout it was saved in.
+
+    Checkpoints from before output buckets hold a single head as `l2.*`/`l3.*`.
+    Those load into every head of a bucketed net, so a bucketed continuation
+    starts exactly where the single-head net finished rather than from noise.
+    """
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    accumulator = int(state["bag.weight"].shape[1])
+    if "l2.weight" in state:
+        hidden = int(state["l2.weight"].shape[0])
+        net = Net(accumulator, hidden, buckets or 1)
+        with torch.no_grad():
+            net.bag.weight.copy_(state["bag.weight"])
+            net.acc_bias.copy_(state["acc_bias"])
+            net.head_w2.copy_(state["l2.weight"].t().unsqueeze(0).expand_as(net.head_w2))
+            net.head_b2.copy_(state["l2.bias"].unsqueeze(0).expand_as(net.head_b2))
+            net.head_w3.copy_(state["l3.weight"].expand_as(net.head_w3))
+            net.head_b3.copy_(state["l3.bias"].expand_as(net.head_b3))
+        return net
+    saved = int(state["head_w2"].shape[0])
+    if buckets is not None and buckets != saved:
+        raise SystemExit(f"{path} has {saved} output buckets, asked for {buckets}")
+    net = Net(accumulator, int(state["head_w2"].shape[2]), saved)
+    net.load_state_dict(state)
+    return net
 
 
 def black_from_white(white: Tensor) -> Tensor:
@@ -167,6 +227,7 @@ def train(
     patience: int = 4,
     resume: Path | None = None,
     limit: int = 0,
+    buckets: int = 1,
 ) -> tuple[Net, dict[str, float]]:
     """Train, cycling through `sources` one shard per epoch.
 
@@ -177,10 +238,11 @@ def train(
     """
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
-    net = Net(accumulator).to(device)
     if resume is not None:
-        net.load_state_dict(torch.load(resume, map_location=device, weights_only=True))
-        print(f"  resumed from {resume}")
+        net = load_checkpoint(resume, buckets).to(device)
+        print(f"  resumed from {resume} into {net.buckets} output bucket(s)")
+    else:
+        net = Net(accumulator, buckets=buckets).to(device)
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     sizes = [len(_records(source, limit)) for source in sources]
@@ -297,6 +359,9 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=16384)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--accumulator", type=int, default=ACC, help="first-layer width")
+    parser.add_argument(
+        "--buckets", type=int, default=1, help="output heads, selected by piece count"
+    )
     parser.add_argument("--patience", type=int, default=4, help="early-stop patience, epochs")
     parser.add_argument("--limit", type=int, default=0, help="use only the first N positions")
     parser.add_argument("--skip-sanity", action="store_true")
@@ -329,7 +394,7 @@ def main() -> None:
 
     print(
         f"training {arguments.epochs} epochs, batch {arguments.batch}, "
-        f"accumulator {arguments.accumulator}"
+        f"accumulator {arguments.accumulator}, buckets {arguments.buckets}"
     )
     net, summary = train(
         list(arguments.data),
@@ -342,6 +407,7 @@ def main() -> None:
         patience=arguments.patience,
         resume=arguments.resume,
         limit=arguments.limit,
+        buckets=arguments.buckets,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)

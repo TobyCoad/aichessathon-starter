@@ -76,15 +76,30 @@ def polyglot_move(board: chess.Board, move: chess.Move) -> int:
     return to_square | (move.from_square << 6) | (promotion << 12)
 
 
-def scan_group(job: tuple[Path, int]) -> Counter[tuple[int, int]]:
-    """Count (position, move) pairs inside book depth for one row group."""
+Tally = tuple[Counter[tuple[int, int]], Counter[tuple[int, int]], Counter[tuple[int, int]]]
+
+
+def scan_group(job: tuple[Path, int]) -> Tally:
+    """Count (position, move) pairs inside book depth for one row group.
+
+    Alongside the count, the engine evaluation of the position each move leads to
+    is accumulated, from the mover's point of view. Popularity across every Lichess
+    rating is not soundness -- at 1200 the popular move is often the trap that
+    works on other 1200s -- and the corpus already carries a deep engine score for
+    the child position, so the book can be pruned by it for free.
+    """
     path, group = job
-    table = pq.ParquetFile(path).read_row_group(group, columns=["fen"])
+    table = pq.ParquetFile(path).read_row_group(group, columns=["fen", "cp", "mate"])
     counts: Counter[tuple[int, int]] = Counter()
+    scored: Counter[tuple[int, int]] = Counter()
+    total: Counter[tuple[int, int]] = Counter()
 
     previous: chess.Board | None = None
     previous_ply = -99
-    for fen in table["fen"].to_pylist():
+    rows = zip(
+        table["fen"].to_pylist(), table["cp"].to_pylist(), table["mate"].to_pylist(), strict=True
+    )
+    for fen, cp, mate in rows:
         ply = ply_of(fen)
         if ply >= BOOK_PLIES:
             previous, previous_ply = None, -99
@@ -103,31 +118,60 @@ def scan_group(job: tuple[Path, int]) -> Counter[tuple[int, int]]:
         if previous is not None and ply == previous_ply + 1:
             move = connecting_move(previous, board)
             if move is not None:
-                counts[(chess.polyglot.zobrist_hash(previous), polyglot_move(previous, move))] += 1
+                pair = (chess.polyglot.zobrist_hash(previous), polyglot_move(previous, move))
+                counts[pair] += 1
+                # The child's score is white-POV; the mover chose it, so flip for black.
+                if mate is not None:
+                    value: int | None = 2000 if mate > 0 else -2000
+                else:
+                    value = None if cp is None else max(-2000, min(2000, int(cp)))
+                if value is not None:
+                    scored[pair] += 1
+                    total[pair] += value if previous.turn == chess.WHITE else -value
         previous, previous_ply = board, ply
-    return counts
+    return counts, scored, total
 
 
-def write_book(counts: Counter[tuple[int, int]], destination: Path, minimum: int) -> int:
-    """Write a Polyglot .bin: 16-byte entries, sorted ascending by key."""
-    by_key: dict[int, list[tuple[int, int]]] = {}
+def write_book(
+    counts: Counter[tuple[int, int]],
+    scored: Counter[tuple[int, int]],
+    total: Counter[tuple[int, int]],
+    destination: Path,
+    minimum: int,
+    max_drop: int,
+) -> tuple[int, int]:
+    """Write a Polyglot .bin: 16-byte entries, sorted ascending by key.
+
+    Per position, a move is kept if it was played at least `minimum` times and
+    its mean child evaluation is within `max_drop` centipawns of the best-scoring
+    sibling. Returns (entries written, entries pruned by evaluation).
+    """
+    by_key: dict[int, list[tuple[int, int, float | None]]] = {}
     for (key, move), count in counts.items():
         if count >= minimum:
-            by_key.setdefault(key, []).append((move, count))
+            mean = total[(key, move)] / scored[(key, move)] if scored[(key, move)] else None
+            by_key.setdefault(key, []).append((move, count, mean))
 
     payload = bytearray()
+    pruned = 0
     for key in sorted(by_key):
         moves = by_key[key]
+        means = [mean for _, _, mean in moves if mean is not None]
+        if means and max_drop >= 0:
+            floor = max(means) - max_drop
+            kept = [entry for entry in moves if entry[2] is None or entry[2] >= floor]
+            pruned += len(moves) - len(kept)
+            moves = kept
         # uint16 saturates at 65535, so scale each position's counts into range
         # rather than clamping the popular moves into a tie.
-        top = max(count for _, count in moves)
+        top = max(count for _, count, _ in moves)
         scale = min(1.0, 60000.0 / top)
-        for move, count in sorted(moves, key=lambda pair: -pair[1]):
+        for move, count, _ in sorted(moves, key=lambda entry: -entry[1]):
             payload += ENTRY.pack(key, move, max(1, int(count * scale)), 0)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(bytes(payload))
-    return len(payload) // ENTRY.size
+    return len(payload) // ENTRY.size, pruned
 
 
 def main() -> None:
@@ -136,6 +180,13 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("weights/book.bin"))
     parser.add_argument("--groups", type=int, default=60, help="row groups to scan")
     parser.add_argument("--min-count", type=int, default=3, help="drop rarer moves")
+    parser.add_argument(
+        "--max-drop",
+        type=int,
+        default=30,
+        help="drop a move whose mean child evaluation trails the best sibling by more "
+        "than this many centipawns; -1 keeps every move (the old book)",
+    )
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
 
@@ -145,18 +196,25 @@ def main() -> None:
     print(f"scanning {len(groups)} of {available} row groups on {workers} workers")
 
     counts: Counter[tuple[int, int]] = Counter()
+    scored: Counter[tuple[int, int]] = Counter()
+    total: Counter[tuple[int, int]] = Counter()
     jobs = [(arguments.source, group) for group in groups]
     with mp.Pool(workers) as pool:
         for done, part in enumerate(pool.imap_unordered(scan_group, jobs), start=1):
-            counts.update(part)
+            counts.update(part[0])
+            scored.update(part[1])
+            total.update(part[2])
             if done % 10 == 0 or done == len(groups):
                 print(f"  {done}/{len(groups)} groups: {len(counts):,} distinct moves", flush=True)
 
     positions = len({key for key, _ in counts})
-    entries = write_book(counts, arguments.out, arguments.min_count)
+    entries, pruned = write_book(
+        counts, scored, total, arguments.out, arguments.min_count, arguments.max_drop
+    )
     size = arguments.out.stat().st_size
     print(f"\n{len(counts):,} distinct (position, move) pairs over {positions:,} positions")
     print(f"kept {entries:,} played at least {arguments.min_count} times")
+    print(f"pruned {pruned:,} moves more than {arguments.max_drop} cp below their best sibling")
     print(f"wrote {arguments.out} ({size / 1e6:.2f} MB)")
 
 
