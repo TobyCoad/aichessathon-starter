@@ -58,12 +58,19 @@ def bucket_of(count: Tensor, buckets: int) -> Tensor:
     return torch.clamp((count - 1) * buckets // MAX_PIECES, 0, buckets - 1)
 
 
-def zone_of(square: Tensor) -> Tensor:
+def zone_of(square: Tensor, zones: int = 8) -> Tensor:
     """Vectorised `training.features.king_zone`: the king's zone from its own side."""
     rank = square >> 3
     file = square & 7
-    upper = torch.where(rank <= 3, 4 + (file >> 2), 6 + (file >> 2))
-    return torch.where(rank <= 1, file >> 1, upper)
+    if zones == 1:
+        return torch.zeros_like(square)
+    if zones == 4:
+        upper = torch.where(rank <= 3, torch.full_like(square, 2), torch.full_like(square, 3))
+        return torch.where(rank <= 1, file >> 2, upper)
+    if zones == 8:
+        upper = torch.where(rank <= 3, 4 + (file >> 2), 6 + (file >> 2))
+        return torch.where(rank <= 1, file >> 1, upper)
+    raise ValueError(f"no zone map for {zones} king zones")
 
 
 class Net(nn.Module):
@@ -119,8 +126,8 @@ class Net(nn.Module):
             black_king = ((white - 704) * (valid & (white >= 704))).sum(1)
             # Each perspective's zone comes from its own king, seen from its own
             # side: the black king's square is mirrored, as in features.indices.
-            white = white + (zone_of(white_king) * FEATURES).unsqueeze(1)
-            black = black + (zone_of(black_king ^ 56) * FEATURES).unsqueeze(1)
+            white = white + (zone_of(white_king, self.king_zones) * FEATURES).unsqueeze(1)
+            black = black + (zone_of(black_king ^ 56, self.king_zones) * FEATURES).unsqueeze(1)
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
         acc_b = self.bag(black, per_sample_weights=mask) + self.acc_bias
         white_to_move = stm.unsqueeze(1).bool()

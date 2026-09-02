@@ -35,20 +35,30 @@ FEATURES = 768
 MAX_PIECES = 32
 
 
-def king_zone(square: int) -> int:
-    """Zone 0..7 of a king on `square`, seen from its own side.
+def king_zone(square: int, zones: int = 8) -> int:
+    """Zone of a king on `square`, seen from its own side, for a net with `zones`.
 
-    Ranks 1-2 are split into four two-file bands, because that is where kings
-    spend most of the game and where castled-short, castled-long and uncastled
-    differ most; ranks 3-4 and 5-8 each get a queenside and a kingside half.
+    Eight zones: ranks 1-2 split into four two-file bands, because that is where
+    kings spend most of the game and where castled-short, castled-long and
+    uncastled differ most; ranks 3-4 and 5-8 each get a queenside and a kingside
+    half. Four zones: ranks 1-2 split into halves, then ranks 3-4, then 5-8.
+    One zone: everything is zone 0, the plain 768 net.
     """
     rank = square >> 3
     file = square & 7
-    if rank <= 1:
-        return file >> 1
-    if rank <= 3:
-        return 4 + (file >> 2)
-    return 6 + (file >> 2)
+    if zones == 1:
+        return 0
+    if zones == 4:
+        if rank <= 1:
+            return file >> 2
+        return 2 if rank <= 3 else 3
+    if zones == 8:
+        if rank <= 1:
+            return file >> 1
+        if rank <= 3:
+            return 4 + (file >> 2)
+        return 6 + (file >> 2)
+    raise ValueError(f"no zone map for {zones} king zones")
 
 
 KING_ZONES = 8

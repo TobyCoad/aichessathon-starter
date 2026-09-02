@@ -15,6 +15,7 @@ not be read as a measurement.
 
 import argparse
 import sys
+import time
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
@@ -62,6 +63,7 @@ class Task:
     base_ms: int
     increment_ms: int
     ply_cap: int
+    pgn_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,16 @@ def play(task: Task) -> GameResult:
     # awards the game to the opponent, so a score of 0 on a failed termination
     # means our agent was the one that broke.
     agent_failed = outcome.termination in FAILED_TERMINATIONS and score == 0.0
+    if task.pgn_dir:
+        # Keep the game so it can be replayed. Cheap, and the only way to see what
+        # a score actually looked like on the board.
+        colour = "w" if task.agent_white else "b"
+        name = f"{task.pair:03d}{colour}-{white.name}-vs-{black.name}.pgn"
+        try:
+            Path(task.pgn_dir).mkdir(parents=True, exist_ok=True)
+            (Path(task.pgn_dir) / name).write_text(outcome.pgn + "\n", encoding="utf-8")
+        except OSError:
+            pass
     return GameResult(task.pair, score, outcome.termination, outcome.plies, agent_failed)
 
 
@@ -135,11 +147,12 @@ def run(
     elo0: float,
     elo1: float,
     quiet: bool = False,
+    pgn_dir: str = "",
 ) -> tuple[Tally, sprt.Verdict]:
     """Play until the SPRT concludes or `max_games` is reached."""
     schedule = openings.pairs(max_games)
     tasks = [
-        Task(index // 2, agent, opponent, fen, white, base_ms, increment_ms, ply_cap)
+        Task(index // 2, agent, opponent, fen, white, base_ms, increment_ms, ply_cap, pgn_dir)
         for index, (fen, white) in enumerate(schedule)
     ]
 
@@ -211,12 +224,20 @@ def main() -> None:
     )
     parser.add_argument("--elo0", type=float, default=0.0)
     parser.add_argument("--elo1", type=float, default=20.0)
+    parser.add_argument(
+        "--pgn-dir",
+        default=None,
+        help="where to keep every game; default overnight/pgn/<agent>-vs-<opponent>-<time>",
+    )
     arguments = parser.parse_args()
-
 
     workers = arguments.workers or default_workers()
     agent = arguments.agent.resolve()
     opponent = arguments.opponent.resolve()
+    pgn_dir = arguments.pgn_dir
+    if pgn_dir is None:
+        stamp = time.strftime("%Y%m%dT%H%M%S")
+        pgn_dir = f"overnight/pgn/{agent.name or 'agent'}-vs-{opponent.name}-{stamp}"
 
     print(
         f"{agent.name} vs {opponent.name} | {arguments.base_ms / 1000:g}s"
@@ -233,8 +254,10 @@ def main() -> None:
         workers,
         arguments.elo0,
         arguments.elo1,
+        pgn_dir=pgn_dir,
     )
     report(agent, opponent, tally, verdict)
+    print(f"  games saved under {pgn_dir}")
     raise SystemExit(1 if tally.failures else 0)
 
 

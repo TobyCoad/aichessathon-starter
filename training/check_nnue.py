@@ -65,7 +65,9 @@ def main() -> None:
     # position with a king outside zone 0 is scored by the wrong first layer.
     if hasattr(agent, "_zone"):
         zone_failures = sum(
-            1 for square in range(64) if agent._zone(square) != features.king_zone(square)
+            1
+            for square in range(64)
+            if agent._zone(square) != features.king_zone(square, getattr(agent, "KING_ZONES", 1))
         )
         failures += zone_failures
         print(

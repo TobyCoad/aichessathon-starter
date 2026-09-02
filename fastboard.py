@@ -628,14 +628,21 @@ FEATURES = 768
 
 
 @njit(cache=False)
-def zone_of(square: Any) -> Any:
+def zone_of(square: Any, zones: Any) -> Any:
+    """Mirrors training.features.king_zone for 1, 4 or 8 zones."""
     rank = square >> 3
     file = square & 7
-    if rank <= 1:
-        return file >> 1
-    if rank <= 3:
-        return 4 + (file >> 2)
-    return 6 + (file >> 2)
+    if zones == 4:
+        if rank <= 1:
+            return file >> 2
+        return 2 if rank <= 3 else 3
+    if zones == 8:
+        if rank <= 1:
+            return file >> 1
+        if rank <= 3:
+            return 4 + (file >> 2)
+        return 6 + (file >> 2)
+    return 0
 
 
 @njit(cache=False)
@@ -721,7 +728,7 @@ def make_full(
     crossing = 0
     new_zone = 0
     if piece == 5 and king_zones > 1:
-        new_zone = zone_of(to if us == 0 else to ^ 56)
+        new_zone = zone_of(to if us == 0 else to ^ 56, king_zones)
         if new_zone != zones[us]:
             crossing = 1
 
@@ -792,8 +799,8 @@ def refresh(
     king_zones: Any,
 ) -> Any:
     if king_zones > 1:
-        zones[0] = zone_of(lsb(bb[5]))
-        zones[1] = zone_of(lsb(bb[11]) ^ 56)
+        zones[0] = zone_of(lsb(bb[5]), king_zones)
+        zones[1] = zone_of(lsb(bb[11]) ^ 56, king_zones)
     else:
         zones[0] = 0
         zones[1] = 0

@@ -111,17 +111,23 @@ KING_ZONES: Final = int(W1.shape[0]) // FEATURES
 
 
 def _zone(square: int) -> int:
-    """Zone 0..7 of a king on `square`, from its own side.
+    """Zone of a king on `square`, from its own side, for this net's zone count.
 
     Mirrors `training.features.king_zone` exactly; check_nnue compares all 64.
     """
     rank = square >> 3
     file = square & 7
-    if rank <= 1:
-        return file >> 1
-    if rank <= 3:
-        return 4 + (file >> 2)
-    return 6 + (file >> 2)
+    if KING_ZONES == 4:
+        if rank <= 1:
+            return file >> 2
+        return 2 if rank <= 3 else 3
+    if KING_ZONES == 8:
+        if rank <= 1:
+            return file >> 1
+        if rank <= 3:
+            return 4 + (file >> 2)
+        return 6 + (file >> 2)
+    return 0
 
 
 def _stacked(name: str) -> npt.NDArray[np.float32]:
