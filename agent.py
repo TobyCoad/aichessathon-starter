@@ -1200,7 +1200,7 @@ _ENGINE = Engine()
 # Any exception on the compiled path, and any move it proposes that python-chess
 # does not accept, falls back to Engine for that move. The failure mode is a slower
 # move, never a lost game.
-FAST_BOARD: Final = False
+FAST_BOARD: Final = True
 _FAST_OK = False
 try:
     if FAST_BOARD and _COMPILED:
