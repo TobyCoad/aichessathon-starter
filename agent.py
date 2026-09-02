@@ -99,11 +99,44 @@ import numpy.typing as npt
 _WEIGHTS = np.load(Path(__file__).with_name("weights") / "net.npz")
 W1: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)   # (768, 256)
 B1: Final = np.ascontiguousarray(_WEIGHTS["b1"], dtype=np.float32)   # (256,)
-W2: Final = np.ascontiguousarray(_WEIGHTS["W2"], dtype=np.float32)   # (512, 32)
-B2: Final = np.ascontiguousarray(_WEIGHTS["b2"], dtype=np.float32)   # (32,)
-W3: Final = np.ascontiguousarray(_WEIGHTS["W3"], dtype=np.float32)   # (32, 1)
-B3: Final = np.ascontiguousarray(_WEIGHTS["b3"], dtype=np.float32)   # (1,)
 ACC_SIZE: Final = W1.shape[1]
+
+
+def _stacked(name: str) -> npt.NDArray[np.float32]:
+    """A head matrix with a leading bucket axis, whichever layout the file has.
+
+    A single-head file stores W2 as (2A, H); a bucketed one as (B, 2A, H). Both
+    are read into the bucketed shape so there is exactly one evaluation path.
+    """
+    array = np.ascontiguousarray(_WEIGHTS[name], dtype=np.float32)
+    matrix = name in ("W2", "W3")
+    single = array.ndim == (2 if matrix else 1)
+    if single:
+        array = array[None]
+    return np.ascontiguousarray(array)
+
+
+# Output buckets: independent heads after the shared accumulator, selected by the
+# number of pieces on the board. One shared head scored four different KQvK
+# positions within 120 cp of each other and could not convert; a head that only
+# ever sees few-piece positions has the capacity to tell them apart. Costs nothing
+# at inference: one head's matrices are picked, and the same kernel runs.
+W2: Final = _stacked("W2")   # (B, 2A, 32)
+B2: Final = _stacked("b2")   # (B, 32)
+W3: Final = _stacked("W3")   # (B, 32, 1)
+B3: Final = _stacked("b3")   # (B, 1)
+BUCKETS: Final = int(W2.shape[0])
+
+
+def _bucket(pieces: int) -> int:
+    """Which head scores a position with `pieces` men on the board, 1..32.
+
+    Mirrors `bucket_of` in training/train.py exactly. training/check_nnue.py
+    compares the engine against the torch model on positions spanning every
+    band, so a disagreement here fails loudly.
+    """
+    bucket = (pieces - 1) * BUCKETS // 32
+    return 0 if bucket < 0 else (BUCKETS - 1 if bucket >= BUCKETS else bucket)
 
 # The network predicts a win-probability logit; centipawns are that times 400.
 # Getting this constant wrong scales the whole evaluation silently.
@@ -253,7 +286,7 @@ try:
     from numba import float32, int32, int64, njit
     from numba import types as _nbt
 
-    _W2T = np.ascontiguousarray(W2.T)
+    _W2T = np.ascontiguousarray(W2.transpose(0, 2, 1))  # (B, 32, 2A)
 
     @njit(
         float32(float32[:], float32[:], float32[:, ::1], float32[:], float32[:, ::1], float32[:]),
@@ -340,7 +373,7 @@ try:
     _warm_b = B1.copy()
     _warm_stack = np.zeros((2, 2, ACC_SIZE), dtype=np.float32)
     _warm_idx = np.zeros(8, dtype=np.int32)
-    _eval_kernel(_warm_a, _warm_b, _W2T, B2, W3, B3)
+    _eval_kernel(_warm_a, _warm_b, _W2T[0], B2[0], W3[0], B3[0])
     _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1)
     _pop_kernel(_warm_a, _warm_b, _warm_stack, 0)
     _COMPILED = True
@@ -484,20 +517,24 @@ class Accumulator:
             return
         self.white, self.black = self.stack.pop()
 
-    def evaluate(self, turn: chess.Color) -> int:
-        """Centipawns from the side to move's point of view."""
+    def evaluate(self, turn: chess.Color, pieces: int = 32) -> int:
+        """Centipawns from the side to move's point of view.
+
+        `pieces` is the number of men on the board and selects the output head.
+        """
         if turn == chess.WHITE:
             own, opponent = self.white, self.black
         else:
             own, opponent = self.black, self.white
+        k = _bucket(pieces)
         if self.fast:
-            compiled: float = float(_eval_kernel(own, opponent, _W2T, B2, W3, B3))
+            compiled: float = float(_eval_kernel(own, opponent, _W2T[k], B2[k], W3[k], B3[k]))
             return int(compiled * OUTPUT_SCALE)
         hidden = np.concatenate((own, opponent))
         np.clip(hidden, 0.0, 1.0, out=hidden)
         hidden *= hidden  # SCReLU
-        second = np.maximum(hidden @ W2 + B2, 0.0)
-        return int(float((second @ W3 + B3)[0]) * OUTPUT_SCALE)
+        second = np.maximum(hidden @ W2[k] + B2[k], 0.0)
+        return int(float((second @ W3[k] + B3[k])[0]) * OUTPUT_SCALE)
 
 
 def _to_table(score: int, ply: int) -> int:
@@ -635,7 +672,7 @@ class Engine:
 
     def evaluate(self, board: chess.Board) -> int:
         """The learned evaluation, from the incrementally maintained accumulator."""
-        return self.acc.evaluate(board.turn)
+        return self.acc.evaluate(board.turn, chess.popcount(board.occupied))
 
     # -- move ordering ------------------------------------------------------------
 
