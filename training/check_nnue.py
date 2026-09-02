@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 from training import features
-from training.train import Net
+from training.train import load_checkpoint
 
 
 def load_agent(directory: Path) -> ModuleType:
@@ -152,11 +152,10 @@ def main() -> None:
     failures += forced_failures
 
     # 3. The engine's numpy forward pass versus the torch model.
-    state = torch.load(arguments.checkpoint, map_location="cpu", weights_only=True)
-    # Width is a property of the checkpoint, not a constant: the engine reads it
-    # from the weight file, so this must too or it compares against a different net.
-    net = Net(int(state["bag.weight"].shape[1])).eval()
-    net.load_state_dict(state)
+    # Width and bucket count are properties of the checkpoint, not constants: the
+    # engine reads them from the weight file, so this must too or it compares
+    # against a different net.
+    net = load_checkpoint(arguments.checkpoint).eval()
 
     board = chess.Board()
     worst = 0.0
@@ -168,7 +167,10 @@ def main() -> None:
             continue
         board.push(rng.choice(moves))
         acc.refresh(board)
-        engine_cp = acc.evaluate(board.turn)
+        try:
+            engine_cp = acc.evaluate(board.turn, chess.popcount(board.occupied))
+        except TypeError:  # an agent from before output buckets
+            engine_cp = acc.evaluate(board.turn)
 
         white = features.white_indices(board)
         black = features.black_indices(board)
