@@ -347,7 +347,7 @@ try:
     @njit(
         _nbt.void(
             float32[:], float32[:], float32[:, :, ::1], int64,
-            float32[:, ::1], int32[:], int64, int32[:], int64,
+            float32[:, ::1], int32[:], int64, int32[:], int64, int64, int64,
         ),
         cache=False,
         fastmath=True,
@@ -362,22 +362,45 @@ try:
         n_added: int,
         removed: npt.NDArray[np.int32],
         n_removed: int,
+        white_offset: int,
+        black_offset: int,
     ) -> None:
+        # The offsets select each perspective's king-zone block of W1; even index
+        # slots are the white perspective, odd slots the black one.
         for i in range(ACC_SIZE):
             stack[depth, 0, i] = white[i]
             stack[depth, 1, i] = black[i]
         for k in range(n_added):
-            rw = w1[added[2 * k]]
-            rb = w1[added[2 * k + 1]]
+            rw = w1[added[2 * k] + white_offset]
+            rb = w1[added[2 * k + 1] + black_offset]
             for i in range(ACC_SIZE):
                 white[i] += rw[i]
                 black[i] += rb[i]
         for k in range(n_removed):
-            rw = w1[removed[2 * k]]
-            rb = w1[removed[2 * k + 1]]
+            rw = w1[removed[2 * k] + white_offset]
+            rb = w1[removed[2 * k + 1] + black_offset]
             for i in range(ACC_SIZE):
                 white[i] -= rw[i]
                 black[i] -= rb[i]
+
+    @njit(
+        _nbt.void(float32[:], float32[:], float32[:, ::1], int32[:], int64),
+        cache=False,
+        fastmath=True,
+    )
+    def _refresh_kernel(
+        out: npt.NDArray[np.float32],
+        b1: npt.NDArray[np.float32],
+        w1: npt.NDArray[np.float32],
+        indices: npt.NDArray[np.int32],
+        count: int,
+    ) -> None:
+        for i in range(ACC_SIZE):
+            out[i] = b1[i]
+        for k in range(count):
+            row = w1[indices[k]]
+            for i in range(ACC_SIZE):
+                out[i] += row[i]
 
     @njit(_nbt.void(float32[:], float32[:], float32[:, :, ::1], int64), cache=False, fastmath=True)
     def _pop_kernel(
@@ -396,7 +419,9 @@ try:
     _warm_stack = np.zeros((2, 2, ACC_SIZE), dtype=np.float32)
     _warm_idx = np.zeros(8, dtype=np.int32)
     _eval_kernel(_warm_a, _warm_b, _W2T[0], B2[0], W3[0], B3[0])
-    _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1)
+    _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1, 0, 0)
+    _warm_feats = np.zeros(32, dtype=np.int32)
+    _refresh_kernel(_warm_a, B1, W1, _warm_feats, 1)
     _pop_kernel(_warm_a, _warm_b, _warm_stack, 0)
     _COMPILED = True
 except Exception:
@@ -412,7 +437,7 @@ class Accumulator:
     """
 
     __slots__ = (
-        "added", "black", "depth", "fast", "removed", "stack", "white",
+        "added", "black", "depth", "fast", "features", "removed", "stack", "white",
         "zone_black", "zone_white", "zones",
     )
 
@@ -425,6 +450,8 @@ class Accumulator:
         self.zone_white = 0
         self.zone_black = 0
         self.zones: list[tuple[int, int]] = []
+        # Scratch for a full rebuild: at most 32 first-layer indices.
+        self.features = np.zeros(64, dtype=np.int32)
         self.fast = _COMPILED
         if self.fast:
             # One preallocated buffer instead of a fresh pair of arrays per node.
@@ -449,25 +476,35 @@ class Accumulator:
             return 0
         return _zone(king if colour == chess.WHITE else king ^ 56)
 
-    @staticmethod
-    def _rebuild(board: chess.Board, white_pov: bool, zone: int) -> npt.NDArray[np.float32]:
-        """One perspective's first-layer sum from scratch, in the given king zone."""
-        total = B1.copy()
+    def _rebuild(
+        self, board: chess.Board, white_pov: bool, zone: int, out: npt.NDArray[np.float32]
+    ) -> None:
+        """One perspective's first-layer sum from scratch, in the given king zone,
+        written into `out`. Compiled, because a king crossing a zone boundary lands
+        here at ~3% of nodes, and the numpy row-add version cost 40 us each time."""
         offset = zone * FEATURES
+        features = self.features
+        count = 0
         for piece_type in range(1, 7):
             for colour in (chess.WHITE, chess.BLACK):
                 mask = board.pieces_mask(piece_type, colour)
                 while mask:
                     square = (mask & -mask).bit_length() - 1
-                    total += W1[offset + _feature(square, piece_type, colour, white_pov)]
+                    features[count] = offset + _feature(square, piece_type, colour, white_pov)
+                    count += 1
                     mask &= mask - 1
-        return total
+        if self.fast:
+            _refresh_kernel(out, B1, W1, features, count)
+            return
+        out[:] = B1
+        for k in range(count):
+            out += W1[features[k]]
 
     def refresh(self, board: chess.Board) -> None:
         self.zone_white = self._king_zone(board, chess.WHITE)
         self.zone_black = self._king_zone(board, chess.BLACK)
-        self.white = self._rebuild(board, True, self.zone_white)
-        self.black = self._rebuild(board, False, self.zone_black)
+        self._rebuild(board, True, self.zone_white, self.white)
+        self._rebuild(board, False, self.zone_black, self.black)
         self.zones.clear()
         if self.fast:
             self.depth = 0
@@ -536,19 +573,7 @@ class Accumulator:
                 added[2 * n_added + 1] = _feature(rook_to, chess.ROOK, mover, False)
                 n_added += 1
 
-        if KING_ZONES > 1:
-            # Even slots are the white perspective, odd slots the black one; each
-            # takes the first-layer block of its own king's zone.
-            white_offset = self.zone_white * FEATURES
-            black_offset = self.zone_black * FEATURES
-            for k in range(n_added):
-                added[2 * k] += white_offset
-                added[2 * k + 1] += black_offset
-            for k in range(n_removed):
-                removed[2 * k] += white_offset
-                removed[2 * k + 1] += black_offset
-
-        self._apply(board, added, n_added, removed, n_removed)
+        self._apply(added, n_added, removed, n_removed)
 
         if crossing:
             # The deltas above were applied in the old zone, which is now the wrong
@@ -558,22 +583,24 @@ class Accumulator:
             try:
                 if crossing == 1:
                     self.zone_white = new_zone
-                    self.white[:] = self._rebuild(board, True, new_zone)
+                    self._rebuild(board, True, new_zone, self.white)
                 else:
                     self.zone_black = new_zone
-                    self.black[:] = self._rebuild(board, False, new_zone)
+                    self._rebuild(board, False, new_zone, self.black)
             finally:
                 board.pop()
 
     def _apply(
         self,
-        board: chess.Board,
         added: npt.NDArray[np.int32],
         n_added: int,
         removed: npt.NDArray[np.int32],
         n_removed: int,
     ) -> None:
-        """Save the current vectors, then add and subtract the given W1 rows."""
+        """Save the current vectors, then add and subtract the given W1 rows, each
+        perspective in its own king-zone block."""
+        white_offset = self.zone_white * FEATURES
+        black_offset = self.zone_black * FEATURES
         if self.fast:
             # The compiled kernel does no bounds checking -- numba's eager
             # signatures compile with boundscheck off, so overrunning the stack
@@ -586,18 +613,18 @@ class Accumulator:
                 self.stack = grown
             _push_kernel(
                 self.white, self.black, self.stack, self.depth,
-                W1, added, n_added, removed, n_removed,
+                W1, added, n_added, removed, n_removed, white_offset, black_offset,
             )
             self.depth += 1
             return
 
         self.stack.append((self.white.copy(), self.black.copy()))
         for k in range(n_added):
-            self.white += W1[added[2 * k]]
-            self.black += W1[added[2 * k + 1]]
+            self.white += W1[added[2 * k] + white_offset]
+            self.black += W1[added[2 * k + 1] + black_offset]
         for k in range(n_removed):
-            self.white -= W1[removed[2 * k]]
-            self.black -= W1[removed[2 * k + 1]]
+            self.white -= W1[removed[2 * k] + white_offset]
+            self.black -= W1[removed[2 * k + 1] + black_offset]
 
     def pop(self) -> None:
         self.zone_white, self.zone_black = self.zones.pop()
