@@ -1681,6 +1681,12 @@ def get_move(fen: str, time_left_ms: int) -> str:
     returns       "e2e4", or "e7e8q" for a promotion
     """
     board = chess.Board(fen)
+    # The contract says an int; a float or a numeric string is cheaper to accept
+    # than to lose a game over.
+    try:
+        time_left_ms = int(time_left_ms)
+    except (TypeError, ValueError):
+        time_left_ms = 1000
 
     # Remember every position we have been asked about. The referee claims threefold
     # repetition automatically, so an engine that is winning and shuffling can have a
