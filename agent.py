@@ -577,7 +577,7 @@ MAX_PLY: Final = 72
 # HYGIENE        halve the history table each move, record the position after our
 #                move for repetition detection, and never let reverse futility
 #                answer a mate-bound window.
-TIME_V2: Final = False
+TIME_V2: Final = True
 QS_EVASIONS: Final = False
 STAGED_MOVEGEN: Final = False
 HYGIENE: Final = True
@@ -585,6 +585,8 @@ HYGIENE: Final = True
 # TIME_V2: the clock is never allowed below this fraction of its starting value,
 # which is inferred as the largest time_left_ms seen in the game. 12 s at 120 s.
 RESERVE_FRACTION: Final = 0.10
+# TIME_V2: below this many seconds the budget stops crediting the increment.
+LOW_CLOCK: Final = 15.0
 _MAX_CLOCK_MS: float = 0.0
 # How often the search looks at the clock. time.monotonic() costs well under a
 # microsecond, so polling four times as often under TIME_V2 is free and quarters
@@ -1111,8 +1113,12 @@ def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
 
     expected = max(20.0, 40.0 - board.fullmove_number * 0.5)
-    increment = 0.5 if remaining > 5.0 else 0.0
-    soft = remaining / expected + 0.5 * increment
+    # Below LOW_CLOCK, live on the increment. Crediting half of it while the clock
+    # is low sets up an equilibrium where the clock settles at whatever level makes
+    # the spend equal the income -- measured at 4.4-4.6 s under a 1.5x charge, which
+    # is no margin at all. With no credit and a longer horizon the same equilibrium
+    # sits near 10 s charged 1.5x and near 14 s uncharged.
+    soft = remaining / 30.0 if remaining < LOW_CLOCK else remaining / expected + 0.25
     hard = min(remaining * 0.12, soft * 3.0)
     reserve = _MAX_CLOCK_MS * RESERVE_FRACTION / 1000.0
     if reserve > 0.0:
