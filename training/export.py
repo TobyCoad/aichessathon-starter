@@ -28,11 +28,14 @@ import torch
 from training.train import FEATURES, Net, bucket_of, load_checkpoint
 
 
-def expected_shapes(accumulator: int, hidden: int, buckets: int) -> dict[str, tuple[int, ...]]:
-    """The engine reads these shapes from the file, so width is a training choice."""
+def expected_shapes(
+    accumulator: int, hidden: int, buckets: int, king_zones: int = 1
+) -> dict[str, tuple[int, ...]]:
+    """The engine reads these shapes from the file, so width, head count and king
+    zones are all training choices. W1 has one 768-row block per king zone."""
     if buckets == 1:
         return {
-            "W1": (FEATURES, accumulator),
+            "W1": (FEATURES * king_zones, accumulator),
             "b1": (accumulator,),
             "W2": (2 * accumulator, hidden),
             "b2": (hidden,),
@@ -40,7 +43,7 @@ def expected_shapes(accumulator: int, hidden: int, buckets: int) -> dict[str, tu
             "b3": (1,),
         }
     return {
-        "W1": (FEATURES, accumulator),
+        "W1": (FEATURES * king_zones, accumulator),
         "b1": (accumulator,),
         "W2": (buckets, 2 * accumulator, hidden),
         "b2": (buckets, hidden),
@@ -97,7 +100,7 @@ def main() -> None:
     weights = convert(net)
     accumulator = int(net.bag.weight.shape[1])
     hidden = int(net.head_w2.shape[2])
-    expected = expected_shapes(accumulator, hidden, net.buckets)
+    expected = expected_shapes(accumulator, hidden, net.buckets, net.king_zones)
 
     for name, shape in expected.items():
         actual = weights[name].shape
@@ -131,7 +134,7 @@ def main() -> None:
     parameters = sum(int(np.prod(shape)) for shape in expected.values())
     print(
         f"wrote {arguments.out} ({size / 1e6:.2f} MB, {parameters:,} parameters, "
-        f"{net.buckets} output bucket(s))"
+        f"{net.buckets} output bucket(s), {net.king_zones} king zone(s))"
     )
     print(f"numpy head matches torch to {error:.2g}")
     for name, shape in expected.items():

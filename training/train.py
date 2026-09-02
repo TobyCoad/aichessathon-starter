@@ -58,21 +58,42 @@ def bucket_of(count: Tensor, buckets: int) -> Tensor:
     return torch.clamp((count - 1) * buckets // MAX_PIECES, 0, buckets - 1)
 
 
+def zone_of(square: Tensor) -> Tensor:
+    """Vectorised `training.features.king_zone`: the king's zone from its own side."""
+    rank = square >> 3
+    file = square & 7
+    upper = torch.where(rank <= 3, 4 + (file >> 2), 6 + (file >> 2))
+    return torch.where(rank <= 1, file >> 1, upper)
+
+
 class Net(nn.Module):
-    """(768 -> A)x2 -> H -> 1, with `buckets` independent heads after the accumulator.
+    """(K x 768 -> A)x2 -> H -> 1: `king_zones` copies of the first layer selected by
+    the perspective's own king square, and `buckets` independent heads after the
+    accumulator selected by piece count.
 
     The heads are stored stacked -- head_w2 (B, 2A, H), head_b2 (B, H),
     head_w3 (B, H), head_b3 (B,) -- and every head is evaluated for every sample,
     then the sample's own head is gathered. Gathering per-sample weight matrices
     instead would materialise (batch, 2A, H) floats, 2 GB at batch 16384.
+
+    King zones need no new data: the white-perspective indices already say where
+    both kings stand (own king 320+sq, opponent king 704+sq), so the zone offsets
+    are derived per batch inside `forward`.
     """
 
-    def __init__(self, accumulator: int = ACC, hidden: int = HIDDEN, buckets: int = 1) -> None:
+    def __init__(
+        self,
+        accumulator: int = ACC,
+        hidden: int = HIDDEN,
+        buckets: int = 1,
+        king_zones: int = 1,
+    ) -> None:
         super().__init__()
         self.buckets = buckets
+        self.king_zones = king_zones
         # padding_idx is not used: padding is masked by per-sample weights instead,
         # because index 0 is a real feature (own pawn on a1) even if unreachable.
-        self.bag = nn.EmbeddingBag(FEATURES, accumulator, mode="sum")
+        self.bag = nn.EmbeddingBag(FEATURES * king_zones, accumulator, mode="sum")
         self.acc_bias = nn.Parameter(torch.zeros(accumulator))
         self.head_w2 = nn.Parameter(torch.empty(buckets, 2 * accumulator, hidden))
         self.head_b2 = nn.Parameter(torch.empty(buckets, hidden))
@@ -92,6 +113,14 @@ class Net(nn.Module):
         nn.init.uniform_(self.head_b3, -bound3, bound3)
 
     def forward(self, white: Tensor, black: Tensor, mask: Tensor, stm: Tensor) -> Tensor:
+        if self.king_zones > 1:
+            valid = mask > 0
+            white_king = ((white - 320) * (valid & (white >= 320) & (white < 384))).sum(1)
+            black_king = ((white - 704) * (valid & (white >= 704))).sum(1)
+            # Each perspective's zone comes from its own king, seen from its own
+            # side: the black king's square is mirrored, as in features.indices.
+            white = white + (zone_of(white_king) * FEATURES).unsqueeze(1)
+            black = black + (zone_of(black_king ^ 56) * FEATURES).unsqueeze(1)
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
         acc_b = self.bag(black, per_sample_weights=mask) + self.acc_bias
         white_to_move = stm.unsqueeze(1).bool()
@@ -107,20 +136,29 @@ class Net(nn.Module):
         return out
 
 
-def load_checkpoint(path: Path, buckets: int | None = None) -> Net:
+def load_checkpoint(
+    path: Path, buckets: int | None = None, king_zones: int | None = None
+) -> Net:
     """Build a Net from a checkpoint, whichever layout it was saved in.
 
     Checkpoints from before output buckets hold a single head as `l2.*`/`l3.*`.
-    Those load into every head of a bucketed net, so a bucketed continuation
-    starts exactly where the single-head net finished rather than from noise.
+    Those load into every head of a bucketed net, and a single-zone first layer
+    loads into every king zone, so a continuation starts exactly where the smaller
+    net finished rather than from noise. Asking for fewer zones or buckets than the
+    file has is refused: there is no honest way to merge them.
     """
     state = torch.load(path, map_location="cpu", weights_only=True)
     accumulator = int(state["bag.weight"].shape[1])
+    saved_zones = int(state["bag.weight"].shape[0]) // FEATURES
+    zones = king_zones or saved_zones
+    if zones != saved_zones and saved_zones != 1:
+        raise SystemExit(f"{path} has {saved_zones} king zones, asked for {zones}")
     if "l2.weight" in state:
         hidden = int(state["l2.weight"].shape[0])
-        net = Net(accumulator, hidden, buckets or 1)
+        heads = buckets or 1
+        net = Net(accumulator, hidden, heads, zones)
         with torch.no_grad():
-            net.bag.weight.copy_(state["bag.weight"])
+            net.bag.weight.copy_(state["bag.weight"].repeat(zones // saved_zones, 1))
             net.acc_bias.copy_(state["acc_bias"])
             net.head_w2.copy_(state["l2.weight"].t().unsqueeze(0).expand_as(net.head_w2))
             net.head_b2.copy_(state["l2.bias"].unsqueeze(0).expand_as(net.head_b2))
@@ -130,7 +168,10 @@ def load_checkpoint(path: Path, buckets: int | None = None) -> Net:
     saved = int(state["head_w2"].shape[0])
     if buckets is not None and buckets != saved:
         raise SystemExit(f"{path} has {saved} output buckets, asked for {buckets}")
-    net = Net(accumulator, int(state["head_w2"].shape[2]), saved)
+    net = Net(accumulator, int(state["head_w2"].shape[2]), saved, zones)
+    if zones != saved_zones:
+        state = dict(state)
+        state["bag.weight"] = state["bag.weight"].repeat(zones // saved_zones, 1)
     net.load_state_dict(state)
     return net
 
@@ -228,6 +269,7 @@ def train(
     resume: Path | None = None,
     limit: int = 0,
     buckets: int = 1,
+    king_zones: int = 1,
 ) -> tuple[Net, dict[str, float]]:
     """Train, cycling through `sources` one shard per epoch.
 
@@ -239,10 +281,13 @@ def train(
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
     if resume is not None:
-        net = load_checkpoint(resume, buckets).to(device)
-        print(f"  resumed from {resume} into {net.buckets} output bucket(s)")
+        net = load_checkpoint(resume, buckets, king_zones).to(device)
+        print(
+            f"  resumed from {resume} into {net.buckets} output bucket(s) "
+            f"and {net.king_zones} king zone(s)"
+        )
     else:
-        net = Net(accumulator, buckets=buckets).to(device)
+        net = Net(accumulator, buckets=buckets, king_zones=king_zones).to(device)
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     sizes = [len(_records(source, limit)) for source in sources]
@@ -362,6 +407,9 @@ def main() -> None:
     parser.add_argument(
         "--buckets", type=int, default=1, help="output heads, selected by piece count"
     )
+    parser.add_argument(
+        "--king-zones", type=int, default=1, help="first-layer copies, selected by own king"
+    )
     parser.add_argument("--patience", type=int, default=4, help="early-stop patience, epochs")
     parser.add_argument("--limit", type=int, default=0, help="use only the first N positions")
     parser.add_argument("--skip-sanity", action="store_true")
@@ -394,7 +442,8 @@ def main() -> None:
 
     print(
         f"training {arguments.epochs} epochs, batch {arguments.batch}, "
-        f"accumulator {arguments.accumulator}, buckets {arguments.buckets}"
+        f"accumulator {arguments.accumulator}, buckets {arguments.buckets}, "
+        f"king zones {arguments.king_zones}"
     )
     net, summary = train(
         list(arguments.data),
@@ -408,6 +457,7 @@ def main() -> None:
         resume=arguments.resume,
         limit=arguments.limit,
         buckets=arguments.buckets,
+        king_zones=arguments.king_zones,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)

@@ -97,9 +97,31 @@ import numpy.typing as npt
 # BLAS; quantisation is a C++/SIMD trick that inverts in Python.
 
 _WEIGHTS = np.load(Path(__file__).with_name("weights") / "net.npz")
-W1: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)   # (768, 256)
-B1: Final = np.ascontiguousarray(_WEIGHTS["b1"], dtype=np.float32)   # (256,)
+W1: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)   # (K * 768, A)
+B1: Final = np.ascontiguousarray(_WEIGHTS["b1"], dtype=np.float32)   # (A,)
 ACC_SIZE: Final = W1.shape[1]
+FEATURES: Final = 768
+
+# King zones: W1 holds one 768-row block per zone of the perspective's own king, so
+# the same piece on the same square can mean something different when the king is
+# castled short, castled long or still in the centre. The zone is a property of
+# the king's square seen from its own side (mirrored for black), and the first-layer
+# index is `zone * 768 + feature`. A one-zone file is the old layout, unchanged.
+KING_ZONES: Final = int(W1.shape[0]) // FEATURES
+
+
+def _zone(square: int) -> int:
+    """Zone 0..7 of a king on `square`, from its own side.
+
+    Mirrors `training.features.king_zone` exactly; check_nnue compares all 64.
+    """
+    rank = square >> 3
+    file = square & 7
+    if rank <= 1:
+        return file >> 1
+    if rank <= 3:
+        return 4 + (file >> 2)
+    return 6 + (file >> 2)
 
 
 def _stacked(name: str) -> npt.NDArray[np.float32]:
@@ -389,11 +411,20 @@ class Accumulator:
     rather than a recompute.
     """
 
-    __slots__ = ("added", "black", "depth", "fast", "removed", "stack", "white")
+    __slots__ = (
+        "added", "black", "depth", "fast", "removed", "stack", "white",
+        "zone_black", "zone_white", "zones",
+    )
 
     def __init__(self) -> None:
         self.white = B1.copy()
         self.black = B1.copy()
+        # Each perspective's current king zone, and a stack of them so pop restores
+        # the zone along with the vectors. A king move that crosses a zone boundary
+        # rebuilds that one perspective from scratch; every other move is a delta.
+        self.zone_white = 0
+        self.zone_black = 0
+        self.zones: list[tuple[int, int]] = []
         self.fast = _COMPILED
         if self.fast:
             # One preallocated buffer instead of a fresh pair of arrays per node.
@@ -408,31 +439,40 @@ class Accumulator:
             self.added = np.zeros(8, dtype=np.int32)
             self.removed = np.zeros(8, dtype=np.int32)
 
-    def refresh(self, board: chess.Board) -> None:
-        white = B1.copy()
-        black = B1.copy()
+    @staticmethod
+    def _king_zone(board: chess.Board, colour: chess.Color) -> int:
+        """The zone of `colour`'s king from its own side; 0 for a one-zone net."""
+        if KING_ZONES == 1:
+            return 0
+        king = board.king(colour)
+        if king is None:
+            return 0
+        return _zone(king if colour == chess.WHITE else king ^ 56)
+
+    @staticmethod
+    def _rebuild(board: chess.Board, white_pov: bool, zone: int) -> npt.NDArray[np.float32]:
+        """One perspective's first-layer sum from scratch, in the given king zone."""
+        total = B1.copy()
+        offset = zone * FEATURES
         for piece_type in range(1, 7):
             for colour in (chess.WHITE, chess.BLACK):
                 mask = board.pieces_mask(piece_type, colour)
                 while mask:
                     square = (mask & -mask).bit_length() - 1
-                    white += W1[_feature(square, piece_type, colour, True)]
-                    black += W1[_feature(square, piece_type, colour, False)]
+                    total += W1[offset + _feature(square, piece_type, colour, white_pov)]
                     mask &= mask - 1
-        self.white = white
-        self.black = black
+        return total
+
+    def refresh(self, board: chess.Board) -> None:
+        self.zone_white = self._king_zone(board, chess.WHITE)
+        self.zone_black = self._king_zone(board, chess.BLACK)
+        self.white = self._rebuild(board, True, self.zone_white)
+        self.black = self._rebuild(board, False, self.zone_black)
+        self.zones.clear()
         if self.fast:
             self.depth = 0
         else:
             self.stack.clear()
-
-    def _add(self, square: int, piece_type: int, colour: chess.Color) -> None:
-        self.white += W1[_feature(square, piece_type, colour, True)]
-        self.black += W1[_feature(square, piece_type, colour, False)]
-
-    def _remove(self, square: int, piece_type: int, colour: chess.Color) -> None:
-        self.white -= W1[_feature(square, piece_type, colour, True)]
-        self.black -= W1[_feature(square, piece_type, colour, False)]
 
     def push(self, board: chess.Board, move: chess.Move) -> None:
         """Apply a move's feature deltas. Must be called *before* board.push.
@@ -450,6 +490,17 @@ class Accumulator:
 
         mover = board.turn
         piece_type = board.piece_type_at(move.from_square)
+        # A king move may carry its own perspective into another zone, in which case
+        # that perspective is rebuilt after the deltas below rather than updated.
+        crossing = 0  # 1 = white perspective, 2 = black perspective
+        new_zone = 0
+        if piece_type == chess.KING and KING_ZONES > 1:
+            new_zone = _zone(move.to_square if mover == chess.WHITE else move.to_square ^ 56)
+            if mover == chess.WHITE and new_zone != self.zone_white:
+                crossing = 1
+            elif mover == chess.BLACK and new_zone != self.zone_black:
+                crossing = 2
+        self.zones.append((self.zone_white, self.zone_black))
         if piece_type is not None:
             removed[0] = _feature(move.from_square, piece_type, mover, True)
             removed[1] = _feature(move.from_square, piece_type, mover, False)
@@ -485,6 +536,44 @@ class Accumulator:
                 added[2 * n_added + 1] = _feature(rook_to, chess.ROOK, mover, False)
                 n_added += 1
 
+        if KING_ZONES > 1:
+            # Even slots are the white perspective, odd slots the black one; each
+            # takes the first-layer block of its own king's zone.
+            white_offset = self.zone_white * FEATURES
+            black_offset = self.zone_black * FEATURES
+            for k in range(n_added):
+                added[2 * k] += white_offset
+                added[2 * k + 1] += black_offset
+            for k in range(n_removed):
+                removed[2 * k] += white_offset
+                removed[2 * k + 1] += black_offset
+
+        self._apply(board, added, n_added, removed, n_removed)
+
+        if crossing:
+            # The deltas above were applied in the old zone, which is now the wrong
+            # block for the perspective that crossed; recompute it in the new one.
+            # The vectors saved on the stack are the pre-move ones, so pop is exact.
+            board.push(move)
+            try:
+                if crossing == 1:
+                    self.zone_white = new_zone
+                    self.white[:] = self._rebuild(board, True, new_zone)
+                else:
+                    self.zone_black = new_zone
+                    self.black[:] = self._rebuild(board, False, new_zone)
+            finally:
+                board.pop()
+
+    def _apply(
+        self,
+        board: chess.Board,
+        added: npt.NDArray[np.int32],
+        n_added: int,
+        removed: npt.NDArray[np.int32],
+        n_removed: int,
+    ) -> None:
+        """Save the current vectors, then add and subtract the given W1 rows."""
         if self.fast:
             # The compiled kernel does no bounds checking -- numba's eager
             # signatures compile with boundscheck off, so overrunning the stack
@@ -511,6 +600,7 @@ class Accumulator:
             self.black -= W1[removed[2 * k + 1]]
 
     def pop(self) -> None:
+        self.zone_white, self.zone_black = self.zones.pop()
         if self.fast:
             self.depth -= 1
             _pop_kernel(self.white, self.black, self.stack, self.depth)

@@ -18,6 +18,13 @@ real Elo used 768.
 Indices run 0..767: the first 384 are the perspective's own pieces, the second 384
 the opponent's, and the board is flipped vertically for the black perspective so
 that "my back rank" is always rank 1.
+
+King zones. A net may carry several copies of the first layer, one per zone of the
+perspective's own king, so that "knight on f5" can be worth something different
+when the king is castled short than when it sits in the centre. The zone is a
+property of the king's square *from that perspective* (so mirrored for black), and
+the full first-layer index is `zone * 768 + index`. The zone map lives here and
+`agent.py` carries a copy that check_nnue compares square by square.
 """
 
 import chess
@@ -26,6 +33,25 @@ import numpy.typing as npt
 
 FEATURES = 768
 MAX_PIECES = 32
+
+
+def king_zone(square: int) -> int:
+    """Zone 0..7 of a king on `square`, seen from its own side.
+
+    Ranks 1-2 are split into four two-file bands, because that is where kings
+    spend most of the game and where castled-short, castled-long and uncastled
+    differ most; ranks 3-4 and 5-8 each get a queenside and a kingside half.
+    """
+    rank = square >> 3
+    file = square & 7
+    if rank <= 1:
+        return file >> 1
+    if rank <= 3:
+        return 4 + (file >> 2)
+    return 6 + (file >> 2)
+
+
+KING_ZONES = 8
 
 
 def indices(board: chess.Board, perspective: chess.Color) -> list[int]:

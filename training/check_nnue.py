@@ -61,6 +61,18 @@ def main() -> None:
                         failures += 1
     print(f"feature indices        : {'MATCH' if failures == 0 else 'MISMATCH'} over 1536 cases")
 
+    # 1b. The king-zone map, if the agent has one. A disagreement here means every
+    # position with a king outside zone 0 is scored by the wrong first layer.
+    if hasattr(agent, "_zone"):
+        zone_failures = sum(
+            1 for square in range(64) if agent._zone(square) != features.king_zone(square)
+        )
+        failures += zone_failures
+        print(
+            f"king zones             : {'MATCH' if zone_failures == 0 else 'MISMATCH'} over "
+            f"64 squares, agent uses {getattr(agent, 'KING_ZONES', 1)} zone(s)"
+        )
+
     # 2. Incremental accumulator versus full rebuild, after every ply.
     rng = random.Random(0)
     acc = agent.Accumulator()
