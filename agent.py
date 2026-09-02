@@ -779,6 +779,24 @@ TIME_V2: Final = True
 QS_EVASIONS: Final = False
 STAGED_MOVEGEN: Final = False
 HYGIENE: Final = True
+# CONTEMPT: a repetition or fifty-move draw is not worth exactly zero. Measured at
+# the tournament control, 37% of games against Stockfish skill 10 ended by
+# repetition, and against Weiss depth 8 -- an opponent this engine beats 88% of the
+# time -- five games were repetition draws in the middlegame, two of them with the
+# engine two points of material ahead. In a 13-round Swiss most opponents are
+# weaker, so a half point conceded from an equal or better position is the most
+# expensive habit left. The referee also adjudicates on raw material at ply 300,
+# so being ahead late makes a draw cost a whole point.
+CONTEMPT: Final = False
+
+# CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
+# positions carry a small reluctance to repeat; being ahead carries more, rising
+# toward the adjudication ply; being behind makes a draw welcome.
+CONTEMPT_LEVEL: Final = 10
+CONTEMPT_AHEAD: Final = 25
+CONTEMPT_AHEAD_LATE: Final = 50
+CONTEMPT_BEHIND: Final = -20
+ADJUDICATION_PLY: Final = 300
 
 # TIME_V2: the clock is never allowed below this fraction of its starting value,
 # which is inferred as the largest time_left_ms seen in the game. 12 s at 120 s.
@@ -1228,10 +1246,12 @@ class FastEngine:
         "bufs",
         "butterfly",
         "deadline",
+        "draw_root",
         "history",
         "killers",
         "nodes",
         "pos",
+        "root_side",
         "scores",
         "table",
         "white",
@@ -1255,6 +1275,15 @@ class FastEngine:
         self.pos = _fb.Position(chess.Board())
         self.deadline = 0.0
         self.nodes = 0
+        # Draw score from the root side's point of view, and which side that is.
+        self.draw_root = 0
+        self.root_side = 0
+
+    def _draw(self) -> int:
+        """What a draw is worth to the side to move at this node."""
+        if self.draw_root == 0:
+            return 0
+        return self.draw_root if self.pos.meta[0] == self.root_side else -self.draw_root
 
     # -- primitives ---------------------------------------------------------------
 
@@ -1338,12 +1367,12 @@ class FastEngine:
 
         if ply:
             if self.history.get(key, 0) >= 2 or _fb.repeats(meta, keys):
-                return 0
+                return self._draw()
             if meta[3] >= 100:
                 n = _fb.gen_legal(bb, pos.sq, meta, self.bufs[ply], False)
                 if n == 0 and _fb.in_check(bb, meta):
                     return -MATE + ply
-                return 0
+                return self._draw()
             if _TABLEBASE is not None and meta[5] <= TB_MEN:
                 wdl = _TABLEBASE.get_wdl(pos.to_board())
                 if wdl is not None:
@@ -1503,6 +1532,8 @@ class FastEngine:
         _fb.refresh(
             pos.bb, pos.sq, pos.meta, W1, B1, self.white, self.black, self.zones, KING_ZONES
         )
+        self.root_side = int(pos.meta[0])
+        self.draw_root = _contempt(board, self.evaluate()) if CONTEMPT else 0
         move = self.choose(soft_limit, hard_limit)
         return chess.Move.from_uci(_fb.move_to_uci(move))
 
@@ -1620,6 +1651,37 @@ def _note_clock(time_left_ms: int) -> None:
     global _MAX_CLOCK_MS
     if time_left_ms > _MAX_CLOCK_MS:
         _MAX_CLOCK_MS = float(time_left_ms)
+
+
+_MATERIAL: Final = {
+    chess.PAWN: 100, chess.KNIGHT: 300, chess.BISHOP: 300, chess.ROOK: 500, chess.QUEEN: 900
+}
+
+
+def _contempt(board: chess.Board, static: int) -> int:
+    """The draw score for the root side, negative when a draw would cost it.
+
+    Ahead on material or on the network's own view of the position, a draw is a
+    loss of expectation, and increasingly so as the ply-300 adjudication -- which
+    awards the game on raw material -- approaches. Behind, a draw is a gain.
+    Level, a small reluctance to repeat: in a Swiss the opponent is usually the
+    weaker side, and playing on is where that shows.
+    """
+    material = 0
+    for piece, value in _MATERIAL.items():
+        material += value * (
+            chess.popcount(board.pieces_mask(piece, chess.WHITE))
+            - chess.popcount(board.pieces_mask(piece, chess.BLACK))
+        )
+    if board.turn == chess.BLACK:
+        material = -material
+    game_ply = 2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
+    late = min(1.0, max(0.0, (game_ply - 150) / (ADJUDICATION_PLY - 150)))
+    if material >= 100 or static >= 60:
+        return -int(CONTEMPT_AHEAD + (CONTEMPT_AHEAD_LATE - CONTEMPT_AHEAD) * late)
+    if material <= -100 or static <= -60:
+        return -CONTEMPT_BEHIND
+    return -CONTEMPT_LEVEL
 
 
 def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
