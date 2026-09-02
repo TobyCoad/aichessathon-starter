@@ -330,3 +330,36 @@ Stress replay charged x1.5: 0 flags, lowest clock 10.0 s, longest move 15.2 s.
 failures. The bucket net is neutral within noise at the real control; the 8 s
 evidence (+13 +/- 19 over 600) remains the only positive strength reading for it.
 submission.zip (11.3 MB compressed) is built from this build and is the upload.
+
+## 2026-09-02 evening — the compiled board
+
+Verdict: PROMOTE candidate (040-fastboard), pending the 120 s match and crash hunt.
+
+**King zones (037).** REJECT, -19.1 +/- 27.3 over 312 games, despite validation
+loss 0.005025 -> 0.004843 (-3.6%). The eight-block first layer (12.6 MB) misses
+cache: 81 knps against 92 on an idle core, and that 12% outweighed the evaluation
+gain. A 4-zone variant is the fallback if the idea is revisited.
+
+**LMR (036), 1000-game budget.** REJECT at 729 games, -11.5 +/- 17.3. Closed.
+
+**fastboard.py.** A numba bitboard board: legal generation with pins and check
+masks, make/unmake with an undo stack, polyglot Zobrist keys, null moves, move
+ordering in-kernel, the first-layer accumulator updated inside make. FastEngine in
+agent.py is Engine's search over it; python-chess keeps the root and checks every
+move before it leaves, and any exception falls back to Engine for that move.
+
+Tests, all green: perft exact on the six standard positions; differential fuzz
+against python-chess on 5,006 real positions and 149,358 random plies (moves,
+captures, keys, check status, round trips) with zero discrepancies; fused
+accumulator identical to the engine's own; static evaluation identical on 150
+positions; depth-4 best move agrees 72/80. Node rate 241 knps against 106 (2.3x);
+cold import 7.0 s. A head-selecting evaluation kernel removed per-call slicing of
+the bucketed heads and gave the old engine +25% too.
+
+Gates: clock replay at 120 s + 0.5 s charged x1.5, 0 flags, floor 10.1 s, longest
+move 16.9 s. Crash gate 24/24. SPRT[0, 20]: **PASS at 96 games, +35 =50 -11,
++88.7 +/- 49.1.** The largest single gain since the search package.
+
+Process note: a closed laptop lid suspended the first validation run mid-flight
+and produced six fake flags and seven fake init failures; the rerun on an awake
+machine was clean. Sleep is the one failure mode no test in this repo can survive.
