@@ -430,3 +430,16 @@ Process: the orchestrator waited 1.3 h for the evening contempt run to free the
 machine, and the kingzones stage only verified a promotion (b98a213) made before
 night2 started. Recurring: 50-62% of self-play gauntlet games end in threefold
 repetition, throttling every SPRT the rig runs.
+
+## 2026-09-03 morning — contempt measured against Stockfish and promoted
+
+The Weiss d6 test was uninformative (every ahead-draw a perpetual check). Against
+Stockfish skill 10 at 20 s + 0.2 s, 51 games a side on the same openings:
+champion +15 =28 -7 (58.0%), 28 draws, 13 from ahead of which 9 chosen;
+contempt +21 =18 -12 (58.8%), 18 draws, 7 from ahead, all chosen. Same score, ten
+fewer draws, more decisive games both ways. Three flags in the challenger's run
+(two ours, one the opponent's) all ended at 08:22:32 in three concurrent games:
+a machine stall, not the engine. Clock replay x1.5 clean, floor 10.0 s.
+Promoted d029237. New tool: testing/draws.py classifies drawn games by who was
+ahead at the end. submission.zip rebuilt (21.6 MB, 27.9 MB unzipped): compiled
+board + 8-king-zone net + futility + contempt. Not yet uploaded.
