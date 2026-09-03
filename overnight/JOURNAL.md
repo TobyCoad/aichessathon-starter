@@ -394,3 +394,39 @@ repetition from equal or better positions, zero contempt. Built as CONTEMPT swit
 
 Also: arena saves PGNs by default; get_move coerces the clock argument; the zip
 target includes fastboard.py.
+
+## 2026-09-03 — night 2: futility promoted, three switches settled, upload refreshed
+
+Verdict: clean night, one promotion (042-futility), zero failures across ~1,200 games.
+
+**042-futility.** PROMOTE (56e01da): SPRT[0, 20] PASS at 217 games, +48 =143 -26,
++33.9 +/- 24.8, llr +3.09. The mirror of RFP finally lands. At 120 s the final
+build scored exactly 50.0% against the night-start build, so the 8 s gain does
+not visibly survive the control -- the familiar shrinkage, promoted anyway on
+the SPRT.
+
+**043-tt-age.** INCONCLUSIVE at the 600-game cap: exactly 50.0%, -0.0 +/- 18.0,
+llr -2.37 leaning reject. The once-a-minute full TT clear costs nothing at this
+node rate. Closed unless time controls lengthen.
+
+**044-pvs.** REJECT at 356 games, -12.7 +/- 24.0, llr -3.03. PVS without LMR buys
+null-window re-searches with weak ordering to justify them. If revisited, bundle
+with LMR as one challenger.
+
+**039-kz4 vs kz8.** INCONCLUSIVE at the 600-game cap, +13.3 +/- 19.0 for 4 zones.
+The smaller net (7.35 MB vs ~12.6) trending positive is the night's loose end;
+rerun at 1,200 games.
+
+**041-contempt.** Uninformative, not rejected: both builds beat weiss-d6 at 94-96%
+with exactly 4 repetition draws each -- the metric contempt exists to move did not
+move. Retest against the champion at a real control, after reading the drawn PGNs.
+
+**Final gates.** Clock replay x1.5: 0/6 flags, floor 10.4 s, longest move 16.8 s.
+120 s vs night start: +9 =22 -9. submission.zip 21,624,823 bytes -- 5 MB over the
+16.85 MB validated upload; check the platform cap before replacing seat 1. Seat 2
+keeps the 2 Sep build.
+
+Process: the orchestrator waited 1.3 h for the evening contempt run to free the
+machine, and the kingzones stage only verified a promotion (b98a213) made before
+night2 started. Recurring: 50-62% of self-play gauntlet games end in threefold
+repetition, throttling every SPRT the rig runs.
