@@ -787,7 +787,7 @@ HYGIENE: Final = True
 # weaker, so a half point conceded from an equal or better position is the most
 # expensive habit left. The referee also adjudicates on raw material at ply 300,
 # so being ahead late makes a draw cost a whole point.
-CONTEMPT: Final = False
+CONTEMPT: Final = True
 # FUTILITY: at depth 1-2, not in check, skip quiet moves when the static score plus
 # a margin cannot reach alpha. Reverse futility, the mirror image, measured +62.
 FUTILITY: Final = True
