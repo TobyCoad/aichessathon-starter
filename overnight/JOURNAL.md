@@ -443,3 +443,31 @@ a machine stall, not the engine. Clock replay x1.5 clean, floor 10.0 s.
 Promoted d029237. New tool: testing/draws.py classifies drawn games by who was
 ahead at the end. submission.zip rebuilt (21.6 MB, 27.9 MB unzipped): compiled
 board + 8-king-zone net + futility + contempt. Not yet uploaded.
+
+## 2026-09-04 — the ladder opens: two losses read, a post-mortem harness, the clock reworked
+
+Rounds 1-3 won by checkmate (Sunfish, Imperial Knights, Danya's Disciple); round 3
+showed contempt deviating from a repetition while winning. Round 4 lost as Black
+to Checkers, round 5 as White to Blunder Buss.
+
+**testing/postmortem.py** (new): detects our side by replaying the engine, scores
+every position with a reference engine, flags our losing moves and classifies
+each as book / time / horizon / evaluation / search, with per-game HTML curves
+and a cross-game table. Round 4: -140 by our 11th move, 17...Kh8 (-110, horizon,
+played in 1.6 s) and 21...c6 (-119); our static evaluation 100-200 cp too
+optimistic throughout (exchange up vs bishop pair and passed pawns); clock 17 s at
+move 40, thirty moves at half a second. Round 5: +127 before 14.bxc6, -350 after
+(horizon; the engine finds Nxh3 today at any budget); the platform spent 9.2 s on
+it. Instrumenting the driver showed why: a table warm from the previous move
+makes iterations 1-8 finish in milliseconds, the cost predictor launches the next
+depth blind, hits the hard cap, and the move comes from the shallow verdict.
+
+**TIME_V3** promoted (cab76dd): expected moves 46 - 0.4/move floored at 26, and an
+extension to 2.5 soft budgets when the best move or score changes between
+iterations. Profile at 120 s: 62-80 s left at ply 30 (was 36-64), floor 12.5 s,
+longest 9.6 s; x1.5 charge floor 9.8 s; 40 games at 120 s vs the previous build
++10 =27 -3 (58.8%), no failures. Zip rebuilt for the next upload.
+
+**TIME_V4** first form (prediction floor + keep a proven-better root move) 46.2% at
+120 s (-26 +/- 80): the floor stops iterations a warm table would have finished.
+Reduced to the proven-better rule alone (047-time-v4b), under validation.
