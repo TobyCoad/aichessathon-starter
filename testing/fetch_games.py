@@ -27,7 +27,8 @@ OUT = Path("overnight/pgn/platform")
 def get(url: str) -> str:
     request = urllib.request.Request(url, headers={"User-Agent": "aichessathon-fetch/1.0"})
     with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8", "replace")
+        data: bytes = response.read()
+    return data.decode("utf-8", "replace")
 
 
 def find_team_url(name: str) -> str:
