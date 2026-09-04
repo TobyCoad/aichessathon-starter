@@ -805,6 +805,13 @@ PVS: Final = False
 # move changes or the score drops between iterations the position is unstable,
 # and the next iteration is allowed up to 2.5 soft budgets instead of 1.5.
 TIME_V3: Final = False
+# TIME_V4: two defects seen in the platform's round-5 loss. A transposition
+# table warm from the previous move lets iterations 1..8 finish in milliseconds,
+# so the cost predictor launches the next depth blind, hits the hard cap, and
+# discards it -- a floor on the predicted cost stops that. And an unfinished
+# iteration is not worthless: a root move that completed at the new depth with a
+# score above the previous best has been proven better, and is kept.
+TIME_V4: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1548,6 +1555,8 @@ class FastEngine:
         unstable = False
         for depth in range(1, 64):
             iteration_started = time.monotonic()
+            first_done = False
+            iteration_best = best
             try:
                 score = -INFINITY
                 alpha = -INFINITY
@@ -1565,6 +1574,8 @@ class FastEngine:
                             value = -self.search(depth - 1, -INFINITY, -alpha, 1)
                     finally:
                         self._unmake()
+                    if i == 0:
+                        first_done = True
                     if value > score:
                         score = value
                         iteration_best = move
@@ -1572,6 +1583,11 @@ class FastEngine:
                             alpha = value
                 best = iteration_best
             except Timeout:
+                # The first root move is the previous best, searched with a full
+                # window; a later move that came back above alpha at this depth has
+                # beaten it at this depth, and is the better answer.
+                if TIME_V4 and first_done and iteration_best != best:
+                    best = iteration_best
                 break
 
             if score > MATE_THRESHOLD or score < -MATE_THRESHOLD:
@@ -1586,9 +1602,15 @@ class FastEngine:
             now = time.monotonic()
             if TIME_V2:
                 elapsed = now - started
+                budget = soft_limit - started
                 predicted = (now - iteration_started) * 2.5
+                if TIME_V4:
+                    # A warm table finishes an iteration in a millisecond and says
+                    # nothing about the next one; never predict below a third of
+                    # the budget.
+                    predicted = max(predicted, 0.35 * budget)
                 allowance = 2.5 if unstable else 1.5
-                if elapsed + predicted > allowance * (soft_limit - started):
+                if elapsed + predicted > allowance * budget:
                     break
             elif now > soft_limit:
                 break
