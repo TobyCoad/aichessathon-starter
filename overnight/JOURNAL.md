@@ -531,3 +531,9 @@ packed 2-array TT + lazy stable move picking, still exact. Stage 3 switches
 (183161a) PVS/LMR/LMP in the kernel, off by default, flags-off kernel exact.
 Fixed-depth-6 nodes vs 050: PVS 0.96x, LMR 0.14x, LMP 0.38x. Gauntlets queued:
 050 vs champion, then 052-lmr, 051-pvs, 053-lmp each vs 050.
+
+050-compiled-search: PROMOTE +67±40 over 110 games (59.5%), crash gate clean.
+Clocktest (120s+0.5s, x1.5 +20ms, 6 games): 0 flags, lowest clock 9.7 s, longest
+move 14.4 s -> PASS. COMPILED_SEARCH promoted (e41ddcb); zip built 17:36 with
+fastboard.py + fastsearch.py (27 MB unpacked, import 17.6 s, "compiled board: on"),
+handed to the user for upload as v5. Stage-3 gauntlets running vs 050.
