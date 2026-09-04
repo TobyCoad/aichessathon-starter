@@ -1322,6 +1322,7 @@ class FastEngine:
         "root_best",
         "root_side",
         "scores",
+        "scores2",
         "table",
         "tt",
         "white",
@@ -1343,6 +1344,7 @@ class FastEngine:
         # COMPILED_SEARCH state: array table, array killers, control block.
         self.tt: tuple[Any, ...] = ()
         self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
+        self.scores2 = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int64)
         self.ctrl = np.zeros(8, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
@@ -1649,7 +1651,7 @@ class FastEngine:
             pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
             W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
             _W2T, B2, W3, B3, *self.tt,
-            self.killers2, self.butterfly, self.movebuf, self.scores, self.rep_keys,
+            self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply,
         )
         self.nodes = int(ctrl[_fs.C_NODES])

@@ -95,7 +95,7 @@ class Kernel:
         self.killers = np.zeros((fb.MAX_PLY, 2), np.int32)
         self.butterfly = np.zeros(4096, np.int32)
         self.moves = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), np.int32)
-        self.scores = np.zeros(fb.MOVE_CAP, np.int64)
+        self.scores = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), np.int64)
         self.rep = np.zeros(0, np.uint64)
         self.ctrl = np.zeros(fs.CTRL_SIZE, np.int64)
         self.ctrl[fs.C_TT_OFF] = 0 if table_on else 1
@@ -118,7 +118,9 @@ class Kernel:
             )
         seconds = time.perf_counter() - started
         slot = int(pos.keys[0] & fs.TT_MASK)
-        best = int(self.table[3][slot]) if self.table[0][slot] == pos.keys[0] else 0
+        best = 0
+        if self.table[0][slot] == pos.keys[0]:
+            best = int(fs.unpack_move(self.table[1][slot]))
         return int(score), int(self.ctrl[fs.C_NODES]), best, seconds
 
 

@@ -115,8 +115,10 @@ def best_move(agent: ModuleType, engine, board: chess.Board) -> str:
     if tt:
         key = engine.pos.keys[0]
         slot = int(key & agent._fs.TT_MASK)
-        if tt[0][slot] == key and tt[3][slot]:
-            return agent._fb.move_to_uci(int(tt[3][slot]))
+        if tt[0][slot] == key:
+            move = int(agent._fs.unpack_move(tt[1][slot]))
+            if move:
+                return agent._fb.move_to_uci(move)
     return "?"
 
 

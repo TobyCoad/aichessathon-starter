@@ -59,15 +59,46 @@ CTRL_SIZE = 8
 
 
 def new_table() -> tuple[Any, ...]:
-    """(key, depth, flag, move, score, age) arrays for TT_SIZE entries."""
+    """(key, data) arrays for TT_SIZE entries. data packs, low to high: score
+    offset by 2**31 (32 bits), move (16), flag (2), depth (8), age (6). One entry
+    is two cache lines at most instead of six."""
+    return (np.zeros(TT_SIZE, dtype=np.uint64), np.zeros(TT_SIZE, dtype=np.uint64))
+
+
+@njit(cache=False)
+def pack(score: Any, move: Any, flag: Any, depth: Any, age: Any) -> Any:
     return (
-        np.zeros(TT_SIZE, dtype=np.uint64),
-        np.zeros(TT_SIZE, dtype=np.int16),
-        np.zeros(TT_SIZE, dtype=np.int8),
-        np.zeros(TT_SIZE, dtype=np.int32),
-        np.zeros(TT_SIZE, dtype=np.int32),
-        np.zeros(TT_SIZE, dtype=np.int32),
+        np.uint64(score + (1 << 31))
+        | (np.uint64(move) << np.uint64(32))
+        | (np.uint64(flag) << np.uint64(48))
+        | (np.uint64(depth) << np.uint64(50))
+        | (np.uint64(age & 63) << np.uint64(58))
     )
+
+
+@njit(cache=False)
+def unpack_score(data: Any) -> Any:
+    return np.int64(data & np.uint64(0xFFFFFFFF)) - (1 << 31)
+
+
+@njit(cache=False)
+def unpack_move(data: Any) -> Any:
+    return np.int64((data >> np.uint64(32)) & np.uint64(0xFFFF))
+
+
+@njit(cache=False)
+def unpack_flag(data: Any) -> Any:
+    return np.int64((data >> np.uint64(48)) & np.uint64(3))
+
+
+@njit(cache=False)
+def unpack_depth(data: Any) -> Any:
+    return np.int64((data >> np.uint64(50)) & np.uint64(0xFF))
+
+
+@njit(cache=False)
+def unpack_age(data: Any) -> Any:
+    return np.int64(data >> np.uint64(58))
 
 
 @njit(cache=False)
@@ -162,9 +193,10 @@ def quiesce(
 
     captures = moves[ply]
     n = fb.gen_legal(bb, sq, meta, captures, True)
-    fb.order_moves(captures, n, sq, 0, 0, 0, butterfly, scores)
+    sc = scores[ply]
+    fb.score_moves(captures, n, sq, 0, 0, 0, butterfly, sc)
     for i in range(n):
-        move = captures[i]
+        move = fb.pick_move(captures, sc, i, n)
         victim = sq[(move >> 6) & 63]
         if victim >= 0 and (move >> 12) == 0 and standing + MVV[victim % 6] + DELTA_MARGIN < alpha:
             continue
@@ -191,7 +223,7 @@ def search(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
     w2t: Any, b2: Any, w3: Any, b3: Any,
-    tt_key: Any, tt_depth: Any, tt_flag: Any, tt_move: Any, tt_score: Any, tt_age: Any,
+    tt_key: Any, tt_data: Any,
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
     depth: Any, alpha: Any, beta: Any, ply: Any,
@@ -222,10 +254,11 @@ def search(
     if ctrl[C_TT_OFF] == 0:
         slot = np.int64(key & TT_MASK)
         if tt_key[slot] == key:
-            stored_depth = tt_depth[slot]
-            flag = tt_flag[slot]
-            hash_move = tt_move[slot]
-            stored_score = from_table(tt_score[slot], ply)
+            data = tt_data[slot]
+            stored_depth = unpack_depth(data)
+            flag = unpack_flag(data)
+            hash_move = unpack_move(data)
+            stored_score = from_table(unpack_score(data), ply)
             if stored_depth >= depth and ply > 0:
                 if flag == 0:
                     return stored_score
@@ -271,7 +304,7 @@ def search(
         fb.make_null(bb, meta, undo, keys)
         score = -search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
-            w2t, b2, w3, b3, tt_key, tt_depth, tt_flag, tt_move, tt_score, tt_age,
+            w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
             depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1,
         )
@@ -285,13 +318,14 @@ def search(
     n = fb.gen_legal(bb, sq, meta, mv, False)
     if n == 0:
         return -MATE + ply if in_check else 0
-    fb.order_moves(mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, scores)
+    sc = scores[ply]
+    fb.score_moves(mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc)
 
     best_score = -INFINITY
     best_move = 0
     searched = 0
     for i in range(n):
-        move = mv[i]
+        move = fb.pick_move(mv, sc, i, n)
         quiet = sq[(move >> 6) & 63] < 0
         if futile and quiet and (move >> 12) == 0:
             continue
@@ -300,7 +334,7 @@ def search(
         )
         score = -search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
-            w2t, b2, w3, b3, tt_key, tt_depth, tt_flag, tt_move, tt_score, tt_age,
+            w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
             depth - 1, -beta, -alpha, ply + 1,
         )
@@ -334,13 +368,10 @@ def search(
         else:
             flag = 0
         age = ctrl[C_AGE]
-        if tt_key[slot] == key or tt_age[slot] != age or depth >= tt_depth[slot]:
+        old = tt_data[slot]
+        if tt_key[slot] == key or unpack_age(old) != (age & 63) or depth >= unpack_depth(old):
             tt_key[slot] = key
-            tt_depth[slot] = depth
-            tt_flag[slot] = flag
-            tt_move[slot] = best_move
-            tt_score[slot] = to_table(best_score, ply)
-            tt_age[slot] = age
+            tt_data[slot] = pack(to_table(best_score, ply), best_move, flag, depth, age)
     return best_score
 
 
@@ -360,7 +391,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     killers = np.zeros((fb.MAX_PLY, 2), dtype=np.int32)
     butterfly = np.zeros(4096, dtype=np.int32)
     moves = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int32)
-    scores = np.zeros(fb.MOVE_CAP, dtype=np.int64)
+    scores = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int64)
     rep_keys = np.zeros(0, dtype=np.uint64)
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1

@@ -896,6 +896,64 @@ def order_moves(
         scores[j + 1] = s
 
 
+@njit(cache=False)
+def score_moves(
+    out: Any,
+    n: Any,
+    sqa: Any,
+    hash_move: Any,
+    killer1: Any,
+    killer2: Any,
+    history: Any,
+    scores: Any,
+) -> Any:
+    """order_moves' scoring pass alone; pick_move then draws moves best-first."""
+    for i in range(n):
+        m = out[i]
+        frm = m & 63
+        to = (m >> 6) & 63
+        promo = (m >> 12) & 7
+        if m == hash_move:
+            s = 1 << 30
+        else:
+            victim = sqa[to]
+            if victim >= 0:
+                attacker = sqa[frm]
+                s = CAPTURE_BONUS + MVV[victim % 6] * 16 - MVV[attacker % 6]
+            elif m == killer1:
+                s = KILLER_FIRST
+            elif m == killer2:
+                s = KILLER_SECOND
+            else:
+                s = history[frm * 64 + to]
+            if promo:
+                s += PROMOTION_BONUS + promo * 100
+        scores[i] = s
+
+
+@njit(cache=False)
+def pick_move(out: Any, scores: Any, i: Any, n: Any) -> Any:
+    """Bring the best of out[i:n] to position i, shifting the rest down so equal
+    scores keep their order -- exactly the sequence the stable sort produces --
+    and return it. Most nodes cut off after one or two picks, which is what
+    sorting every move would have paid for nothing."""
+    best = i
+    best_score = scores[i]
+    for j in range(i + 1, n):
+        if scores[j] > best_score:
+            best = j
+            best_score = scores[j]
+    m = out[best]
+    j = best
+    while j > i:
+        out[j] = out[j - 1]
+        scores[j] = scores[j - 1]
+        j -= 1
+    out[i] = m
+    scores[i] = best_score
+    return m
+
+
 # ------------------------------------------------------------ repetition ----
 
 
@@ -1075,6 +1133,8 @@ def warm_up() -> None:
     history = np.zeros(4096, dtype=np.int32)
     scores = np.zeros(MOVE_CAP, dtype=np.int64)
     order_moves(out, n, pos.sq, int(out[0]), 0, 0, history, scores)
+    score_moves(out, n, pos.sq, int(out[0]), 0, 0, history, scores)
+    pick_move(out, scores, 0, n)
 
 
 __all__ = [
