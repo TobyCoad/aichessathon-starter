@@ -471,3 +471,10 @@ longest 9.6 s; x1.5 charge floor 9.8 s; 40 games at 120 s vs the previous build
 **TIME_V4** first form (prediction floor + keep a proven-better root move) 46.2% at
 120 s (-26 +/- 80): the floor stops iterations a warm table would have finished.
 Reduced to the proven-better rule alone (047-time-v4b), under validation.
+
+**TIME_V4 (reduced) promoted** (b014d7e): keep a root move proven better in an
+unfinished iteration. 40 games at 120 s vs the TIME_V3 build +10 =23 -7 (53.8%),
+no failures; replay floor 10.0 s. Zip rebuilt 12:35Z with V3 + V4: the build to
+upload after the next round. testing/fetch_games.py pulls our rated games from
+the public team page (no API exists; uploads are dashboard-only) and post-mortems
+the non-wins; an hourly self-paced check at :15 runs it and reports.
