@@ -49,14 +49,14 @@ MAX_PLY = 72  # agent.MAX_PLY: the check-extension limit
 FUTILITY_MARGIN = np.array([0, 150, 300], dtype=np.int64)
 POLL_MASK = 255
 
-TT_BITS = 20
+TT_BITS = 22
 TT_SIZE = 1 << TT_BITS
 TT_MASK = np.uint64(TT_SIZE - 1)
 
 # ctrl slots: search state the Python side sets and reads.
 C_NODES, C_ABORT, C_AGE, C_ROOT_SIDE, C_DRAW_ROOT, C_TT_OFF, C_HYGIENE, C_FUTILITY = range(8)
 # Stage-3 switches, off = the reference search.
-C_PVS, C_LMR, C_LMP = 8, 9, 10
+C_PVS, C_LMR, C_LMP, C_SEE = 8, 9, 10, 11
 CTRL_SIZE = 16
 
 # LMR: reduction by depth and move number, the usual log-log formula. A quiet
@@ -74,15 +74,28 @@ LMP_LIMIT = np.array([0, 5, 8, 13], dtype=np.int64)
 
 def new_table() -> tuple[Any, ...]:
     """(key, data) arrays for TT_SIZE entries. data packs, low to high: score
-    offset by 2**31 (32 bits), move (16), flag (2), depth (8), age (6). One entry
-    is two cache lines at most instead of six."""
+    offset by 2**15 (16 bits), static evaluation offset by 2**15 or 0 for none
+    (16), move (16), flag (2), depth (8), age (6). One entry is two cache lines
+    at most instead of six."""
     return (np.zeros(TT_SIZE, dtype=np.uint64), np.zeros(TT_SIZE, dtype=np.uint64))
 
 
+NO_EVAL = -INFINITY
+
+
 @njit(cache=False)
-def pack(score: Any, move: Any, flag: Any, depth: Any, age: Any) -> Any:
+def pack(score: Any, move: Any, flag: Any, depth: Any, age: Any, static: Any) -> Any:
+    if static == NO_EVAL:
+        packed_eval = 0
+    else:
+        packed_eval = static + (1 << 15)
+        if packed_eval < 1:
+            packed_eval = 1
+        elif packed_eval > 0xFFFF:
+            packed_eval = 0xFFFF
     return (
-        np.uint64(score + (1 << 31))
+        np.uint64(score + (1 << 15))
+        | (np.uint64(packed_eval) << np.uint64(16))
         | (np.uint64(move) << np.uint64(32))
         | (np.uint64(flag) << np.uint64(48))
         | (np.uint64(depth) << np.uint64(50))
@@ -92,7 +105,15 @@ def pack(score: Any, move: Any, flag: Any, depth: Any, age: Any) -> Any:
 
 @njit(cache=False)
 def unpack_score(data: Any) -> Any:
-    return np.int64(data & np.uint64(0xFFFFFFFF)) - (1 << 31)
+    return np.int64(data & np.uint64(0xFFFF)) - (1 << 15)
+
+
+@njit(cache=False)
+def unpack_eval(data: Any) -> Any:
+    packed_eval = np.int64((data >> np.uint64(16)) & np.uint64(0xFFFF))
+    if packed_eval == 0:
+        return NO_EVAL
+    return packed_eval - (1 << 15)
 
 
 @njit(cache=False)
@@ -209,10 +230,14 @@ def quiesce(
     n = fb.gen_legal(bb, sq, meta, captures, True)
     sc = scores[ply]
     fb.score_moves(captures, n, sq, 0, 0, 0, butterfly, sc)
+    use_see = ctrl[C_SEE] != 0
     for i in range(n):
         move = fb.pick_move(captures, sc, i, n)
         victim = sq[(move >> 6) & 63]
         if victim >= 0 and (move >> 12) == 0 and standing + MVV[victim % 6] + DELTA_MARGIN < alpha:
+            continue
+        if use_see and (move >> 12) == 0 and fb.see(bb, sq, meta, move) < 0:
+            # A capture that loses material on the exchange cannot raise alpha.
             continue
         fb.make_full(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
@@ -265,6 +290,7 @@ def search(
     original_alpha = alpha
     hash_move = 0
     slot = np.int64(0)
+    cached_eval = NO_EVAL
     if ctrl[C_TT_OFF] == 0:
         slot = np.int64(key & TT_MASK)
         if tt_key[slot] == key:
@@ -272,6 +298,7 @@ def search(
             stored_depth = unpack_depth(data)
             flag = unpack_flag(data)
             hash_move = unpack_move(data)
+            cached_eval = unpack_eval(data)
             stored_score = from_table(unpack_score(data), ply)
             if stored_depth >= depth and ply > 0:
                 if flag == 0:
@@ -299,14 +326,22 @@ def search(
         and not in_check
         and (ctrl[C_HYGIENE] == 0 or abs(beta) < DISTANCE_THRESHOLD)
     ):
-        standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+        if cached_eval != NO_EVAL:
+            standing = cached_eval
+        else:
+            standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+            cached_eval = standing
         if standing - RFP_MARGIN * depth >= beta:
             return standing
 
     futile = False
     if ctrl[C_FUTILITY] != 0 and depth <= 2 and not in_check and abs(alpha) < DISTANCE_THRESHOLD:
         if standing == -INFINITY:
-            standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+            if cached_eval != NO_EVAL:
+                standing = cached_eval
+            else:
+                standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+                cached_eval = standing
         futile = standing + FUTILITY_MARGIN[depth] <= alpha
 
     if (
@@ -432,7 +467,9 @@ def search(
         old = tt_data[slot]
         if tt_key[slot] == key or unpack_age(old) != (age & 63) or depth >= unpack_depth(old):
             tt_key[slot] = key
-            tt_data[slot] = pack(to_table(best_score, ply), best_move, flag, depth, age)
+            tt_data[slot] = pack(
+                to_table(best_score, ply), best_move, flag, depth, age, cached_eval
+            )
     return best_score
 
 

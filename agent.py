@@ -846,6 +846,14 @@ COMPILED_SEARCH: Final = True
 # kernel follows the PVS switch above.
 LMR: Final = False
 LMP: Final = False
+# SEE: in quiescence, skip captures that lose material on the exchange
+# (fastboard.see). Needs COMPILED_SEARCH.
+SEE: Final = False
+# ASPIRATION: from depth 4 the root searches a window of +/- ASPIRATION_WINDOW
+# around the previous iteration's score, widening on a fail and falling back to
+# the full window after three fails. Narrow windows cut off sooner.
+ASPIRATION: Final = False
+ASPIRATION_WINDOW: Final = 30
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1694,6 +1702,7 @@ class FastEngine:
             ctrl[_fs.C_PVS] = 1 if PVS else 0
             ctrl[_fs.C_LMR] = 1 if LMR else 0
             ctrl[_fs.C_LMP] = 1 if LMP else 0
+            ctrl[_fs.C_SEE] = 1 if SEE else 0
             repeated = [k for k, count in self.history.items() if count >= 2]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -1719,30 +1728,54 @@ class FastEngine:
             iteration_started = time.monotonic()
             first_done = False
             iteration_best = best
+            # ASPIRATION: a window around the last score, or the full window.
+            window = 0
+            if ASPIRATION and depth >= 4 and abs(previous_score) < MATE_THRESHOLD:
+                window = ASPIRATION_WINDOW
+            lo = previous_score - window if window else -INFINITY
+            hi = previous_score + window if window else INFINITY
+            fails = 0
             try:
-                score = -INFINITY
-                alpha = -INFINITY
-                _fb.order_moves(moves, n, pos.sq, best, 0, 0, self.butterfly, self.scores)
-                iteration_best = int(moves[0])
-                for i in range(n):
-                    move = int(moves[i])
-                    self._make(move)
-                    try:
-                        if PVS and i:
-                            value = -self.root_search(depth - 1, -alpha - 1, -alpha, 1)
+                while True:
+                    score = -INFINITY
+                    alpha = lo
+                    failed_high = False
+                    _fb.order_moves(moves, n, pos.sq, best, 0, 0, self.butterfly, self.scores)
+                    iteration_best = int(moves[0])
+                    first_done = False
+                    for i in range(n):
+                        move = int(moves[i])
+                        self._make(move)
+                        try:
+                            if PVS and i:
+                                value = -self.root_search(depth - 1, -alpha - 1, -alpha, 1)
+                                if alpha < value < hi:
+                                    value = -self.root_search(depth - 1, -hi, -alpha, 1)
+                            else:
+                                value = -self.root_search(depth - 1, -hi, -alpha, 1)
+                        finally:
+                            self._unmake()
+                        if i == 0:
+                            # A first move that fell out of the window proves nothing
+                            # about the others; with the full window this is always true.
+                            first_done = value > lo
+                        if value > score:
+                            score = value
+                            iteration_best = move
                             if value > alpha:
-                                value = -self.root_search(depth - 1, -INFINITY, -alpha, 1)
-                        else:
-                            value = -self.root_search(depth - 1, -INFINITY, -alpha, 1)
-                    finally:
-                        self._unmake()
-                    if i == 0:
-                        first_done = True
-                    if value > score:
-                        score = value
-                        iteration_best = move
-                        if value > alpha:
-                            alpha = value
+                                alpha = value
+                                if alpha >= hi:
+                                    failed_high = True
+                                    break
+                    if not window:
+                        break
+                    fails += 1
+                    if failed_high:
+                        hi = INFINITY if fails >= 3 else min(INFINITY, score + window * 4**fails)
+                    elif score <= lo:
+                        lo = -INFINITY if fails >= 3 else max(-INFINITY, score - window * 4**fails)
+                    else:
+                        break
                 best = iteration_best
             except Timeout:
                 # The first root move is the previous best, searched with a full

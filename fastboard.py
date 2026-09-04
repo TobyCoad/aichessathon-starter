@@ -960,6 +960,72 @@ def pick_move(out: Any, scores: Any, i: Any, n: Any) -> Any:
     return m
 
 
+SEE_VALUE = np.array([100, 320, 330, 500, 900, 20000], dtype=np.int64)
+
+
+@njit(cache=False)
+def see(bb: Any, sqa: Any, meta: Any, move: Any) -> Any:
+    """Static exchange evaluation of `move`, a capture, for the side to move:
+    the material won or lost if both sides keep recapturing on the target
+    square with their least valuable attacker, each free to stop. Sliders
+    behind a piece that has just captured are found because attackers_to is
+    recomputed against the shrinking occupancy. Promotions count the piece
+    gained; en passant counts the pawn."""
+    us = meta[SIDE]
+    frm = move & 63
+    to = (move >> 6) & 63
+    promo = (move >> 12) & 7
+    attacker = sqa[frm]
+    victim = sqa[to]
+    gain = np.zeros(32, dtype=np.int64)
+    if victim >= 0:
+        gain[0] = SEE_VALUE[victim % 6]
+    elif attacker % 6 == 0 and to == meta[EP]:
+        gain[0] = SEE_VALUE[0]
+    else:
+        gain[0] = 0
+    # Value of the piece standing on the target after each capture: first the
+    # mover (as promoted), then each recapturer in turn.
+    on_square = SEE_VALUE[attacker % 6]
+    if promo:
+        gain[0] += SEE_VALUE[promo] - SEE_VALUE[0]
+        on_square = SEE_VALUE[promo]
+    occ = (occupancy(bb, 0) | occupancy(bb, 1)) & ~bit(frm)
+    if victim < 0 and attacker % 6 == 0 and to == meta[EP]:
+        occ &= ~bit(to + (-8 if us == 0 else 8))
+    side = 1 - us
+    d = 0
+    while d < 30:
+        attackers = attackers_to(bb, occ, to, side) & occ
+        if attackers == ZERO:
+            break
+        # least valuable attacker of `side`; pieces already used are gone from occ
+        base = side * 6
+        chosen = -1
+        lva_value = 0
+        for p in range(6):
+            candidates = attackers & bb[base + p]
+            if candidates != ZERO:
+                chosen = lsb(candidates)
+                lva_value = SEE_VALUE[p]
+                break
+        if chosen < 0:
+            break
+        d += 1
+        gain[d] = on_square - gain[d - 1]
+        if max(-gain[d - 1], gain[d]) < 0:
+            # whichever side is to choose here already prefers to stop
+            break
+        on_square = lva_value
+        occ &= ~bit(chosen)
+        side = 1 - side
+    while d > 0:
+        d -= 1
+        if -gain[d + 1] < gain[d]:
+            gain[d] = -gain[d + 1]
+    return gain[0]
+
+
 # ------------------------------------------------------------ repetition ----
 
 
