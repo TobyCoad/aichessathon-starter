@@ -522,3 +522,12 @@ Stage 1: fastsearch.py = negamax+quiescence numba kernels, array TT (2^20), objm
 clock poll; agent.py COMPILED_SEARCH switch (off) + FastEngine.root_search/prepare.
 First result: identical scores and node counts to the Python search at d1-6 with
 the TT off, but only ~1.8x faster -- the evaluation kernel dominates the node.
+
+Stage 1 gate: check_fastsearch PASS (140/140 identical with TT off at d4; 40/40 best
+moves with TT on at d6, node ratio 1.00). Idle bench d6: champion 225 knps, compiled
+380 knps (1.7x). Micro-costs inside numba: evaluate 1.58 us (float, vectorised;
+int16 naive was slower), make+unmake 0.41, gen_legal 0.19. Stage 2a (bef420b):
+packed 2-array TT + lazy stable move picking, still exact. Stage 3 switches
+(183161a) PVS/LMR/LMP in the kernel, off by default, flags-off kernel exact.
+Fixed-depth-6 nodes vs 050: PVS 0.96x, LMR 0.14x, LMP 0.38x. Gauntlets queued:
+050 vs champion, then 052-lmr, 051-pvs, 053-lmp each vs 050.
