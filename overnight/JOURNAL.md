@@ -495,3 +495,16 @@ Two switches added, both off in the champion:
   Ne5 at move 42; ~7% slower. Gauntlet 048-correction SPRT[0,20] running.
 - TT_EVAL (9af1f44): a bounded transposition score replaces the static score for
   pruning when its bound allows. To be gauntleted after 048.
+
+048-correction REJECT -137±65 (56 games); 048b (cap 100, scale 1024, quiet-only,
+no QS) REJECT -33±33 (208 games). Correction history CLOSED: the net's errors are
+too large and too position-specific for a pawn-structure bias to help.
+
+Round 9 (White vs FuzzyBot, v4 build): DRAW by our own perpetual from +166.
+29.Rxf6?! gxf6 30.Qh5 ... The search scored Rxf6 at +526 (3 s), +307 (10 s and 30 s,
+depth 10) with pv Rxf6 gxf6 Qh5 Kg7 Qg4+ Kh8 Qh4 Kh7: the net scores the exposed
+black king at +300 when the attack has no follow-up (reference ~+50 → perpetual).
+Then, down the exchange, contempt made the draw welcome. Same family as rounds 4
+and 8: exchange-imbalance / activity positions overvalued by the net, and more
+time does not fix it. fetch_games now passes the site's colour to the post-mortem
+(side detection had misread round 9 as Black).
