@@ -812,7 +812,7 @@ TIME_V3: Final = True
 # has been proven better, and is kept. (A floor on the predicted cost was tried
 # alongside this and measured 46% at 120 s: it stops iterations a warm table
 # would have finished. Dropped.)
-TIME_V4: Final = False
+TIME_V4: Final = True
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
