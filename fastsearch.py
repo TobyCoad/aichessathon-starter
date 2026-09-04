@@ -57,6 +57,13 @@ TT_MASK = np.uint64(TT_SIZE - 1)
 C_NODES, C_ABORT, C_AGE, C_ROOT_SIDE, C_DRAW_ROOT, C_TT_OFF, C_HYGIENE, C_FUTILITY = range(8)
 # Stage-3 switches, off = the reference search.
 C_PVS, C_LMR, C_LMP, C_SEE = 8, 9, 10, 11
+# C_STOP: set from another thread to end a search now (pondering).
+C_STOP = 12
+# C_NMP_GUARD: forbid a null move directly after a null move. Two nulls
+# restore the key (the en passant hash is 0 without an ep square), the stack
+# repetition check fires, and the grandchild scores as a draw: null-move
+# pruning was inert at every node of depth >= 6.
+C_NMP_GUARD = 13
 CTRL_SIZE = 16
 
 # LMR: reduction by depth and move number, the usual log-log formula. A quiet
@@ -203,7 +210,7 @@ def evaluate(meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: 
     return int(float(out) * OUTPUT_SCALE)
 
 
-@njit(cache=False)
+@njit(cache=False, nogil=True)
 def quiesce(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
@@ -212,7 +219,7 @@ def quiesce(
     alpha: Any, beta: Any, depth: Any, ply: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
-    if (ctrl[C_NODES] & POLL_MASK) == 0 and timed_out(deadline):
+    if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
         ctrl[C_ABORT] = 1
         return 0
 
@@ -257,7 +264,7 @@ def quiesce(
     return alpha
 
 
-@njit(cache=False)
+@njit(cache=False, nogil=True)
 def search(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
@@ -268,17 +275,20 @@ def search(
     depth: Any, alpha: Any, beta: Any, ply: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
-    if (ctrl[C_NODES] & POLL_MASK) == 0 and timed_out(deadline):
+    if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
         ctrl[C_ABORT] = 1
         return 0
 
     key = keys[meta[fb.PLY]]
     if ply > 0:
-        for i in range(rep_keys.shape[0]):
-            if rep_keys[i] == key:
+        # No repetition is reachable within four reversible plies, and the game
+        # list under REPETITION_TWOFOLD is long: skip the scans until then.
+        if meta[fb.HALFMOVE] >= 4:
+            for i in range(rep_keys.shape[0]):
+                if rep_keys[i] == key:
+                    return draw_score(meta, ctrl)
+            if fb.repeats(meta, keys):
                 return draw_score(meta, ctrl)
-        if fb.repeats(meta, keys):
-            return draw_score(meta, ctrl)
         if meta[fb.HALFMOVE] >= 100:
             n = fb.gen_legal(bb, sq, meta, moves[ply], False)
             if n == 0 and fb.in_check(bb, meta):
@@ -349,6 +359,7 @@ def search(
         and not in_check
         and abs(beta) < DISTANCE_THRESHOLD
         and fb.non_pawn_material(bb, meta[fb.SIDE])
+        and (ctrl[C_NMP_GUARD] == 0 or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
     ):
         fb.make_null(bb, meta, undo, keys)
         score = -search(

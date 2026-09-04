@@ -69,6 +69,7 @@ for _var in (
     os.environ.setdefault(_var, "1")
 
 import random
+import threading
 import time
 from collections.abc import Hashable, Iterator
 from pathlib import Path
@@ -862,6 +863,19 @@ ASPIRATION_WINDOW: Final = 30
 # occurred even once before in the game is a draw: while winning the engine
 # never lets a position repeat at all.
 REPETITION_TWOFOLD: Final = True
+# PONDER: the rules allow thinking on the opponent's time ("your process keeps
+# its core while the opponent thinks") and the runner keeps this process alive
+# between requests. After answering, a second engine that shares the main
+# engine's transposition table searches the position it expects next -- our
+# move plus the reply the table predicts -- until the next request arrives,
+# which stops it within a millisecond. The main search then starts on a warm
+# table. Needs COMPILED_SEARCH; the kernels release the GIL.
+PONDER: Final = False
+# NMP_GUARD: no null move directly after a null move. Found by review on 4 Sep:
+# two nulls restore the Zobrist key, the stack repetition check fires and the
+# grandchild scores as a draw, so null-move pruning never cut at depth >= 6.
+NMP_GUARD: Final = False
+PONDER_MAX_S: Final = 600.0
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1488,7 +1502,9 @@ class FastEngine:
         key = int(keys[meta[4]])
 
         if ply:
-            if self.history.get(key, 0) >= _REPEAT_LIMIT or _fb.repeats(meta, keys):
+            if meta[3] >= 4 and (
+                self.history.get(key, 0) >= _REPEAT_LIMIT or _fb.repeats(meta, keys)
+            ):
                 return self._draw()
             if meta[3] >= 100:
                 n = _fb.gen_legal(bb, pos.sq, meta, self.bufs[ply], False)
@@ -1568,6 +1584,7 @@ class FastEngine:
             and not in_check
             and abs(beta) < DISTANCE_THRESHOLD
             and _fb.non_pawn_material(bb, int(meta[0]))
+            and (not NMP_GUARD or ply == 0 or pos.undo[meta[4] - 1, 0] != 0)
         ):
             _fb.make_null(bb, meta, pos.undo, keys)
             try:
@@ -1677,6 +1694,8 @@ class FastEngine:
             return self.search(depth, alpha, beta, ply)
         pos = self.pos
         ctrl = self.ctrl
+        if ctrl[_fs.C_STOP] != 0:
+            raise Timeout
         ctrl[_fs.C_ABORT] = 0
         score = _fs.search(  # type: ignore[call-arg]
             pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
@@ -1689,6 +1708,21 @@ class FastEngine:
         if ctrl[_fs.C_ABORT]:
             raise Timeout
         return int(score)
+
+    def predicted_reply(self, board: chess.Board) -> chess.Move | None:
+        """The move the transposition table holds for `board`, if any and legal."""
+        if not COMPILED_SEARCH or not self.tt:
+            return None
+        pos = _fb.Position(board)
+        key = pos.keys[0]
+        slot = int(key & _fs.TT_MASK)
+        if self.tt[0][slot] != key:
+            return None
+        packed = int(_fs.unpack_move(self.tt[1][slot]))
+        if not packed:
+            return None
+        move = chess.Move.from_uci(_fb.move_to_uci(packed))
+        return move if move in board.legal_moves else None
 
     def prepare(self, board: chess.Board, draw_root: int) -> None:
         """Load `board` as the root: accumulators, contempt, and the kernel's state."""
@@ -1713,6 +1747,7 @@ class FastEngine:
             ctrl[_fs.C_LMR] = 1 if LMR else 0
             ctrl[_fs.C_LMP] = 1 if LMP else 0
             ctrl[_fs.C_SEE] = 1 if SEE else 0
+            ctrl[_fs.C_NMP_GUARD] = 1 if NMP_GUARD else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -1835,11 +1870,66 @@ class FastEngine:
 
 
 _FAST: FastEngine | None = None
+_PONDER: FastEngine | None = None
+_PONDER_THREAD: threading.Thread | None = None
 if _FAST_OK:
     try:
         _FAST = FastEngine()
+        if PONDER and COMPILED_SEARCH:
+            _PONDER = FastEngine()
+            _PONDER.tt = _FAST.tt  # one table, warmed by whichever engine is searching
+            _PONDER.history = _FAST.history
     except Exception:  # an init failure would lose every game; a fallback loses none
         _FAST = None
+        _PONDER = None
+
+
+def _ponder_target(board: chess.Board) -> None:
+    """Search `board` on the opponent's time until told to stop. Only the shared
+    table is kept; the move it finds is never played."""
+    engine = _PONDER
+    main = _FAST
+    if engine is None or main is None:
+        return
+    try:
+        engine.age = main.age
+        engine.prepare(board, 0)
+        limit = time.monotonic() + PONDER_MAX_S
+        engine.choose(limit, limit)
+    except Exception:  # pondering is a bonus; nothing here may reach the game
+        pass
+
+
+def _stop_ponder() -> None:
+    global _PONDER_THREAD
+    thread = _PONDER_THREAD
+    if thread is None:
+        return
+    if _PONDER is not None:
+        _PONDER.ctrl[_fs.C_STOP] = 1
+    thread.join(0.5)
+    _PONDER_THREAD = None
+
+
+def _start_ponder(board: chess.Board) -> None:
+    """`board` is the position after our move. Ponder the reply the table
+    expects, or the position itself when it holds none."""
+    global _PONDER_THREAD
+    if _PONDER is None or _FAST is None:
+        return
+    try:
+        target = board.copy()
+        reply = _FAST.predicted_reply(target)
+        if reply is not None:
+            target.push(reply)
+        if not target.legal_moves:
+            return
+        _PONDER.ctrl[_fs.C_STOP] = 0
+        thread = threading.Thread(target=_ponder_target, args=(target,), daemon=True)
+        _PONDER_THREAD = thread
+        thread.start()
+    except Exception:
+        _PONDER_THREAD = None
 # The platform shows import-time output in the validation log, so this is how to
 # see from the dashboard whether the compiled path came up on their image.
 print(f"compiled board: {'on' if _FAST is not None else 'off'}")
@@ -2059,6 +2149,8 @@ def get_move(fen: str, time_left_ms: int) -> str:
     if not board.legal_moves:
         return "0000"
 
+    if PONDER:
+        _stop_ponder()
     if TIME_V2:
         _note_clock(time_left_ms)
 
@@ -2123,6 +2215,13 @@ def get_move(fen: str, time_left_ms: int) -> str:
             if _FAST is not None:
                 fast_after = chess.polyglot.zobrist_hash(board)
                 _FAST.history[fast_after] = _FAST.history.get(fast_after, 0) + 1
+            board.pop()
+        except Exception:
+            pass
+    if PONDER and _PONDER is not None:
+        try:
+            board.push(move)
+            _start_ponder(board)
             board.pop()
         except Exception:
             pass
