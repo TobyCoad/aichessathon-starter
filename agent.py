@@ -912,6 +912,8 @@ NMP_GUARD: Final = False
 # futility prune on it with one margin. Scale both margins by piece count:
 # 1.6x at 17-20, 2x at 13-16, 3x at 9-12, off at 8 and below.
 RFP_PHASE: Final = False
+# percent of the normal margin in the bands <= 8, 9-12, 13-16, 17-20 pieces (0 = off)
+RFP_PHASE_PERCENT: Final = (0, 300, 200, 160)
 # IIR: internal iterative reduction, one ply less at depth >= 4 without a hash move.
 IIR: Final = False
 # BOOK_ENABLED: the polyglot book. Games start from curated positions at ply
@@ -1436,7 +1438,7 @@ class FastEngine:
         self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
         self.scores2 = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int64)
         self.scratch = np.zeros(2 * ACC_SIZE, dtype=np.float32)
-        self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 16, dtype=np.int64)
+        self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 24, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
         if COMPILED_SEARCH:
@@ -1798,6 +1800,10 @@ class FastEngine:
             ctrl[_fs.C_SEE] = 1 if SEE else 0
             ctrl[_fs.C_NMP_GUARD] = 1 if NMP_GUARD else 0
             ctrl[_fs.C_RFP_PHASE] = 1 if RFP_PHASE else 0
+            ctrl[_fs.C_PH_LE8] = RFP_PHASE_PERCENT[0]
+            ctrl[_fs.C_PH_9_12] = RFP_PHASE_PERCENT[1]
+            ctrl[_fs.C_PH_13_16] = RFP_PHASE_PERCENT[2]
+            ctrl[_fs.C_PH_17_20] = RFP_PHASE_PERCENT[3]
             ctrl[_fs.C_IIR] = 1 if IIR else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)

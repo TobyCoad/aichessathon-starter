@@ -68,21 +68,23 @@ C_NMP_GUARD = 13
 # because the static score they trust is 2-6x less accurate below 17 pieces.
 # C_IIR: a node of depth >= 4 with no hash move is searched one ply shallower.
 C_RFP_PHASE, C_IIR = 14, 15
-# Margin scale in percent by piece count (index = pieces on the board); 0 turns
-# the pruning off in that band.
-PHASE_PERCENT = np.zeros(33, dtype=np.int64)
-for _p in range(33):
-    if _p <= 8:
-        PHASE_PERCENT[_p] = 0
-    elif _p <= 12:
-        PHASE_PERCENT[_p] = 300
-    elif _p <= 16:
-        PHASE_PERCENT[_p] = 200
-    elif _p <= 20:
-        PHASE_PERCENT[_p] = 160
-    else:
-        PHASE_PERCENT[_p] = 100
-CTRL_SIZE = 16
+# Margin scale in percent for the piece bands <= 8, 9-12, 13-16, 17-20 (21+ is
+# always 100); 0 turns the pruning off in that band. Set from agent.RFP_PHASE_PERCENT.
+C_PH_LE8, C_PH_9_12, C_PH_13_16, C_PH_17_20 = 16, 17, 18, 19
+CTRL_SIZE = 24
+
+
+@njit(cache=False)
+def phase_percent(ctrl: Any, pieces: Any) -> Any:
+    if pieces <= 8:
+        return ctrl[C_PH_LE8]
+    if pieces <= 12:
+        return ctrl[C_PH_9_12]
+    if pieces <= 16:
+        return ctrl[C_PH_13_16]
+    if pieces <= 20:
+        return ctrl[C_PH_17_20]
+    return 100
 
 # LMR: reduction by depth and move number, the usual log-log formula. A quiet
 # move that is neither the hash move nor a killer, searched after the first two,
@@ -374,7 +376,7 @@ def search(
     standing = -INFINITY
     percent = 100
     if ctrl[C_RFP_PHASE] != 0:
-        percent = PHASE_PERCENT[meta[fb.PIECES]]
+        percent = phase_percent(ctrl, meta[fb.PIECES])
     if (
         percent != 0
         and depth <= RFP_MAX_DEPTH
