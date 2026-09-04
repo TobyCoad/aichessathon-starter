@@ -549,3 +549,8 @@ the repeats. Challenger 057-twofold queued after 052b-lmr. Also explains the
 50%+ repetition-draw rate in every self-play gauntlet (same referee rule).
 052-lmr PROMOTE +47 over 232 games vs 050. Review agent: no correctness bugs;
 three efficiency fixes applied (41fa599). night3.sh running.
+
+v5.5 (a3c6cfe): COMPILED_SEARCH + LMR (reviewed variant) + REPETITION_TWOFOLD.
+Clocktest 6 games x1.5: 0 flags, lowest clock 10.6 s, longest move 13.0 s -> PASS.
+Zip built 18:40 (27 MB unpacked, import 21.5 s under load), handed to the user.
+night3.sh + night3b.sh (assemble v6 from verdicts, gate, report) running.
