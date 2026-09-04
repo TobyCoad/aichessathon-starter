@@ -361,6 +361,7 @@ try:
         float32(
             float32[:], float32[:], int64,
             float32[:, :, ::1], float32[:, ::1], float32[:, :, ::1], float32[:, ::1],
+            float32[:],
         ),
         cache=False,
         fastmath=True,
@@ -373,24 +374,46 @@ try:
         b2: npt.NDArray[np.float32],
         w3: npt.NDArray[np.float32],
         b3: npt.NDArray[np.float32],
+        scratch: npt.NDArray[np.float32],
     ) -> np.float32:
         """_eval_kernel with the head chosen inside: slicing the four head arrays
-        in Python cost more than the arithmetic once there were eight of them."""
-        hidden = np.empty(2 * ACC_SIZE, dtype=np.float32)
-        for i in range(ACC_SIZE):
+        in Python cost more than the arithmetic once there were eight of them.
+        `scratch` is a caller-owned 2*ACC_SIZE buffer: no allocation per call. The
+        head loop runs four output neurons at a time so `hidden` is read from
+        cache 8 times instead of 32; fastsearch.evaluate is this loop verbatim."""
+        hidden = scratch
+        acc = ACC_SIZE
+        for i in range(acc):
             x = own[i]
             x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
             hidden[i] = x * x
             y = opponent[i]
             y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
-            hidden[ACC_SIZE + i] = y * y
+            hidden[acc + i] = y * y
         out = b3[k, 0]
-        for j in range(32):
-            total = b2[k, j]
-            for i in range(2 * ACC_SIZE):
-                total += hidden[i] * w2t[k, j, i]
-            if total > 0.0:
-                out += total * w3[k, j, 0]
+        for j in range(0, 32, 4):
+            t0 = b2[k, j]
+            t1 = b2[k, j + 1]
+            t2 = b2[k, j + 2]
+            t3 = b2[k, j + 3]
+            r0 = w2t[k, j]
+            r1 = w2t[k, j + 1]
+            r2 = w2t[k, j + 2]
+            r3 = w2t[k, j + 3]
+            for i in range(2 * acc):
+                h = hidden[i]
+                t0 += h * r0[i]
+                t1 += h * r1[i]
+                t2 += h * r2[i]
+                t3 += h * r3[i]
+            if t0 > 0.0:
+                out += t0 * w3[k, j, 0]
+            if t1 > 0.0:
+                out += t1 * w3[k, j + 1, 0]
+            if t2 > 0.0:
+                out += t2 * w3[k, j + 2, 0]
+            if t3 > 0.0:
+                out += t3 * w3[k, j + 3, 0]
         result: np.float32 = out
         return result
 
@@ -469,7 +492,8 @@ try:
     _warm_stack = np.zeros((2, 2, ACC_SIZE), dtype=np.float32)
     _warm_idx = np.zeros(8, dtype=np.int32)
     _eval_kernel(_warm_a, _warm_b, _W2T[0], B2[0], W3[0], B3[0])
-    _eval_bucket_kernel(_warm_a, _warm_b, 0, _W2T, B2, W3, B3)
+    _SCRATCH = np.zeros(2 * ACC_SIZE, dtype=np.float32)
+    _eval_bucket_kernel(_warm_a, _warm_b, 0, _W2T, B2, W3, B3, _SCRATCH)
     _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1, 0, 0)
     _warm_feats = np.zeros(32, dtype=np.int32)
     _refresh_kernel(_warm_a, B1, W1, _warm_feats, 1)
@@ -696,7 +720,9 @@ class Accumulator:
             own, opponent = self.black, self.white
         k = _bucket(pieces)
         if self.fast:
-            compiled: float = float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3))
+            compiled: float = float(
+                _eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, _SCRATCH)
+            )
             return int(compiled * OUTPUT_SCALE)
         hidden = np.concatenate((own, opponent))
         np.clip(hidden, 0.0, 1.0, out=hidden)
@@ -1368,6 +1394,7 @@ class FastEngine:
         "root_side",
         "scores",
         "scores2",
+        "scratch",
         "table",
         "tt",
         "white",
@@ -1390,6 +1417,7 @@ class FastEngine:
         self.tt: tuple[Any, ...] = ()
         self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
         self.scores2 = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int64)
+        self.scratch = np.zeros(2 * ACC_SIZE, dtype=np.float32)
         self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 16, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
@@ -1436,7 +1464,10 @@ class FastEngine:
         else:
             own, opponent = self.black, self.white
         k = _bucket(int(meta[5]))
-        return int(float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3)) * OUTPUT_SCALE)
+        return int(
+            float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, self.scratch))
+            * OUTPUT_SCALE
+        )
 
     def corrected(self) -> tuple[int, int, int]:
         """(raw static, static plus this pawn structure's correction, table index)."""
@@ -1702,7 +1733,7 @@ class FastEngine:
             W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
             _W2T, B2, W3, B3, *self.tt,
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
-            ctrl, self.deadline, depth, alpha, beta, ply,
+            ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
         )
         self.nodes = int(ctrl[_fs.C_NODES])
         if ctrl[_fs.C_ABORT]:

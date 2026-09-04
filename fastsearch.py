@@ -177,7 +177,9 @@ def from_table(score: Any, ply: Any) -> Any:
 
 
 @njit(cache=False, fastmath=True)
-def evaluate(meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: Any) -> Any:
+def evaluate(
+    meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: Any, scratch: Any
+) -> Any:
     """agent._eval_bucket_kernel with the side and bucket chosen here."""
     buckets = w2t.shape[0]
     k = (meta[fb.PIECES] - 1) * buckets // 32
@@ -192,7 +194,7 @@ def evaluate(meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: 
         own = black
         opponent = white
     acc = own.shape[0]
-    hidden = np.empty(2 * acc, dtype=np.float32)
+    hidden = scratch  # caller-owned: no allocation per evaluation
     for i in range(acc):
         x = own[i]
         x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
@@ -201,12 +203,29 @@ def evaluate(meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: 
         y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
         hidden[acc + i] = y * y
     out = b3[k, 0]
-    for j in range(32):
-        total = b2[k, j]
+    for j in range(0, 32, 4):
+        t0 = b2[k, j]
+        t1 = b2[k, j + 1]
+        t2 = b2[k, j + 2]
+        t3 = b2[k, j + 3]
+        r0 = w2t[k, j]
+        r1 = w2t[k, j + 1]
+        r2 = w2t[k, j + 2]
+        r3 = w2t[k, j + 3]
         for i in range(2 * acc):
-            total += hidden[i] * w2t[k, j, i]
-        if total > 0.0:
-            out += total * w3[k, j, 0]
+            h = hidden[i]
+            t0 += h * r0[i]
+            t1 += h * r1[i]
+            t2 += h * r2[i]
+            t3 += h * r3[i]
+        if t0 > 0.0:
+            out += t0 * w3[k, j, 0]
+        if t1 > 0.0:
+            out += t1 * w3[k, j + 1, 0]
+        if t2 > 0.0:
+            out += t2 * w3[k, j + 2, 0]
+        if t3 > 0.0:
+            out += t3 * w3[k, j + 3, 0]
     return int(float(out) * OUTPUT_SCALE)
 
 
@@ -216,14 +235,14 @@ def quiesce(
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
     w2t: Any, b2: Any, w3: Any, b3: Any,
     butterfly: Any, moves: Any, scores: Any, ctrl: Any, deadline: Any,
-    alpha: Any, beta: Any, depth: Any, ply: Any,
+    alpha: Any, beta: Any, depth: Any, ply: Any, scratch: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
         ctrl[C_ABORT] = 1
         return 0
 
-    standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+    standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if standing >= beta:
         return standing
     if standing + BIG_DELTA < alpha:
@@ -252,7 +271,7 @@ def quiesce(
         score = -quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline,
-            -beta, -alpha, depth + 1, ply + 1,
+            -beta, -alpha, depth + 1, ply + 1, scratch,
         )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
@@ -272,7 +291,7 @@ def search(
     tt_key: Any, tt_data: Any,
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
-    depth: Any, alpha: Any, beta: Any, ply: Any,
+    depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
@@ -295,7 +314,7 @@ def search(
                 return -MATE + ply
             return draw_score(meta, ctrl)
     if ply >= fb.MAX_PLY - 8:
-        return evaluate(meta, white, black, w2t, b2, w3, b3)
+        return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
 
     original_alpha = alpha
     hash_move = 0
@@ -328,6 +347,7 @@ def search(
         return quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline, alpha, beta, 0, ply,
+            scratch,
         )
 
     standing = -INFINITY
@@ -339,7 +359,7 @@ def search(
         if cached_eval != NO_EVAL:
             standing = cached_eval
         else:
-            standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+            standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             cached_eval = standing
         if standing - RFP_MARGIN * depth >= beta:
             return standing
@@ -350,7 +370,7 @@ def search(
             if cached_eval != NO_EVAL:
                 standing = cached_eval
             else:
-                standing = evaluate(meta, white, black, w2t, b2, w3, b3)
+                standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
                 cached_eval = standing
         futile = standing + FUTILITY_MARGIN[depth] <= alpha
 
@@ -366,7 +386,7 @@ def search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1,
+            depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1, scratch,
         )
         fb.unmake_null(meta, undo)
         if ctrl[C_ABORT]:
@@ -416,7 +436,7 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                reduced, -alpha - 1, -alpha, ply + 1,
+                reduced, -alpha - 1, -alpha, ply + 1, scratch,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
@@ -427,28 +447,28 @@ def search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -alpha - 1, -alpha, ply + 1,
+                        depth - 1, -alpha - 1, -alpha, ply + 1, scratch,
                     )
                 else:
                     score = -search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -beta, -alpha, ply + 1,
+                        depth - 1, -beta, -alpha, ply + 1, scratch,
                     )
         elif pvs and searched > 0:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -alpha - 1, -alpha, ply + 1,
+                depth - 1, -alpha - 1, -alpha, ply + 1, scratch,
             )
         else:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1,
+                depth - 1, -beta, -alpha, ply + 1, scratch,
             )
         narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
@@ -457,7 +477,7 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1,
+                depth - 1, -beta, -alpha, ply + 1, scratch,
             )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
@@ -515,6 +535,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     butterfly = np.zeros(4096, dtype=np.int32)
     moves = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int32)
     scores = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int64)
+    scratch = np.zeros(2 * acc, dtype=np.float32)
     rep_keys = np.zeros(0, dtype=np.uint64)
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1
@@ -522,5 +543,5 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     search(  # type: ignore[call-arg]
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
-        ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0,
+        ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch,
     )

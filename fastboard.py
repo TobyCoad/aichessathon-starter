@@ -696,6 +696,21 @@ def _acc_row(
 
 
 @njit(cache=False)
+def _acc_row_one(
+    w1: Any, acc: Any, s: Any, code: Any, off: Any, white_pov: Any, sign: Any
+) -> Any:
+    """_acc_row for one perspective only."""
+    width = acc.shape[0]
+    row = w1[off + feature(s, code, white_pov)]
+    if sign > 0:
+        for i in range(width):
+            acc[i] += row[i]
+    else:
+        for i in range(width):
+            acc[i] -= row[i]
+
+
+@njit(cache=False)
 def make_full(
     bb: Any,
     sqa: Any,
@@ -755,19 +770,35 @@ def make_full(
                 rfrom, rto = to - 2, to + 1
             _acc_row(w1, white, black, rfrom, rook, off_w, off_b, -1)
             _acc_row(w1, white, black, rto, rook, off_w, off_b, 1)
+    else:
+        # A king move across a zone boundary: the mover's own perspective changes
+        # block and is rebuilt below; the other perspective keeps its block and
+        # only needs the ordinary deltas of a king move (capture, castling rook).
+        if us == 0:
+            other, off_o, pov = black, off_b, False
+        else:
+            other, off_o, pov = white, off_w, True
+        _acc_row_one(w1, other, frm, code, off_o, pov, -1)
+        if captured >= 0:
+            _acc_row_one(w1, other, to, captured, off_o, pov, -1)
+        _acc_row_one(w1, other, to, code, off_o, pov, 1)
+        if to - frm == 2 or frm - to == 2:
+            rook = us * 6 + 3
+            if to > frm:
+                rfrom, rto = to + 1, to - 1
+            else:
+                rfrom, rto = to - 2, to + 1
+            _acc_row_one(w1, other, rfrom, rook, off_o, pov, -1)
+            _acc_row_one(w1, other, rto, rook, off_o, pov, 1)
 
     make_light(bb, sqa, meta, undo, keys, move)
 
     if crossing:
-        # The mover's own perspective changes block; the other perspective still
-        # needs the ordinary deltas, which are cheapest as a rebuild too here.
         zones[us] = new_zone
         if us == 0:
             rebuild(sqa, w1, b1, white, True, zones[0])
-            rebuild(sqa, w1, b1, black, False, zones[1])
         else:
             rebuild(sqa, w1, b1, black, False, zones[1])
-            rebuild(sqa, w1, b1, white, True, zones[0])
 
 
 @njit(cache=False)
