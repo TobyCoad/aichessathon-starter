@@ -127,6 +127,12 @@ def _zone(square: int) -> int:
         if rank <= 3:
             return 4 + (file >> 2)
         return 6 + (file >> 2)
+    if KING_ZONES == 32:
+        if rank <= 1:
+            return rank * 8 + file
+        if rank <= 3:
+            return 16 + (rank - 2) * 4 + (file >> 1)
+        return 24 + ((rank - 4) >> 1) * 4 + (file >> 1)
     return 0
 
 

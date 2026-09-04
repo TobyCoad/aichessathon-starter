@@ -70,7 +70,35 @@ def zone_of(square: Tensor, zones: int = 8) -> Tensor:
     if zones == 8:
         upper = torch.where(rank <= 3, 4 + (file >> 2), 6 + (file >> 2))
         return torch.where(rank <= 1, file >> 1, upper)
+    if zones == 32:
+        low = rank * 8 + file
+        mid = 16 + (rank - 2) * 4 + (file >> 1)
+        high = 24 + ((rank - 4) >> 1) * 4 + (file >> 1)
+        return torch.where(rank <= 1, low, torch.where(rank <= 3, mid, high))
     raise ValueError(f"no zone map for {zones} king zones")
+
+
+def zone_parents(zones: int, saved_zones: int) -> list[int]:
+    """For each zone of a `zones` map, the zone of the `saved_zones` map it lies
+    inside. Only defined when the new map refines the old one; a net trained on
+    the coarse map then starts the fine one exactly where it finished."""
+    parents: dict[int, int] = {}
+    squares = torch.arange(64)
+    fine_zones = zone_of(squares, zones).tolist()
+    coarse_zones = zone_of(squares, saved_zones).tolist()
+    for fine, coarse in zip(fine_zones, coarse_zones, strict=True):
+        if parents.setdefault(fine, coarse) != coarse:
+            raise SystemExit(f"{zones} zones do not refine {saved_zones}: zone {fine} straddles")
+    return [parents[z] for z in range(zones)]
+
+
+def expand_zones(weight: Tensor, zones: int, saved_zones: int) -> Tensor:
+    """bag.weight (saved_zones * 768, A) -> (zones * 768, A) by parent zone."""
+    if zones == saved_zones:
+        return weight
+    blocks = weight.view(saved_zones, FEATURES, -1)
+    parents = torch.tensor(zone_parents(zones, saved_zones))
+    return blocks[parents].reshape(zones * FEATURES, -1).contiguous()
 
 
 class Net(nn.Module):
@@ -158,14 +186,12 @@ def load_checkpoint(
     accumulator = int(state["bag.weight"].shape[1])
     saved_zones = int(state["bag.weight"].shape[0]) // FEATURES
     zones = king_zones or saved_zones
-    if zones != saved_zones and saved_zones != 1:
-        raise SystemExit(f"{path} has {saved_zones} king zones, asked for {zones}")
     if "l2.weight" in state:
         hidden = int(state["l2.weight"].shape[0])
         heads = buckets or 1
         net = Net(accumulator, hidden, heads, zones)
         with torch.no_grad():
-            net.bag.weight.copy_(state["bag.weight"].repeat(zones // saved_zones, 1))
+            net.bag.weight.copy_(expand_zones(state["bag.weight"], zones, saved_zones))
             net.acc_bias.copy_(state["acc_bias"])
             net.head_w2.copy_(state["l2.weight"].t().unsqueeze(0).expand_as(net.head_w2))
             net.head_b2.copy_(state["l2.bias"].unsqueeze(0).expand_as(net.head_b2))
@@ -178,7 +204,7 @@ def load_checkpoint(
     net = Net(accumulator, int(state["head_w2"].shape[2]), saved, zones)
     if zones != saved_zones:
         state = dict(state)
-        state["bag.weight"] = state["bag.weight"].repeat(zones // saved_zones, 1)
+        state["bag.weight"] = expand_zones(state["bag.weight"], zones, saved_zones)
     net.load_state_dict(state)
     return net
 

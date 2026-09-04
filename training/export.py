@@ -75,6 +75,15 @@ def convert(net: Net) -> dict[str, np.ndarray]:
     }
 
 
+def halve(weights: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """W1 as float16 on disk: the 50 MB limit is on the unpacked zip, and the
+    engine casts W1 back to float32 at import. Worst-case rounding is 2**-11
+    relative, far below the 1 cp the evaluation is quantised to."""
+    out = dict(weights)
+    out["W1"] = weights["W1"].astype(np.float16)
+    return out
+
+
 def head_numpy(weights: dict[str, np.ndarray], x: np.ndarray, count: np.ndarray) -> np.ndarray:
     """The engine's head arithmetic, in numpy, for the self-check below."""
     h1 = np.clip(x, 0.0, 1.0) ** 2
@@ -94,10 +103,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export a checkpoint for the engine.")
     parser.add_argument("--checkpoint", type=Path, default=Path("weights/net.pt"))
     parser.add_argument("--out", type=Path, default=Path("weights/net.npz"))
+    parser.add_argument("--half", action="store_true", help="store W1 as float16")
     arguments = parser.parse_args()
 
     net = load_checkpoint(arguments.checkpoint).eval()
     weights = convert(net)
+    if arguments.half:
+        weights = halve(weights)
     accumulator = int(net.bag.weight.shape[1])
     hidden = int(net.head_w2.shape[2])
     expected = expected_shapes(accumulator, hidden, net.buckets, net.king_zones)
