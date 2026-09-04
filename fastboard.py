@@ -923,6 +923,16 @@ def non_pawn_material(bb: Any, colour: Any) -> Any:
 
 
 @njit(cache=False)
+def pawn_index(bb: Any, bits: Any) -> Any:
+    """Hash of the pawn structure, both colours, reduced to `bits` bits."""
+    h = bb[0] * np.uint64(0x9E3779B97F4A7C15) ^ bb[6] * np.uint64(0xC2B2AE3D27D4EB4F)
+    h ^= h >> np.uint64(29)
+    h *= np.uint64(0xBF58476D1CE4E5B9)
+    h ^= h >> np.uint64(32)
+    return h >> np.uint64(64 - bits)
+
+
+@njit(cache=False)
 def gives_check_after(bb: Any, meta: Any) -> Any:
     """Whether the side to move is in check (call after make)."""
     return in_check(bb, meta)
@@ -1060,6 +1070,7 @@ def warm_up() -> None:
     make_null(pos.bb, pos.meta, pos.undo, pos.keys)
     unmake_null(pos.meta, pos.undo)
     compute_key(pos.bb, pos.sq, pos.meta)
+    pawn_index(pos.bb, 14)
     popcount(pos.bb[0])
     history = np.zeros(4096, dtype=np.int32)
     scores = np.zeros(MOVE_CAP, dtype=np.int64)

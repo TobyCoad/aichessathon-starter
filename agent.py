@@ -813,11 +813,26 @@ TIME_V3: Final = True
 # alongside this and measured 46% at 120 s: it stops iterations a warm table
 # would have finished. Dropped.)
 TIME_V4: Final = True
+# CORRECTION: correction history. The static evaluation is wrong in ways that
+# repeat. In the platform's round-8 loss it said +400 to +1010 in a rook-and-knight
+# ending that the search itself scored between -37 and -164, and reverse futility
+# and futility both trust the static score, so a persistent error cuts exactly the
+# lines that would refute it. Per side to move and pawn structure this keeps the
+# running gap between the static score and what the search returned, and adds it
+# to the static score before anything trusts it.
+CORRECTION: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
 # toward the adjudication ply; being behind makes a draw welcome.
 FUTILITY_MARGIN: Final = (0, 150, 300)
+# CORRECTION: table of 2 x 2**BITS entries in grain units; a node of depth d moves
+# its entry toward the observed gap with weight min(d + 1, WEIGHT_MAX) / SCALE.
+CORRECTION_BITS: Final = 14
+CORRECTION_GRAIN: Final = 256
+CORRECTION_SCALE: Final = 256
+CORRECTION_WEIGHT_MAX: Final = 16
+CORRECTION_CAP: Final = 400
 CONTEMPT_LEVEL: Final = 10
 CONTEMPT_AHEAD: Final = 25
 CONTEMPT_AHEAD_LATE: Final = 50
@@ -1272,6 +1287,7 @@ class FastEngine:
         "black",
         "bufs",
         "butterfly",
+        "corr",
         "deadline",
         "draw_root",
         "history",
@@ -1292,6 +1308,7 @@ class FastEngine:
         self.history: dict[int, int] = {}
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
         self.butterfly = np.zeros(4096, dtype=np.int32)
+        self.corr = np.zeros((2, 1 << CORRECTION_BITS), dtype=np.int64)
         # One move buffer per ply, sliced once: a fresh view per node is not free.
         buffer = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
         self.bufs: list[npt.NDArray[np.int32]] = [buffer[i] for i in range(_fb.MAX_PLY)]
@@ -1338,6 +1355,14 @@ class FastEngine:
         k = _bucket(int(meta[5]))
         return int(float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3)) * OUTPUT_SCALE)
 
+    def corrected(self) -> tuple[int, int, int]:
+        """(raw static, static plus this pawn structure's correction, table index)."""
+        pos = self.pos
+        side = int(pos.meta[0])
+        index = int(_fb.pawn_index(pos.bb, CORRECTION_BITS))
+        raw = self.evaluate()
+        return raw, raw + int(self.corr[side, index]) // CORRECTION_GRAIN, index
+
     # -- quiescence ---------------------------------------------------------------
 
     def quiesce(self, alpha: int, beta: int, depth: int, ply: int) -> int:
@@ -1345,7 +1370,7 @@ class FastEngine:
         if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
             raise Timeout
 
-        standing = self.evaluate()
+        standing = self.corrected()[1] if CORRECTION else self.evaluate()
         if standing >= beta:
             return standing
         if standing + BIG_DELTA < alpha:
@@ -1436,12 +1461,19 @@ class FastEngine:
             return self.quiesce(alpha, beta, 0, ply)
 
         standing = -INFINITY
+        raw_standing = -INFINITY
+        corr_index = -1
+        if CORRECTION and not in_check:
+            # Every quiet node contributes to the correction table, so the static
+            # score is taken here regardless of depth.
+            raw_standing, standing, corr_index = self.corrected()
         if (
             depth <= RFP_MAX_DEPTH
             and not in_check
             and (not HYGIENE or abs(beta) < DISTANCE_THRESHOLD)
         ):
-            standing = self.evaluate()
+            if standing == -INFINITY:
+                standing = self.evaluate()
             if standing - RFP_MARGIN * depth >= beta:
                 return standing
 
@@ -1529,6 +1561,27 @@ class FastEngine:
             flag = 1
         else:
             flag = 0
+        if (
+            CORRECTION
+            and corr_index >= 0
+            and abs(best_score) < DISTANCE_THRESHOLD
+            and (
+                flag == 0
+                or (flag == 1 and best_score > raw_standing)
+                or (flag == 2 and best_score < raw_standing)
+            )
+        ):
+            # The search disagreed with the static score in a direction the bound
+            # supports: move this pawn structure's entry toward the gap.
+            side = int(meta[0])
+            weight = min(depth + 1, CORRECTION_WEIGHT_MAX)
+            entry = int(self.corr[side, corr_index])
+            entry = (
+                entry * (CORRECTION_SCALE - weight)
+                + (best_score - raw_standing) * CORRECTION_GRAIN * weight
+            ) // CORRECTION_SCALE
+            cap = CORRECTION_CAP * CORRECTION_GRAIN
+            self.corr[side, corr_index] = max(-cap, min(cap, entry))
         if TT_AGE:
             old = self.table.get(key)
             if old is not None and old[4] == self.age and old[0] > depth:
