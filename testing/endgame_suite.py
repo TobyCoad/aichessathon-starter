@@ -7,7 +7,7 @@ records, labels each with Stockfish, and scores an agent's move choice at a fixe
 budget: mean centipawn loss and how often it plays the reference move.
 
   build   .venv\\Scripts\\python.exe -m testing.endgame_suite build --count 400 --depth 18
-  run     .venv\\Scripts\\python.exe -m testing.endgame_suite run --agent overnight/challengers/060-v6 --seconds 2.5
+  run     .venv\\Scripts\\python.exe -m testing.endgame_suite run --agent DIR --seconds 2.5
 
 The suite file caches every Stockfish result, so re-running an agent only pays for
 the moves it chooses that have not been scored before.
@@ -55,7 +55,8 @@ def sample_positions(count: int, seed: int, lo: int, hi: int) -> list[str]:
     candidates: list[str] = []
     for path in sorted(glob.glob("overnight/pgn/**/*.pgn", recursive=True)):
         try:
-            game = chess.pgn.read_game(io.StringIO(Path(path).read_text(encoding="utf-8", errors="replace")))
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            game = chess.pgn.read_game(io.StringIO(text))
         except Exception:
             continue
         if game is None:
@@ -78,7 +79,9 @@ def sample_positions(count: int, seed: int, lo: int, hi: int) -> list[str]:
 
 
 def build(arguments: argparse.Namespace) -> None:
-    fens = sample_positions(arguments.count, arguments.seed, arguments.min_pieces, arguments.max_pieces)
+    fens = sample_positions(
+        arguments.count, arguments.seed, arguments.min_pieces, arguments.max_pieces
+    )
     print(f"{len(fens)} positions sampled; labelling at depth {arguments.depth}")
     sf = chess.engine.SimpleEngine.popen_uci(str(STOCKFISH.resolve()))
     sf.configure({"Threads": 1, "Hash": 64})
@@ -134,7 +137,10 @@ def run(arguments: argparse.Namespace) -> None:
                 child.push(chess.Move.from_uci(move))
                 if child.is_game_over():
                     outcome = child.outcome()
-                    value = 0 if outcome is None or outcome.winner is None else (MATE_CP if outcome.winner == board.turn else -MATE_CP)
+                    if outcome is None or outcome.winner is None:
+                        value = 0
+                    else:
+                        value = MATE_CP if outcome.winner == board.turn else -MATE_CP
                 else:
                     info = sf.analyse(child, chess.engine.Limit(depth=max(depth - 1, 1)))
                     value = cp(info["score"], board.turn)
@@ -146,13 +152,18 @@ def run(arguments: argparse.Namespace) -> None:
         band = "5-8" if pieces <= 8 else ("9-12" if pieces <= 12 else "13-16")
         by_band.setdefault(band, []).append(loss)
         if index % 50 == 0:
-            print(f"  {index}/{len(suite['positions'])}  mean loss so far {sum(losses) / len(losses):.1f}  {time.time() - started:.0f}s", flush=True)
+            print(
+                f"  {index}/{len(suite['positions'])}  mean loss so far "
+                f"{sum(losses) / len(losses):.1f}  {time.time() - started:.0f}s",
+                flush=True,
+            )
     sf.quit()
     if dirty:
         arguments.suite.write_text(json.dumps(suite, indent=1), encoding="utf-8")
     n = len(losses)
     print(
-        f"\n{arguments.agent}: {n} positions at {arguments.seconds}s: mean loss {sum(losses) / n:.1f} cp, "
+        f"\n{arguments.agent}: {n} positions at {arguments.seconds}s: "
+        f"mean loss {sum(losses) / n:.1f} cp, "
         f"median {sorted(losses)[n // 2]} cp, best move {matches / n:.1%}, "
         f">=100 cp on {sum(1 for x in losses if x >= 100) / n:.1%}"
     )
