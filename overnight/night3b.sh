@@ -17,7 +17,9 @@ passed() { grep -qE "^PROMOTE" "$1" 2>/dev/null; }
 until grep -q "057-twofold:" "$LOG" 2>/dev/null && grep -q "059-kz32b:" "$LOG" 2>/dev/null; do sleep 120; done
 say "night3b: assembling v6"
 
-BASE=overnight/challengers/050-compiled-search
+# The gates face the platform champion, v5.5 (compiled search + LMR + twofold);
+# the per-switch gauntlets isolate one change each against v5 (050).
+BASE=overnight/challengers/058-v5.5
 V6=overnight/challengers/060-v6
 rm -rf "$V6"; mkdir -p "$V6/weights"
 cp agent.py fastboard.py fastsearch.py "$V6/"
