@@ -832,7 +832,7 @@ TT_EVAL: Final = False
 # semantics as FastEngine.search -- testing/check_fastsearch holds them to
 # identical scores and node counts at fixed depth with the table off. The root
 # loop, the time rules and the fallback are unchanged.
-COMPILED_SEARCH: Final = False
+COMPILED_SEARCH: Final = True
 # LMR / LMP: late move reductions and late move pruning inside the compiled
 # search (fastsearch.py). LMR reduces the depth of quiet moves after the first
 # two by a log-log amount and re-searches on a fail high; LMP skips the quiet
