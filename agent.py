@@ -1771,6 +1771,9 @@ class FastEngine:
                         break
                     fails += 1
                     if failed_high:
+                        # The move that failed high is proven better than the old best:
+                        # it leads the wider pass, and TIME_V4 may keep it.
+                        best = iteration_best
                         hi = INFINITY if fails >= 3 else min(INFINITY, score + window * 4**fails)
                     elif score <= lo:
                         lo = -INFINITY if fails >= 3 else max(-INFINITY, score - window * 4**fails)

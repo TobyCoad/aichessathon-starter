@@ -263,19 +263,27 @@ def search_score(agent: ModuleType, board: chess.Board, colour: chess.Color, sec
     if engine_class is None or fastboard is None or getattr(agent, "_FAST", None) is None:
         return None
     try:
-        engine = engine_class()
-        engine.pos.load(board)
-        fastboard.refresh(
-            engine.pos.bb, engine.pos.sq, engine.pos.meta, agent.W1, agent.B1,
-            engine.white, engine.black, engine.zones, agent.KING_ZONES,
-        )
-        engine.root_side = int(engine.pos.meta[0])
-        engine.draw_root = 0
+        # One engine per agent module: a FastEngine carries a 64 MB table.
+        engine = getattr(agent, "_postmortem_engine", None)
+        if engine is None:
+            engine = engine_class()
+            agent._postmortem_engine = engine
+        if hasattr(engine, "prepare"):
+            engine.prepare(board, 0)
+        else:
+            engine.pos.load(board)
+            fastboard.refresh(
+                engine.pos.bb, engine.pos.sq, engine.pos.meta, agent.W1, agent.B1,
+                engine.white, engine.black, engine.zones, agent.KING_ZONES,
+            )
+            engine.root_side = int(engine.pos.meta[0])
+            engine.draw_root = 0
         engine.deadline = time.monotonic() + seconds
+        search = getattr(engine, "root_search", engine.search)
         score = None
         try:
             for depth in range(1, 40):
-                score = engine.search(depth, -agent.INFINITY, agent.INFINITY, 0)
+                score = search(depth, -agent.INFINITY, agent.INFINITY, 0)
         except agent.Timeout:
             pass
         if score is None:

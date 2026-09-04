@@ -629,7 +629,7 @@ FEATURES = 768
 
 @njit(cache=False)
 def zone_of(square: Any, zones: Any) -> Any:
-    """Mirrors training.features.king_zone for 1, 4 or 8 zones."""
+    """Mirrors training.features.king_zone for 1, 4, 8 or 32 zones."""
     rank = square >> 3
     file = square & 7
     if zones == 4:

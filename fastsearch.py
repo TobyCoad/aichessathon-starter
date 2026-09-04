@@ -398,19 +398,33 @@ def search(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
         )
         if reduction > 0:
+            reduced = depth - 1 - reduction
+            if reduced < 1:
+                reduced = 1  # never reduce straight into quiescence
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1 - reduction, -alpha - 1, -alpha, ply + 1,
+                reduced, -alpha - 1, -alpha, ply + 1,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
-                score = -search(
-                    bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
-                    w2t, b2, w3, b3, tt_key, tt_data,
-                    killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                    depth - 1, -alpha - 1, -alpha, ply + 1,
-                )
+                # Beat alpha reduced: confirm at full depth. Under PVS a null window
+                # first (the full-window re-search below follows if it holds);
+                # without PVS the full window straight away, one search not two.
+                if pvs:
+                    score = -search(
+                        bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
+                        king_zones, w2t, b2, w3, b3, tt_key, tt_data,
+                        killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                        depth - 1, -alpha - 1, -alpha, ply + 1,
+                    )
+                else:
+                    score = -search(
+                        bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
+                        king_zones, w2t, b2, w3, b3, tt_key, tt_data,
+                        killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                        depth - 1, -beta, -alpha, ply + 1,
+                    )
         elif pvs and searched > 0:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
@@ -425,7 +439,7 @@ def search(
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -beta, -alpha, ply + 1,
             )
-        narrow = reduction > 0 or (pvs and searched > 0)
+        narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
             # The null window said this move beats alpha: find out by how much.
             score = -search(
