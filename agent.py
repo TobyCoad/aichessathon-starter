@@ -804,7 +804,7 @@ PVS: Final = False
 # deepening at a position where one more ply found the right move; when the best
 # move changes or the score drops between iterations the position is unstable,
 # and the next iteration is allowed up to 2.5 soft budgets instead of 1.5.
-TIME_V3: Final = False
+TIME_V3: Final = True
 # TIME_V4: two defects seen in the platform's round-5 loss. A transposition
 # table warm from the previous move lets iterations 1..8 finish in milliseconds,
 # so the cost predictor launches the next depth blind, hits the hard cap, and
