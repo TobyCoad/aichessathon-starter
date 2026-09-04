@@ -583,3 +583,9 @@ and GAUNTLET_OPENINGS=platform (80 curated FENs). V7 plan: overnight/eval/V7_PLA
 Queues: night3b (v6 gates vs 058-v5.5) -> queue5 (061 ponder, 064 rfpphase, 065 nobook
 on platform openings, 063 pvs, 066 iir, 062 nmpguard; each vs 060-v6) ; queue6 after
 kz32b (kz8c control, kz8w weighted, kz16; export/check/suite/gauntlet each).
+
+5 Sep 00:06 RFP_PHASE CLOSED on the endgame suite (400 positions 5-16 pieces, SF d18,
+2.5 s/move): baseline 7.0 cp mean loss (5-8: 4.8, 9-12: 8.9, 13-16: 7.0); margins
+x(0,300,200,160) 11.6; (0,200,150,130) 15.8; (100,150,130,115) 7.6; (100,130,120,110)
+7.5. Wider margins cost depth in the 9-12 band every time. The pruning margins are
+not the endgame problem. Switch left in the code, off; dropped from queue5.
