@@ -854,6 +854,14 @@ SEE: Final = False
 # the full window after three fails. Narrow windows cut off sooner.
 ASPIRATION: Final = False
 ASPIRATION_WINDOW: Final = 30
+# REPETITION_TWOFOLD: the referee calls board.outcome(claim_draw=True) after every
+# move, and python-chess lets the side to move claim as soon as ONE legal move
+# would make a third occurrence. Round 11 on the platform was drawn with a mate
+# on the board for us, because two positions had occurred twice and the referee
+# stopped the game before we chose. So in the search a position that has
+# occurred even once before in the game is a draw: while winning the engine
+# never lets a position repeat at all.
+REPETITION_TWOFOLD: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -876,6 +884,8 @@ CONTEMPT_AHEAD: Final = 25
 CONTEMPT_AHEAD_LATE: Final = 50
 CONTEMPT_BEHIND: Final = -20
 ADJUDICATION_PLY: Final = 300
+# How many earlier occurrences of a position make it a draw inside the search.
+_REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
 # TIME_V2: the clock is never allowed below this fraction of its starting value,
 # which is inferred as the largest time_left_ms seen in the game. 12 s at 120 s.
@@ -1082,7 +1092,7 @@ class Engine:
         # A count of 1 means the position occurred once, which is not a draw. In-tree
         # repetitions are caught by is_repetition(2); a pre-root position needs two
         # prior sightings before a third occurrence here would let the referee claim.
-        if ply and (self.history.get(key, 0) >= 2 or board.is_repetition(2)):
+        if ply and (self.history.get(key, 0) >= _REPEAT_LIMIT or board.is_repetition(2)):
             return 0
 
         # Exact result for small material. WDL is 26-75 us warm, roughly two move
@@ -1478,7 +1488,7 @@ class FastEngine:
         key = int(keys[meta[4]])
 
         if ply:
-            if self.history.get(key, 0) >= 2 or _fb.repeats(meta, keys):
+            if self.history.get(key, 0) >= _REPEAT_LIMIT or _fb.repeats(meta, keys):
                 return self._draw()
             if meta[3] >= 100:
                 n = _fb.gen_legal(bb, pos.sq, meta, self.bufs[ply], False)
@@ -1703,7 +1713,7 @@ class FastEngine:
             ctrl[_fs.C_LMR] = 1 if LMR else 0
             ctrl[_fs.C_LMP] = 1 if LMP else 0
             ctrl[_fs.C_SEE] = 1 if SEE else 0
-            repeated = [k for k, count in self.history.items() if count >= 2]
+            repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
     # -- driver -------------------------------------------------------------------
