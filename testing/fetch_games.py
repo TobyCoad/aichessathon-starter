@@ -119,10 +119,16 @@ def main() -> None:
     if not targets:
         print("nothing new to analyse")
         return
-    command = [sys.executable, "-m", "testing.postmortem", *map(str, targets)]
-    command += ["--out", "overnight/postmortem"]
-    print("analysing:", " ".join(p.name for p in targets))
-    subprocess.run(command, check=False)
+    # The team page states our colour; pass it on rather than letting the
+    # post-mortem guess it from move agreement, which misread round 9.
+    for target in targets:
+        command = [sys.executable, "-m", "testing.postmortem", str(target)]
+        command += ["--out", "overnight/postmortem"]
+        colour = next((c for c in ("white", "black") if f"-{c}-" in target.name), None)
+        if colour:
+            command += ["--colour", colour]
+        print("analysing:", target.name, colour or "(side detected)")
+        subprocess.run(command, check=False)
 
 
 if __name__ == "__main__":
