@@ -554,3 +554,19 @@ v5.5 (a3c6cfe): COMPILED_SEARCH + LMR (reviewed variant) + REPETITION_TWOFOLD.
 Clocktest 6 games x1.5: 0 flags, lowest clock 10.6 s, longest move 13.0 s -> PASS.
 Zip built 18:40 (27 MB unpacked, import 21.5 s under load), handed to the user.
 night3.sh + night3b.sh (assemble v6 from verdicts, gate, report) running.
+
+NOTE 056-kz32 "PROMOTE +70": VOID as a net test. The kz32 training never beat its
+warm start, so its net.npz is the kz8 net tiled (verified block-identical by the net
+review agent); the challenger dir was built from the tree AFTER v5.5's switches, so
++70 over 136 games = v5.5 engine vs v5 (050). The retrained net is 059-kz32b, judged
+vs 058-v5.5 (same engine, old net). 057-twofold and night3b gates run vs 058-v5.5.
+
+Research agents (Opus, 4 Sep night): landscape = pondering is allowed and unused
+(rules: "your process keeps its core while the opponent thinks"; runner keeps the
+process alive) -> PONDER switch built. Search review = double null move restores
+the key and fakes a repetition, so NMP was inert at depth >= 6 -> NMP_GUARD switch;
+also halfmove>=4 guard on repetition scans (exact). Net review = the endgame error
+is mostly a sigmoid artefact in cp; the real weak cell is near-equal positions at
+<=16 pieces (5% of data, 10x worse mse) -> per-sample loss weighting; make_full
+rebuilds both accumulators on a zone crossing (only one is stale) -> fix before
+judging 32 zones; int8/int16 heads measured slower again (closed); 16 zones over 32.
