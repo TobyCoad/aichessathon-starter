@@ -833,6 +833,13 @@ TT_EVAL: Final = False
 # identical scores and node counts at fixed depth with the table off. The root
 # loop, the time rules and the fallback are unchanged.
 COMPILED_SEARCH: Final = False
+# LMR / LMP: late move reductions and late move pruning inside the compiled
+# search (fastsearch.py). LMR reduces the depth of quiet moves after the first
+# two by a log-log amount and re-searches on a fail high; LMP skips the quiet
+# tail of the move list at depth <= 3. Both need COMPILED_SEARCH. PVS in the
+# kernel follows the PVS switch above.
+LMR: Final = False
+LMP: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1345,7 +1352,7 @@ class FastEngine:
         self.tt: tuple[Any, ...] = ()
         self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
         self.scores2 = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int64)
-        self.ctrl = np.zeros(8, dtype=np.int64)
+        self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 16, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
         if COMPILED_SEARCH:
@@ -1678,6 +1685,9 @@ class FastEngine:
             ctrl[_fs.C_TT_OFF] = 0
             ctrl[_fs.C_HYGIENE] = 1 if HYGIENE else 0
             ctrl[_fs.C_FUTILITY] = 1 if FUTILITY else 0
+            ctrl[_fs.C_PVS] = 1 if PVS else 0
+            ctrl[_fs.C_LMR] = 1 if LMR else 0
+            ctrl[_fs.C_LMP] = 1 if LMP else 0
             repeated = [k for k, count in self.history.items() if count >= 2]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 

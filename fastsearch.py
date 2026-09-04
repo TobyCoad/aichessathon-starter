@@ -55,7 +55,21 @@ TT_MASK = np.uint64(TT_SIZE - 1)
 
 # ctrl slots: search state the Python side sets and reads.
 C_NODES, C_ABORT, C_AGE, C_ROOT_SIDE, C_DRAW_ROOT, C_TT_OFF, C_HYGIENE, C_FUTILITY = range(8)
-CTRL_SIZE = 8
+# Stage-3 switches, off = the reference search.
+C_PVS, C_LMR, C_LMP = 8, 9, 10
+CTRL_SIZE = 16
+
+# LMR: reduction by depth and move number, the usual log-log formula. A quiet
+# move that is neither the hash move nor a killer, searched after the first two,
+# at depth >= 3, gets its depth cut by this much on a null window and is
+# re-searched at full depth only if it beats alpha anyway.
+LMR_TABLE = np.zeros((64, 64), dtype=np.int64)
+for _d in range(1, 64):
+    for _m in range(1, 64):
+        LMR_TABLE[_d, _m] = int(0.75 + np.log(_d) * np.log(_m) / 2.25)
+# LMP: at depth d, once this many moves have been searched, remaining quiet
+# moves are skipped when not in check and not near a mate.
+LMP_LIMIT = np.array([0, 5, 8, 13], dtype=np.int64)
 
 
 def new_table() -> tuple[Any, ...]:
@@ -324,20 +338,67 @@ def search(
     best_score = -INFINITY
     best_move = 0
     searched = 0
+    pvs = ctrl[C_PVS] != 0
+    lmr = ctrl[C_LMR] != 0 and depth >= 3 and not in_check
+    lmp = ctrl[C_LMP] != 0 and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
     for i in range(n):
         move = fb.pick_move(mv, sc, i, n)
         quiet = sq[(move >> 6) & 63] < 0
-        if futile and quiet and (move >> 12) == 0:
+        plain = quiet and (move >> 12) == 0
+        if futile and plain:
             continue
+        if lmp and plain and searched >= LMP_LIMIT[depth]:
+            continue
+        reduction = 0
+        if (
+            lmr
+            and plain
+            and searched >= 2
+            and move != hash_move
+            and move != killers[ply, 0]
+            and move != killers[ply, 1]
+        ):
+            reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
         fb.make_full(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
         )
-        score = -search(
-            bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
-            w2t, b2, w3, b3, tt_key, tt_data,
-            killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            depth - 1, -beta, -alpha, ply + 1,
-        )
+        if reduction > 0:
+            score = -search(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, tt_key, tt_data,
+                killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                depth - 1 - reduction, -alpha - 1, -alpha, ply + 1,
+            )
+            if score > alpha and ctrl[C_ABORT] == 0:
+                score = -search(
+                    bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                    w2t, b2, w3, b3, tt_key, tt_data,
+                    killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                    depth - 1, -alpha - 1, -alpha, ply + 1,
+                )
+        elif pvs and searched > 0:
+            score = -search(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, tt_key, tt_data,
+                killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                depth - 1, -alpha - 1, -alpha, ply + 1,
+            )
+        else:
+            score = -search(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, tt_key, tt_data,
+                killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                depth - 1, -beta, -alpha, ply + 1,
+            )
+        narrow = reduction > 0 or (pvs and searched > 0)
+        if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
+            # The null window said this move beats alpha: find out by how much.
+            score = -search(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, tt_key, tt_data,
+                killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                depth - 1, -beta, -alpha, ply + 1,
+            )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
             return 0
