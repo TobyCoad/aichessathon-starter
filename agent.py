@@ -821,6 +821,12 @@ TIME_V4: Final = True
 # running gap between the static score and what the search returned, and adds it
 # to the static score before anything trusts it.
 CORRECTION: Final = False
+# TT_EVAL: a transposition entry for this node holds a searched score. When its
+# bound allows -- exact, a lower bound above the static score, or an upper bound
+# below it -- that score replaces the static score for reverse futility and
+# futility, so a search result already in hand is trusted over the network's
+# guess. The guard for the round-8 pattern that needs no learning.
+TT_EVAL: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1474,6 +1480,17 @@ class FastEngine:
         ):
             if standing == -INFINITY:
                 standing = self.evaluate()
+            if (
+                TT_EVAL
+                and stored is not None
+                and abs(stored_score) < DISTANCE_THRESHOLD
+                and (
+                    flag == 0
+                    or (flag == 1 and stored_score > standing)
+                    or (flag == 2 and stored_score < standing)
+                )
+            ):
+                standing = stored_score
             if standing - RFP_MARGIN * depth >= beta:
                 return standing
 
