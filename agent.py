@@ -827,6 +827,12 @@ CORRECTION: Final = False
 # futility, so a search result already in hand is trusted over the network's
 # guess. The guard for the round-8 pattern that needs no learning.
 TT_EVAL: Final = False
+# COMPILED_SEARCH: negamax and quiescence run as numba kernels (fastsearch.py)
+# over the compiled board, with the transposition table as fixed arrays. Same
+# semantics as FastEngine.search -- testing/check_fastsearch holds them to
+# identical scores and node counts at fixed depth with the table off. The root
+# loop, the time rules and the fallback are unchanged.
+COMPILED_SEARCH: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1283,6 +1289,10 @@ try:
         import fastboard as _fb
 
         _fb.warm_up()
+        if COMPILED_SEARCH:
+            import fastsearch as _fs
+
+            _fs.warm_up(W1, B1, _W2T, B2, W3, B3, KING_ZONES)
         _FAST_OK = True
 except Exception:
     _FAST_OK = False
@@ -1299,15 +1309,21 @@ class FastEngine:
         "bufs",
         "butterfly",
         "corr",
+        "ctrl",
         "deadline",
         "draw_root",
         "history",
         "killers",
+        "killers2",
+        "movebuf",
         "nodes",
         "pos",
+        "rep_keys",
+        "root_best",
         "root_side",
         "scores",
         "table",
+        "tt",
         "white",
         "zones",
     )
@@ -1323,6 +1339,15 @@ class FastEngine:
         # One move buffer per ply, sliced once: a fresh view per node is not free.
         buffer = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
         self.bufs: list[npt.NDArray[np.int32]] = [buffer[i] for i in range(_fb.MAX_PLY)]
+        self.movebuf = buffer
+        # COMPILED_SEARCH state: array table, array killers, control block.
+        self.tt: tuple[Any, ...] = ()
+        self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
+        self.ctrl = np.zeros(8, dtype=np.int64)
+        self.rep_keys = np.zeros(0, dtype=np.uint64)
+        self.root_best = 0
+        if COMPILED_SEARCH:
+            self.tt = _fs.new_table()
         self.scores = np.zeros(_fb.MOVE_CAP, dtype=np.int64)
         self.white = B1.copy()
         self.black = B1.copy()
@@ -1613,6 +1638,47 @@ class FastEngine:
         self.table[key] = (depth, _to_table(best_score, ply), flag, best_move, self.age)
         return best_score
 
+    def root_search(self, depth: int, alpha: int, beta: int, ply: int) -> int:
+        """One search call from the root loop: the kernel or the Python search."""
+        if not COMPILED_SEARCH:
+            return self.search(depth, alpha, beta, ply)
+        pos = self.pos
+        ctrl = self.ctrl
+        ctrl[_fs.C_ABORT] = 0
+        score = _fs.search(  # type: ignore[call-arg]
+            pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
+            W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
+            _W2T, B2, W3, B3, *self.tt,
+            self.killers2, self.butterfly, self.movebuf, self.scores, self.rep_keys,
+            ctrl, self.deadline, depth, alpha, beta, ply,
+        )
+        self.nodes = int(ctrl[_fs.C_NODES])
+        if ctrl[_fs.C_ABORT]:
+            raise Timeout
+        return int(score)
+
+    def prepare(self, board: chess.Board, draw_root: int) -> None:
+        """Load `board` as the root: accumulators, contempt, and the kernel's state."""
+        pos = self.pos
+        pos.load(board)
+        _fb.refresh(
+            pos.bb, pos.sq, pos.meta, W1, B1, self.white, self.black, self.zones, KING_ZONES
+        )
+        self.root_side = int(pos.meta[0])
+        self.draw_root = draw_root
+        if COMPILED_SEARCH:
+            ctrl = self.ctrl
+            ctrl[_fs.C_NODES] = 0
+            ctrl[_fs.C_ABORT] = 0
+            ctrl[_fs.C_AGE] = self.age
+            ctrl[_fs.C_ROOT_SIDE] = self.root_side
+            ctrl[_fs.C_DRAW_ROOT] = draw_root
+            ctrl[_fs.C_TT_OFF] = 0
+            ctrl[_fs.C_HYGIENE] = 1 if HYGIENE else 0
+            ctrl[_fs.C_FUTILITY] = 1 if FUTILITY else 0
+            repeated = [k for k, count in self.history.items() if count >= 2]
+            self.rep_keys = np.array(repeated, dtype=np.uint64)
+
     # -- driver -------------------------------------------------------------------
 
     def choose(self, soft_limit: float, hard_limit: float) -> int:
@@ -1645,11 +1711,11 @@ class FastEngine:
                     self._make(move)
                     try:
                         if PVS and i:
-                            value = -self.search(depth - 1, -alpha - 1, -alpha, 1)
+                            value = -self.root_search(depth - 1, -alpha - 1, -alpha, 1)
                             if value > alpha:
-                                value = -self.search(depth - 1, -INFINITY, -alpha, 1)
+                                value = -self.root_search(depth - 1, -INFINITY, -alpha, 1)
                         else:
-                            value = -self.search(depth - 1, -INFINITY, -alpha, 1)
+                            value = -self.root_search(depth - 1, -INFINITY, -alpha, 1)
                     finally:
                         self._unmake()
                     if i == 0:
@@ -1688,6 +1754,7 @@ class FastEngine:
             elif now > soft_limit:
                 break
 
+        self.root_best = best
         return best
 
     def play(self, board: chess.Board, soft_limit: float, hard_limit: float) -> chess.Move:
@@ -1697,9 +1764,8 @@ class FastEngine:
         _fb.refresh(
             pos.bb, pos.sq, pos.meta, W1, B1, self.white, self.black, self.zones, KING_ZONES
         )
-        self.root_side = int(pos.meta[0])
-        self.draw_root = _contempt(board, self.evaluate()) if CONTEMPT else 0
         self.age += 1
+        self.prepare(board, _contempt(board, self.evaluate()) if CONTEMPT else 0)
         move = self.choose(soft_limit, hard_limit)
         return chess.Move.from_uci(_fb.move_to_uci(move))
 
