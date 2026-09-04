@@ -58,6 +58,13 @@ def king_zone(square: int, zones: int = 8) -> int:
         if rank <= 3:
             return 4 + (file >> 2)
         return 6 + (file >> 2)
+    if zones == 16:
+        # Refines the 8-zone map: ranks 1-2 by file, the rest by rank band and file pair.
+        if rank <= 1:
+            return file
+        if rank <= 3:
+            return 8 + (file >> 1)
+        return 12 + (file >> 1)
     if zones == 32:
         # A refinement of the 8-zone map, so an 8-zone net warm-starts it: every
         # square of ranks 1-2 is its own zone, ranks 3-4 split by rank and file

@@ -64,6 +64,24 @@ C_STOP = 12
 # repetition check fires, and the grandchild scores as a draw: null-move
 # pruning was inert at every node of depth >= 6.
 C_NMP_GUARD = 13
+# C_RFP_PHASE: scale the reverse-futility and futility margins by piece count,
+# because the static score they trust is 2-6x less accurate below 17 pieces.
+# C_IIR: a node of depth >= 4 with no hash move is searched one ply shallower.
+C_RFP_PHASE, C_IIR = 14, 15
+# Margin scale in percent by piece count (index = pieces on the board); 0 turns
+# the pruning off in that band.
+PHASE_PERCENT = np.zeros(33, dtype=np.int64)
+for _p in range(33):
+    if _p <= 8:
+        PHASE_PERCENT[_p] = 0
+    elif _p <= 12:
+        PHASE_PERCENT[_p] = 300
+    elif _p <= 16:
+        PHASE_PERCENT[_p] = 200
+    elif _p <= 20:
+        PHASE_PERCENT[_p] = 160
+    else:
+        PHASE_PERCENT[_p] = 100
 CTRL_SIZE = 16
 
 # LMR: reduction by depth and move number, the usual log-log formula. A quiet
@@ -339,6 +357,9 @@ def search(
                 if alpha >= beta:
                     return stored_score
 
+    if ctrl[C_IIR] != 0 and depth >= 4 and hash_move == 0 and ctrl[C_TT_OFF] == 0:
+        depth -= 1
+
     in_check = fb.in_check(bb, meta)
     if in_check and ply < MAX_PLY - 8:
         depth += 1
@@ -351,8 +372,12 @@ def search(
         )
 
     standing = -INFINITY
+    percent = 100
+    if ctrl[C_RFP_PHASE] != 0:
+        percent = PHASE_PERCENT[meta[fb.PIECES]]
     if (
-        depth <= RFP_MAX_DEPTH
+        percent != 0
+        and depth <= RFP_MAX_DEPTH
         and not in_check
         and (ctrl[C_HYGIENE] == 0 or abs(beta) < DISTANCE_THRESHOLD)
     ):
@@ -361,18 +386,24 @@ def search(
         else:
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             cached_eval = standing
-        if standing - RFP_MARGIN * depth >= beta:
+        if standing - RFP_MARGIN * depth * percent // 100 >= beta:
             return standing
 
     futile = False
-    if ctrl[C_FUTILITY] != 0 and depth <= 2 and not in_check and abs(alpha) < DISTANCE_THRESHOLD:
+    if (
+        ctrl[C_FUTILITY] != 0
+        and percent != 0
+        and depth <= 2
+        and not in_check
+        and abs(alpha) < DISTANCE_THRESHOLD
+    ):
         if standing == -INFINITY:
             if cached_eval != NO_EVAL:
                 standing = cached_eval
             else:
                 standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
                 cached_eval = standing
-        futile = standing + FUTILITY_MARGIN[depth] <= alpha
+        futile = standing + FUTILITY_MARGIN[depth] * percent // 100 <= alpha
 
     if (
         depth >= NMP_MIN_DEPTH

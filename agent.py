@@ -128,6 +128,12 @@ def _zone(square: int) -> int:
         if rank <= 3:
             return 4 + (file >> 2)
         return 6 + (file >> 2)
+    if KING_ZONES == 16:
+        if rank <= 1:
+            return file
+        if rank <= 3:
+            return 8 + (file >> 1)
+        return 12 + (file >> 1)
     if KING_ZONES == 32:
         if rank <= 1:
             return rank * 8 + file
@@ -901,6 +907,18 @@ PONDER: Final = False
 # two nulls restore the Zobrist key, the stack repetition check fires and the
 # grandchild scores as a draw, so null-move pruning never cut at depth >= 6.
 NMP_GUARD: Final = False
+# RFP_PHASE: the static score is 2-6x less accurate below 17 pieces (mean |err|
+# 50 cp at 29-32 pieces, 194 at 13-16, 290 at 9-12), yet reverse futility and
+# futility prune on it with one margin. Scale both margins by piece count:
+# 1.6x at 17-20, 2x at 13-16, 3x at 9-12, off at 8 and below.
+RFP_PHASE: Final = False
+# IIR: internal iterative reduction, one ply less at depth >= 4 without a hash move.
+IIR: Final = False
+# BOOK_ENABLED: the polyglot book. Games start from curated positions at ply
+# 10-16, so the book fires 0-3 plies per game, covers 35% of the curated pool,
+# and on the platform games it cost ~20 cp per firing, with one line losing to
+# a Greek gift. Off means the search plays from move one.
+BOOK_ENABLED: Final = True
 PONDER_MAX_S: Final = 600.0
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
@@ -1779,6 +1797,8 @@ class FastEngine:
             ctrl[_fs.C_LMP] = 1 if LMP else 0
             ctrl[_fs.C_SEE] = 1 if SEE else 0
             ctrl[_fs.C_NMP_GUARD] = 1 if NMP_GUARD else 0
+            ctrl[_fs.C_RFP_PHASE] = 1 if RFP_PHASE else 0
+            ctrl[_fs.C_IIR] = 1 if IIR else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -2194,7 +2214,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
     # Book first: it is instant, and the clock it saves is worth more in the
     # middlegame than the search would be worth here.
     try:
-        opening = _book_move(board)
+        opening = _book_move(board) if BOOK_ENABLED else None
     except Exception:  # never let the book cost a game
         opening = None
     if opening is not None:

@@ -642,6 +642,12 @@ def zone_of(square: Any, zones: Any) -> Any:
         if rank <= 3:
             return 4 + (file >> 2)
         return 6 + (file >> 2)
+    if zones == 16:
+        if rank <= 1:
+            return file
+        if rank <= 3:
+            return 8 + (file >> 1)
+        return 12 + (file >> 1)
     if zones == 32:
         if rank <= 1:
             return rank * 8 + file

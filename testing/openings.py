@@ -9,7 +9,9 @@ where neither side is already better. Unbalanced positions inflate the decisive 
 and measure the book rather than the engine.
 """
 
+import os
 from functools import lru_cache
+from pathlib import Path
 
 import chess
 
@@ -65,9 +67,17 @@ LINES: tuple[str, ...] = (
 )
 
 
+PLATFORM_FILE = Path(__file__).with_name("platform_openings.txt")
+
+
 @lru_cache(maxsize=1)
 def opening_fens() -> tuple[str, ...]:
     """Distinct positions from LINES, each line also cut short at several depths.
+
+    With GAUNTLET_OPENINGS=platform the set is instead the curated start positions
+    recovered from the platform's own games (testing/platform_openings.txt): games
+    there begin at ply 10-16 from near-level positions, which is what a change to
+    the book or the opening phase has to be judged on.
 
     One position per line is not enough. A 600-game SPRT is 300 pairs, so 40
     openings would each be replayed sixteen times and counted as sixteen
@@ -76,6 +86,9 @@ def opening_fens() -> tuple[str, ...]:
     than at 1. Cutting each line short multiplies the set without inventing
     positions that are unbalanced or off-book.
     """
+    if os.environ.get("GAUNTLET_OPENINGS", "").lower() == "platform":
+        lines = [x.strip() for x in PLATFORM_FILE.read_text(encoding="utf-8").splitlines()]
+        return tuple(dict.fromkeys(x for x in lines if x))
     seen: set[str] = set()
     fens: list[str] = []
     for line in LINES:

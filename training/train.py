@@ -70,6 +70,9 @@ def zone_of(square: Tensor, zones: int = 8) -> Tensor:
     if zones == 8:
         upper = torch.where(rank <= 3, 4 + (file >> 2), 6 + (file >> 2))
         return torch.where(rank <= 1, file >> 1, upper)
+    if zones == 16:
+        upper = torch.where(rank <= 3, 8 + (file >> 1), 12 + (file >> 1))
+        return torch.where(rank <= 1, file, upper)
     if zones == 32:
         low = rank * 8 + file
         mid = 16 + (rank - 2) * 4 + (file >> 1)
@@ -257,14 +260,56 @@ class Batches:
             yield white, black, mask, stm, target
 
 
-def loss_fn(prediction: Tensor, target: Tensor) -> Tensor:
+def loss_fn(prediction: Tensor, target: Tensor, weight: Tensor | None = None) -> Tensor:
     """MSE between predicted and target win probability.
 
     `prediction` is a logit; `target` is in centipawns and is squashed by SCALE.
+    `weight`, if given, scales each sample's squared error (mean 1 over the batch).
     """
-    return torch.nn.functional.mse_loss(
-        torch.sigmoid(prediction), torch.sigmoid(target / SCALE)
-    )
+    error = (torch.sigmoid(prediction) - torch.sigmoid(target / SCALE)) ** 2
+    if weight is None:
+        return error.mean()
+    return (error * weight).mean()
+
+
+def sample_weights(pieces: Tensor, target: Tensor) -> Tensor:
+    """Up-weight the cells the net fits worst and sees least: positions with 20
+    pieces or fewer, and near-equal positions. Measured on the 8-zone net, the
+    near-equal <= 16-piece cell is 10x worse than the 29-32 cell and is 5% of
+    the data. Normalised to mean 1 so the learning rate keeps its meaning."""
+    w = 1.0 + 2.0 * (pieces <= 20).float() + 2.0 * (target.abs() < 400).float()
+    return w / w.mean()
+
+
+BANDS = ((2, 8), (9, 12), (13, 16), (17, 20), (21, 24), (25, 28), (29, 32))
+
+
+@torch.no_grad()
+def stratified_loss(net: Net, batches: "Batches", generator: torch.Generator) -> dict[str, float]:
+    """Held-out loss per piece band, plus the near-equal (|target| < 150) subset
+    for the <= 16 and 29-32 bands: the diagnosis a single number hides."""
+    net.eval()
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for white, black, mask, stm, target in batches.epoch(generator):
+        error = (torch.sigmoid(net(white, black, mask, stm)) - torch.sigmoid(target / SCALE)) ** 2
+        pieces = mask.sum(1)
+        equalish = target.abs() < 150
+        for lo, hi in BANDS:
+            sel = (pieces >= lo) & (pieces <= hi)
+            key = f"{lo}-{hi}"
+            sums[key] = sums.get(key, 0.0) + float(error[sel].sum())
+            counts[key] = counts.get(key, 0) + int(sel.sum())
+        subsets = (("eq<=16", (pieces <= 16) & equalish), ("eq29-32", (pieces >= 29) & equalish))
+        for key, sel in subsets:
+            sums[key] = sums.get(key, 0.0) + float(error[sel].sum())
+            counts[key] = counts.get(key, 0) + int(sel.sum())
+    net.train()
+    return {k: sums[k] / max(counts[k], 1) for k in sums}
+
+
+def format_strata(strata: dict[str, float]) -> str:
+    return " ".join(f"{k}:{v * 1e3:.2f}" for k, v in strata.items())
 
 
 @torch.no_grad()
@@ -299,6 +344,9 @@ def train(
     validation: np.ndarray | None = None,
     accumulator: int = ACC,
     patience: int = 4,
+    weight_endgame: bool = False,
+    warmup_epochs: int = 0,
+    warmup_steps: int = 1500,
     resume: Path | None = None,
     limit: int = 0,
     buckets: int = 1,
@@ -325,7 +373,17 @@ def train(
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     sizes = [len(_records(source, limit)) for source in sources]
     steps = sum(-(-sizes[(epoch - 1) % len(sizes)] // batch) for epoch in range(1, epochs + 1))
-    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=max(steps, 1))
+    # A linear warm-up, then cosine decay. A resumed net at full learning rate on
+    # step one loses ground it then has to recover; two runs died that way.
+    warm = min(warmup_steps, max(steps // 10, 1))
+    schedule = torch.optim.lr_scheduler.SequentialLR(
+        optimiser,
+        [
+            torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.05, total_iters=warm),
+            torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=max(steps - warm, 1)),
+        ],
+        milestones=[warm],
+    )
 
     best_loss = float("inf")
     best_state: dict[str, Tensor] | None = None
@@ -338,6 +396,8 @@ def train(
         best_loss = initial
         best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
         print(f"  initial validation loss {initial:.6f}")
+        strata = stratified_loss(net, val_batches, torch.Generator().manual_seed(0))
+        print(f"  initial strata (x1e-3) {format_strata(strata)}")
 
     epochs_run = 0
     for epoch in range(1, epochs + 1):
@@ -352,7 +412,8 @@ def train(
         seen = 0
         for white, black, mask, stm, target in batches.epoch(generator):
             prediction = net(white, black, mask, stm)
-            loss = loss_fn(prediction, target)
+            weight = sample_weights(mask.sum(1), target) if weight_endgame else None
+            loss = loss_fn(prediction, target, weight)
             optimiser.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]
             optimiser.step()
@@ -377,9 +438,12 @@ def train(
                 best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
                 stale = 0
                 line += "  *best"
-            else:
+            elif epoch > warmup_epochs:
                 stale += 1
         print(line, flush=True)
+        if val_batches is not None:
+            strata = stratified_loss(net, val_batches, torch.Generator().manual_seed(0))
+            print(f"    strata (x1e-3) {format_strata(strata)}", flush=True)
         del batches
         if val_batches is not None and stale >= patience:
             print(f"  early stop: validation has not improved for {patience} epochs")
@@ -444,6 +508,10 @@ def main() -> None:
         "--king-zones", type=int, default=1, help="first-layer copies, selected by own king"
     )
     parser.add_argument("--patience", type=int, default=4, help="early-stop patience, epochs")
+    parser.add_argument("--weight-endgame", action="store_true", help="per-sample loss weights")
+    parser.add_argument(
+        "--warmup-epochs", type=int, default=0, help="epochs before patience counts"
+    )
     parser.add_argument("--limit", type=int, default=0, help="use only the first N positions")
     parser.add_argument("--skip-sanity", action="store_true")
     arguments = parser.parse_args()
@@ -487,6 +555,8 @@ def main() -> None:
         validation=validation,
         accumulator=arguments.accumulator,
         patience=arguments.patience,
+        weight_endgame=arguments.weight_endgame,
+        warmup_epochs=arguments.warmup_epochs,
         resume=arguments.resume,
         limit=arguments.limit,
         buckets=arguments.buckets,
