@@ -14,7 +14,7 @@ say() { echo "$(date '+%H:%M') $*" >> "$LOG"; }
 verdict() { grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$1" 2>/dev/null | tail -n 1; }
 passed() { grep -qE "^PROMOTE" "$1" 2>/dev/null; }
 
-until grep -q "057-twofold:" "$LOG" 2>/dev/null; do sleep 120; done
+until grep -q "057-twofold:" "$LOG" 2>/dev/null && grep -q "059-kz32b:" "$LOG" 2>/dev/null; do sleep 120; done
 say "night3b: assembling v6"
 
 BASE=overnight/challengers/050-compiled-search
@@ -39,8 +39,10 @@ turn_on LMP 053-lmp
 turn_on ASPIRATION 054-aspiration
 turn_on SEE 055-see
 turn_on REPETITION_TWOFOLD 057-twofold
-if passed overnight/eval/056-kz32.gauntlet.log; then
-    cp overnight/challengers/056-kz32/weights/net.npz "$V6/weights/net.npz"; ON="$ON NET32"
+# 056 was the untrained tiled net on the v5.5 engine (void as a net test); 059 is
+# the retrained 32-zone net measured against the v5.5 engine with the old net.
+if passed overnight/eval/059-kz32b.gauntlet.log; then
+    cp overnight/challengers/059-kz32b/weights/net.npz "$V6/weights/net.npz"; ON="$ON NET32"
 else
     cp weights/net.npz "$V6/weights/"
 fi
@@ -70,7 +72,7 @@ say "120s vs 050: $(grep -E 'score' overnight/eval/060-v6.120s.log | tail -n 1)"
     echo
     echo "Switches on:$ON"
     echo
-    for n in 052-lmr 051-pvs 053-lmp 054-aspiration 055-see 056-kz32 052b-lmr 057-twofold 060-v6; do
+    for n in 052-lmr 051-pvs 053-lmp 054-aspiration 055-see 056-kz32 059-kz32b 052b-lmr 057-twofold 060-v6; do
         echo "- $n: $(verdict overnight/eval/$n.gauntlet.log)"
     done
     echo
@@ -78,7 +80,7 @@ say "120s vs 050: $(grep -E 'score' overnight/eval/060-v6.120s.log | tail -n 1)"
     echo "Clock replay: $(grep -E '^flags' overnight/eval/060-v6.clocktest.log) -> $(tail -n 1 overnight/eval/060-v6.clocktest.log)"
     echo "120 s vs 050: $(grep -E 'score' overnight/eval/060-v6.120s.log | tail -n 1)"
     echo
-    echo "Training: $(grep -E 'restored|wrote.*json' overnight/eval/train-kz32.log | tail -n 2 | tr '\n' ' ')"
-    echo "NNUE check: $(tail -n 1 overnight/eval/check_nnue-kz32.log 2>/dev/null)"
+    echo "Training (kz32b): $(grep -E 'restored|wrote.*json' overnight/eval/train-kz32b.log | tail -n 2 | tr '\n' ' ')"
+    echo "NNUE check: $(tail -n 1 overnight/eval/check_nnue-kz32b.log 2>/dev/null)"
 } > "$REPORT"
 say "night3b done -> $REPORT"
