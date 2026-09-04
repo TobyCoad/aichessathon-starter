@@ -24,7 +24,7 @@ run() {  # name workers [env]
 
 # pondering: the challenger's processes think on the opponent's time, so fewer workers
 build 061-ponder PONDER;        run 061-ponder 6
-build 064-rfpphase RFP_PHASE;   run 064-rfpphase 12
+# 064-rfpphase dropped: every margin table lost on the endgame suite (5 Sep 00:06)
 # the book, judged on the platform's own start positions
 d=overnight/challengers/065-nobook; rm -rf "$d"; cp -r "$BASE" "$d"
 sed -i 's/^BOOK_ENABLED: Final = True$/BOOK_ENABLED: Final = False/' "$d/agent.py"
