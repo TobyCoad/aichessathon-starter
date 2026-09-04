@@ -570,3 +570,16 @@ is mostly a sigmoid artefact in cp; the real weak cell is near-equal positions a
 <=16 pieces (5% of data, 10x worse mse) -> per-sample loss weighting; make_full
 rebuilds both accumulators on a zone crossing (only one is stale) -> fix before
 judging 32 zones; int8/int16 heads measured slower again (closed); 16 zones over 32.
+
+4 Sep late: 057-twofold PROMOTE +66 over 160 games (vs 050). Review findings applied
+as switches (all off in the tree): PONDER (nogil kernels + C_STOP; functional test:
+892k nodes pondered in 4 s, correct predicted reply, stops on request), NMP_GUARD
+(double null fakes a repetition: 35/3598 nulls at d7, -2% nodes), RFP_PHASE
+(piece-count-scaled margins), IIR, BOOK_ENABLED. Exact speed (92720d0): eval scratch
+buffer + 4-wide blocked head = +28% knps at identical nodes; one-sided zone rebuild
+(check_nnue 10/10 exact). Trainer: --weight-endgame, strata printout, LR warm-up,
+--warmup-epochs. 16-zone map added. testing/endgame_suite.py (400 positions, SF d18)
+and GAUNTLET_OPENINGS=platform (80 curated FENs). V7 plan: overnight/eval/V7_PLAN.md.
+Queues: night3b (v6 gates vs 058-v5.5) -> queue5 (061 ponder, 064 rfpphase, 065 nobook
+on platform openings, 063 pvs, 066 iir, 062 nmpguard; each vs 060-v6) ; queue6 after
+kz32b (kz8c control, kz8w weighted, kz16; export/check/suite/gauntlet each).
