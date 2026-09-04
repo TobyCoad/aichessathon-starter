@@ -508,3 +508,17 @@ Then, down the exchange, contempt made the draw welcome. Same family as rounds 4
 and 8: exchange-imbalance / activity positions overvalued by the net, and more
 time does not fix it. fetch_games now passes the site's colour to the post-mortem
 (side detection had misread round 9 as Black).
+
+049-tt-eval: INCONCLUSIVE +4.6±18.2 over 600 games (50.7%) -> not promoted.
+Endgame fine-tune (net_w512-b8-kz8-eg, endgame-weighted shard 108M, lr 3e-4):
+no epoch beat the starting net on the endgame-weighted validation (0.005898 both)
+-> closed. Net bias diagnostic (scratch bias.py on the validation shard): no
+material-class bias (all within ±10 cp, Q-vs-R+minor ±35), but |err| by piece
+count: 29-32: 50, 25-28: 72, 17-20: 151, 13-16: 194, 9-12: 290, 2-8: 684 cp.
+
+SEARCH DEPTH PROJECT started (overnight/SEARCH_PLAN.md). Stage 0: testing/bench.py
+(40 positions; baseline d5 = 990,248 nodes, overnight/eval/bench-baseline-d5.json).
+Stage 1: fastsearch.py = negamax+quiescence numba kernels, array TT (2^20), objmode
+clock poll; agent.py COMPILED_SEARCH switch (off) + FastEngine.root_search/prepare.
+First result: identical scores and node counts to the Python search at d1-6 with
+the TT off, but only ~1.8x faster -- the evaluation kernel dominates the node.
