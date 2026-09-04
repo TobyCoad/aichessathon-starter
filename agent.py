@@ -844,7 +844,7 @@ COMPILED_SEARCH: Final = True
 # two by a log-log amount and re-searches on a fail high; LMP skips the quiet
 # tail of the move list at depth <= 3. Both need COMPILED_SEARCH. PVS in the
 # kernel follows the PVS switch above.
-LMR: Final = False
+LMR: Final = True
 LMP: Final = False
 # SEE: in quiescence, skip captures that lose material on the exchange
 # (fastboard.see). Needs COMPILED_SEARCH.
@@ -861,7 +861,7 @@ ASPIRATION_WINDOW: Final = 30
 # stopped the game before we chose. So in the search a position that has
 # occurred even once before in the game is a draw: while winning the engine
 # never lets a position repeat at all.
-REPETITION_TWOFOLD: Final = False
+REPETITION_TWOFOLD: Final = True
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
