@@ -267,7 +267,7 @@ def search_score(agent: ModuleType, board: chess.Board, colour: chess.Color, sec
         engine = getattr(agent, "_postmortem_engine", None)
         if engine is None:
             engine = engine_class()
-            agent._postmortem_engine = engine
+            setattr(agent, "_postmortem_engine", engine)  # noqa: B010
         if hasattr(engine, "prepare"):
             engine.prepare(board, 0)
         else:
