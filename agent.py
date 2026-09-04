@@ -834,11 +834,16 @@ TT_EVAL: Final = False
 FUTILITY_MARGIN: Final = (0, 150, 300)
 # CORRECTION: table of 2 x 2**BITS entries in grain units; a node of depth d moves
 # its entry toward the observed gap with weight min(d + 1, WEIGHT_MAX) / SCALE.
+# A first version with cap 400 and scale 256, also applied to the quiescence
+# stand-pat, measured -137 +/- 65 (048): the entries saturated within seconds and
+# one tactical gap was charged to every leaf sharing its pawn structure. This is
+# the mild bias the technique is meant to be.
 CORRECTION_BITS: Final = 14
 CORRECTION_GRAIN: Final = 256
-CORRECTION_SCALE: Final = 256
+CORRECTION_SCALE: Final = 1024
 CORRECTION_WEIGHT_MAX: Final = 16
-CORRECTION_CAP: Final = 400
+CORRECTION_CAP: Final = 100
+CORRECTION_QS: Final = False
 CONTEMPT_LEVEL: Final = 10
 CONTEMPT_AHEAD: Final = 25
 CONTEMPT_AHEAD_LATE: Final = 50
@@ -1376,7 +1381,7 @@ class FastEngine:
         if not self.nodes & _POLL_MASK and time.monotonic() > self.deadline:
             raise Timeout
 
-        standing = self.corrected()[1] if CORRECTION else self.evaluate()
+        standing = self.corrected()[1] if CORRECTION and CORRECTION_QS else self.evaluate()
         if standing >= beta:
             return standing
         if standing + BIG_DELTA < alpha:
@@ -1582,6 +1587,8 @@ class FastEngine:
             CORRECTION
             and corr_index >= 0
             and abs(best_score) < DISTANCE_THRESHOLD
+            and not (best_move >> 12)
+            and sq[(best_move >> 6) & 63] < 0
             and (
                 flag == 0
                 or (flag == 1 and best_score > raw_standing)
