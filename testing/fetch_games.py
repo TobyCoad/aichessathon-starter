@@ -35,9 +35,13 @@ def find_team_url(name: str) -> str:
     """The team page linked from the leaderboard under this bot name."""
     page = get(f"{SITE}/leaderboard")
     wanted = name.strip().lower()
-    for match in re.finditer(r'href="(/team/[0-9a-f-]+)"[^>]*>(.*?)</a>', page, re.S):
-        label = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip().lower()
-        if label == wanted:
+    # Rows carry the team link as data-href and the bot name in a span; the name
+    # is followed by a <small> with the display form, which is not part of it.
+    for match in re.finditer(
+        r'<tr data-href="(/team/[0-9a-f-]+)[^"]*"(.*?)</tr>', page, re.S
+    ):
+        label = re.search(r'ladder-bot-name">([^<]+)', match.group(2))
+        if label and html.unescape(label.group(1)).strip().lower() == wanted:
             return SITE + match.group(1)
     raise SystemExit(f"no team named {name!r} on the leaderboard")
 
