@@ -478,3 +478,20 @@ no failures; replay floor 10.0 s. Zip rebuilt 12:35Z with V3 + V4: the build to
 upload after the next round. testing/fetch_games.py pulls our rated games from
 the public team page (no API exists; uploads are dashboard-only) and post-mortems
 the non-wins; an hourly self-paced check at :15 runs it and reports.
+
+## 2026-09-04 afternoon: round-8 loss, correction history
+
+Round 8 (White vs No More Ammo, v3 build) lost in a rook-and-knight ending, moves
+33-42. Static eval there was +400..+1010 against a reference of -12..-477, but our
+own search scored the same positions -37..-164, and the 1-zone backup net is just as
+optimistic statically -- so not a king-zone defect; a depth-8 search trusting a wrong
+static score through RFP/futility. Harness fix 965cf0e: "evaluation" now compares a
+3 s search of ours with the reference instead of the static score.
+
+Two switches added, both off in the champion:
+- CORRECTION (8cc308b): pawn-structure correction history (2 x 16384, grain 256,
+  weight min(d+1,16)/256, cap 400 cp), applied to RFP, futility and the quiescence
+  stand-pat. Sanity at the round-8 positions: finds Kf1 at move 39 (was Kg3), drops
+  Ne5 at move 42; ~7% slower. Gauntlet 048-correction SPRT[0,20] running.
+- TT_EVAL (9af1f44): a bounded transposition score replaces the static score for
+  pruning when its bound allows. To be gauntleted after 048.
