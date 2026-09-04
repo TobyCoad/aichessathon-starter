@@ -537,3 +537,15 @@ Clocktest (120s+0.5s, x1.5 +20ms, 6 games): 0 flags, lowest clock 9.7 s, longest
 move 14.4 s -> PASS. COMPILED_SEARCH promoted (e41ddcb); zip built 17:36 with
 fastboard.py + fastsearch.py (27 MB unpacked, import 17.6 s, "compiled board: on"),
 handed to the user for upload as v5. Stage-3 gauntlets running vs 050.
+
+Round 11 (Black vs SaucyBeans): DRAW declared by the referee with mate on the board
+for us (+2000). harness/referee uses board.outcome(claim_draw=True): python-chess lets
+the side to move claim as soon as ONE legal move would make a third occurrence, so
+after 39.Ke1 (two positions had occurred twice) the game ended before we chose.
+Our search only scored the THIRD occurrence as a draw. Fix: REPETITION_TWOFOLD
+(abbb3e9): any position seen once before in the game is a draw in the search
+(_REPEAT_LIMIT). Replay with the switch: 37...Bg4/Bg3+ and 38...Bg3+/Nh4 instead of
+the repeats. Challenger 057-twofold queued after 052b-lmr. Also explains the
+50%+ repetition-draw rate in every self-play gauntlet (same referee rule).
+052-lmr PROMOTE +47 over 232 games vs 050. Review agent: no correctness bugs;
+three efficiency fixes applied (41fa599). night3.sh running.
