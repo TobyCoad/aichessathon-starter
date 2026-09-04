@@ -797,6 +797,14 @@ TT_AGE: Final = False
 # PVS: after the first move, search the rest with a null window and re-search
 # only when one surprises. Never tested here on its own, only bundled with LMR.
 PVS: Final = False
+# TIME_V3: two lessons from the platform's round-4 loss. The schedule was
+# front-loaded -- 52 s left at move 20, 17 s at move 40, the last thirty moves at
+# half a second each -- so the horizon is longer and more moves are expected. And
+# the decisive error was played in 1.6 s because the iteration-cost rule stopped
+# deepening at a position where one more ply found the right move; when the best
+# move changes or the score drops between iterations the position is unstable,
+# and the next iteration is allowed up to 2.5 soft budgets instead of 1.5.
+TIME_V3: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1535,6 +1543,9 @@ class FastEngine:
             self.butterfly >>= 1
 
         started = time.monotonic()
+        previous_best = 0
+        previous_score = -INFINITY
+        unstable = False
         for depth in range(1, 64):
             iteration_started = time.monotonic()
             try:
@@ -1565,11 +1576,19 @@ class FastEngine:
 
             if score > MATE_THRESHOLD or score < -MATE_THRESHOLD:
                 break
+            if TIME_V3:
+                # A best move that changed, or a score that fell, means the last
+                # ply revised the verdict: the next one may revise it again.
+                unstable = depth >= 3 and (
+                    best != previous_best or score < previous_score - 50
+                )
+                previous_best, previous_score = best, score
             now = time.monotonic()
             if TIME_V2:
                 elapsed = now - started
                 predicted = (now - iteration_started) * 2.5
-                if elapsed + predicted > 1.5 * (soft_limit - started):
+                allowance = 2.5 if unstable else 1.5
+                if elapsed + predicted > allowance * (soft_limit - started):
                     break
             elif now > soft_limit:
                 break
@@ -1749,7 +1768,10 @@ def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
 
-    expected = max(20.0, 40.0 - board.fullmove_number * 0.5)
+    if TIME_V3:
+        expected = max(26.0, 46.0 - board.fullmove_number * 0.4)
+    else:
+        expected = max(20.0, 40.0 - board.fullmove_number * 0.5)
     # Below LOW_CLOCK, live on the increment. Crediting half of it while the clock
     # is low sets up an equilibrium where the clock settles at whatever level makes
     # the spend equal the income -- measured at 4.4-4.6 s under a 1.5x charge, which
