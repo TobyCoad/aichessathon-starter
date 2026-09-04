@@ -247,9 +247,42 @@ def diagnose(agent: ModuleType, board: chess.Board, ply: Ply, colour: chess.Colo
         return "time", short, long, static
     if long == ply.best and long != ply.uci:
         return "horizon", short, long, static
-    if static is not None and abs(static - ply.eval_before) >= 200:
+    # "evaluation" means our *search*, given time, still scores the position far
+    # from the reference. The static score alone proves nothing: the search exists
+    # to correct it, and often does.
+    searched = search_score(agent, board, colour)
+    if searched is not None and abs(searched - ply.eval_before) >= 150:
         return "evaluation", short, long, static
     return "search", short, long, static
+
+
+def search_score(agent: ModuleType, board: chess.Board, colour: chess.Color, seconds: float = 3.0) -> int | None:
+    """Our engine's own score for `board` after a short search, from our side."""
+    engine_class = getattr(agent, "FastEngine", None)
+    fastboard = getattr(agent, "_fb", None)
+    if engine_class is None or fastboard is None or getattr(agent, "_FAST", None) is None:
+        return None
+    try:
+        engine = engine_class()
+        engine.pos.load(board)
+        fastboard.refresh(
+            engine.pos.bb, engine.pos.sq, engine.pos.meta, agent.W1, agent.B1,
+            engine.white, engine.black, engine.zones, agent.KING_ZONES,
+        )
+        engine.root_side = int(engine.pos.meta[0])
+        engine.draw_root = 0
+        engine.deadline = time.monotonic() + seconds
+        score = None
+        try:
+            for depth in range(1, 40):
+                score = engine.search(depth, -agent.INFINITY, agent.INFINITY, 0)
+        except agent.Timeout:
+            pass
+        if score is None:
+            return None
+        return int(score) if board.turn == colour else -int(score)
+    except Exception:
+        return None
 
 
 PAGE = """<!doctype html>
