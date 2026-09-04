@@ -17,6 +17,8 @@ say "queue6 start"
 train_net() {  # name zones extra-args...
     local name=$1 zones=$2; shift 2
     [ -f "training/checkpoints/net_w512-b8-$name.json" ] && return 0
+    # the fourth month joins when its pack has landed
+    [ -f data/positions_2025_03.npy ] && DATA="$DATA data/positions_2025_03.npy"
     $PY -u training/train.py --data $DATA --val $VAL \
         --resume training/checkpoints/net_w512-b8-kz8.pt --accumulator 512 --buckets 8 \
         --king-zones "$zones" --lr 1.5e-4 --epochs 18 --patience 8 --warmup-epochs 2 --skip-sanity \
