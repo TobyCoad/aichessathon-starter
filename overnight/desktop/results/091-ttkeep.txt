@@ -1,0 +1,5 @@
+name 091-ttkeep
+kind switch
+host DESKTOP-B9VDHIJ (stopped by hand from the laptop, 5 Sep 11:08, to start the data pilot)
+base_ms 8000 openings default games 600
+INCONCLUSIVE  091-ttkeep  stopped at 108 games: elo -32.3 +/- 51.9 (llr -1.21), leaning reject; not promoted

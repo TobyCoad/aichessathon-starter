@@ -645,3 +645,7 @@ middlegame/tactics positions +3.5% overall (per position 0.63x-3.06x, same best 
 overnight/laptop/tasks.json (laptop queue was empty; desktop holds six). Laptop
 worker confirmed up; it waits for the 090-history2 rerun gauntlet to clear. No new
 verdicts this iteration: desktop mid-run on 091-ttkeep (46 games at 10:30 heartbeat).
+
+5 Sep 11:08 091-ttkeep (TT age handicap) stopped at 108 games, -32 +/- 52, recorded
+INCONCLUSIVE leaning reject, to start the self-play labelling pilot on the desktop
+(gen-001, gen-002: 3000 games each, 40 ms/move, Stockfish 5000 nodes).
