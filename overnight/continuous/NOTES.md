@@ -105,7 +105,9 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   Decoder training/binpack_decode.py (validated: 435k sample entries, 0 invalid boards /
   illegal moves; scores are side-to-move internal units, int16-wrapped, VALUE_NONE 32002
   dropped; scale 0.45 cp per unit = median vs SF 17.1 depth 12, corr 0.90).
-- Tonight: decode data/sf/test80-2024-02-feb-2tb7p.min-v2.v6.binpack.zst to ~580M kept
+- DONE 23:07: 581,225,450 positions in data/sf/feb24_00..08.npy (+ feb24_val.npy 500k) from
+  1.03B decoded in 45.6 min (370k pos/s, 8 workers); the chain is now on the baseline suite.
+- Plan was: decode data/sf/test80-2024-02-feb-2tb7p.min-v2.v6.binpack.zst to ~580M kept
   positions in RECORD shards data/sf/feb24_NN.npy (+ feb24_val.npy), then train the same
   architecture (512x16 zones, 8 buckets) warm-started from training/checkpoints/
   net_w512-b8-kz16.pt on those shards -> export --half -> check_nnue -> endgame suite ->
@@ -199,6 +201,10 @@ vs the champion book's 28/80 and 1.38; the challenger would play book-less in
 ~91% of platform games, so SPRT[0,20] over 600 games cannot resolve it. Task
 removed from the desktop queue; the book stays uncommitted in overnight/books/.
 092-qscap14 VOID (started vs v7.1; champion changed under it)).
+INFRA, not engine verdicts: 140-v92prune (1/24 init fail) and 141-v92prune (19/24
+init fail) both died to init timeouts under the 8-worker binpack decode; the worker
+now waits while a decode or endgame suite runs, and the pair re-queued as
+142-v92prune. Do not count these as IMPROVING/CUTNODE rejects.
 Bundle evidence: v8-120s (the 7-switch probe at 120 s, platform openings) scored
 67.5% (+18 =18 -4) over 40 games -- labelled INCONCLUSIVE only because 40 games
 cannot close an SPRT. Together with v8-clocktest PASS this says the v8 switches
@@ -214,42 +220,46 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 19:55)
-- laptop worker: v9-120s-l running (40 games at 120 s; challenger built pre-flip, so
-  v9+TIME_V6 vs v8.5 -- part of TIME_V6's gate), then 133-conthist (600 games at 8 s
-  of CONT_HIST vs the v9 tree -- the v9.1 anchor test).
-- desktop worker: 111-singular (VOID, see above; let it finish, do not fold), then
-  v9-clocktest + v9-120s (sed now flips only TIME_V6 -> champion+TIME_V6 vs v9;
-  the rest of TIME_V6's gate).
+## Running now (5 Sep 23:05)
+- Interactive session's binpack decode (8 workers): data/sf/feb24_NN.npy shards,
+  ~290M/580M kept at 22:45, roughly 25 min to go. GPU stays reserved for the SF
+  retrain (NOT the loop's job).
+- laptop worker: picked 142-v92prune at 22:42 and is WAITING in the new load-check
+  loop until the decode exits (the fix after 141 failed 19/24 on init timeouts
+  under the decode -- an infra reject, not an engine verdict; 140 = same cause,
+  1/24). Queue after it: v92prune-clocktest-l, 143-v92nmp (IMPROVING + CUTNODE +
+  NMP_V2, 600 games at 8 s), v92nmp-clocktest-l -- both v9.2 bundle shapes have
+  their SPRT + mandatory clocktest queued.
+- desktop: OFF. Queue nothing there.
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
-0. Fold verdicts as they land: v9-120s-l (laptop), v9-clocktest + v9-120s (desktop)
-   -- together TIME_V6's gate -- and 133-conthist (the v9.1 anchor).
-1. TIME_V6: laptop clocktest PASS (v9-clocktest-l, lowest 5.7 s). Remaining gate:
-   the desktop v9-clocktest + the two 120 s runs. If the desktop clocktest fails,
-   TIME_V6 is closed for good (third strike).
-2. CONT_HIST (V10_PLAN #2): BUILT, queued as 133-conthist (see bundle notes above).
-3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (132-v9core).
-4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets (+ the
-   16-out head from speed.md, +15% knps). 104-kz16r showed more same-style data adds
-   NOTHING (val flat at 0.0046589): only an architecture change can move the net now.
-   Prereq left: the v8/v8.5 endgame-suite baseline for comparison. One gauntlet slot.
-5. IMPROVING + CUTNODE, NMP_V2 (V10_PLAN #5-6) as one bundle.
-6. Init-time insurance: INIT_FOLD BUILT and verified (see above; -4.8 s import, exact).
-   Remaining from speed.md: eager signatures on the fastboard leaves (~-3 s more) and
-   exact kernel speed (see allocation, evaluate blocking).
+0. Fold 142-v92prune and 143-v92nmp when they land; ship v9.2 from whichever bundle
+   shape passed (pair or trio; clocktest for each is queued). INIT_FOLD (built,
+   exact, -4.8 s import) rides in the v9.2 zip: flip it True in the tested
+   challenger at zip time, re-check bench nodes + clean-unzip import < 45 s.
+1. NMP_V2 (V10_PLAN #6): BUILT 5 Sep 23:00, off in the tree (C_NMP_V2=41, fills
+   CTRL_SIZE 42's last slot). Dynamic R = 3 + depth//4 + min((standing-beta)//200, 3),
+   null tried only when standing >= beta, skipped on a TT upper bound < beta
+   (tt_depth >= 0 guards the no-hit default tt_flag=2/tt_score=0). Verification
+   search deferred to NMP_V2B. Queued in 143-v92nmp.
+2. CAPTURE_ORDER (V10_PLAN #7): next build item (SEE-ordered captures, losing
+   captures below quiets, capture history).
+3. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets + the
+   16-out head. The interactive session owns the GPU and the SF-data retrain;
+   the loop only folds results. Prereq left: the v9 endgame-suite baseline
+   (run when the laptop is not near a gauntlet checkpoint).
+4. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
+   (~-3 s more), see allocation, evaluate blocking.
 Closed by the research pass (do not reopen): staged movegen, multi-cut, IID, TT
 replacement, QS checks, correction history, wider nets, distillation, int8, self-play at
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-v9 SHIPPED (19:55) -- iteration next: (1) fold verdicts as they land: v9-120s-l,
-v9-clocktest/v9-120s (TIME_V6's gate; desktop clocktest fail = closed for good),
-133-conthist. Do NOT fold 111-singular (VOID, sed no-op). (2) If 133-conthist lands:
-a PROMOTE or positive-inconclusive + node win makes CONT_HIST the anchor of v9.1
-(+ INIT_FOLD, which is built and exact; + TIME_V6 if its gate passed); build the
-v9.1 bundle challenger and queue its 8 s SPRT + clocktest. Consider CONT_HIST2
-(2-ply) only after 1-ply passes. (3) If a machine is idle after 22:00, start the
-NET_V10 prerequisite (v9 endgame-suite baseline) and the NET_V10 architecture work
-(mirrored king buckets, rebalanced output buckets, 16-out head) -- 104-kz16r proved
-more same-style data is worthless, do NOT restart month-data chains.
+(1) Fold 142-v92prune when it lands (the worker starts it as soon as the decode
+exits; SPRT to checkpoint 200 ~1 h + the clocktest behind it). A pass makes
+IMPROVING+CUTNODE the v9.2 anchor; 143-v92nmp then tests the trio with NMP_V2.
+Ship v9.2 from the best passing shape, with INIT_FOLD flipped in the zip (item 0
+above -- re-check import < 45 s). (2) While waiting: build CAPTURE_ORDER
+(V10_PLAN #7) as the next OFF switch, bench it, queue it into the following
+bundle. (3) Do NOT start GPU work or the endgame suite while the decode or a
+gauntlet checkpoint is near; the SF retrain belongs to the interactive session.
