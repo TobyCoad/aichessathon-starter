@@ -34,6 +34,25 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
 - Task fields: name, sed (switch flip), kind (switch|clocktest), champion (default
   `.`), games, openings (default|platform), workers, elo0, elo1, base_ms.
 
+## Pipeline (5 Sep 18:30, the human's standing instruction)
+- Ship up to THREE versions a day, each a BUNDLE of several switches tested together
+  (like v8 and v8.5): 8 s SPRT on the laptop + clocktest and 40 games at 120 s on the
+  desktop. Small changes are never gauntleted alone. Big changes span iterations behind an
+  OFF switch, or run overnight. See overnight/continuous/PROMPT.md for the cycle.
+- When a bundle passes: promote in the tree, build the zip from the tested challenger,
+  write overnight/continuous/CANDIDATE.md, run
+  `.venv/Scripts/python.exe -m overnight.continuous.notify --candidate` (emails him the
+  change list, the measured gain and the platform record). He uploads by hand. Versions:
+  v9, v9.1, v9.2, ...
+- Bundle in flight for v9: TIME_V6 (built, off; 120-timev6 8 s SPRT queued on the laptop,
+  clocktest rerunning on the laptop, desktop 120 s games to queue once the clocktest
+  passes) + ADJUDICATION (to build, V10_PLAN #3) + HISTORY2_FIX and KILLER_CLEAR (the two
+  defects in overnight/eval/v10/search.md 3.7). CONT_HIST (V10_PLAN #2, the biggest
+  search item) is the multi-iteration build for v9.1; follow search.md 3.1 exactly
+  (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as new kernel args).
+- 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
+  SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
+
 ## Champion
 - v8.5 (uploaded by the human 5 Sep ~17:30, 18:00 slot) = v8 + LMR_AGGRESSIVE + LAZY_ACC +
   TIME_V5 + PRUNE_V2 + SINGULAR, all True in the tree since 5 Sep 17:40. Evidence: 8 s
@@ -76,7 +95,7 @@ cannot close an SPRT. Together with v8-clocktest PASS this says the v8 switches
 as a group are strongly positive at long TC; single-switch verdicts still decide
 what enters a bundle.
 
-## v8.5 plan (5 Sep 16:10, human's call)
+## v8.5 plan (5 Sep 15:05, human's call) -- DONE, shipped 18:00
 - v8.5 bundle = v8 + LMR_AGGRESSIVE + LAZY_ACC + TIME_V5 + PRUNE_V2 + SINGULAR, tested as
   ONE challenger vs v8 like v8 was: 110-v85all (laptop, 8 s SPRT), v85-clocktest + v85-120s
   (desktop, 40 games at 120 s platform openings), plus 111-singular alone on the desktop
@@ -85,22 +104,12 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 15:15)
-- desktop: finishing 092-qscap14 (VOID -- record and discard when its result
-  file lands, do not fold); then v85-clocktest, v85-120s, 111-singular.
-  105-bookprune REMOVED from the queue (closed on coverage, see Verdicts) --
-  if the desktop already logged "book ... missing" retries, the pull clears it.
-- laptop gauntlet: 110-v85all (v8.5 bundle probe: LMR_AGGRESSIVE + LAZY_ACC +
-  TIME_V5 + PRUNE_V2 + SINGULAR vs v8, SPRT[0,20] at 8 s), in its crash-gate
-  stage at 15:08. Queue after it: 073-kz16w, 102-timev5-clock, 102-timev5-120s
-  (102 tasks are moot if the v8.5 bundle passes as one; drop them then).
-- laptop CPU: month5 pack running (4 workers, group 270/509 at 15:09, log
-  overnight/eval/pack-2024_11.log) -> train kz16r (GPU) -> export + check_nnue
-  + suite into challengers/104-kz16r. The chain does NOT queue the gauntlet;
-  the iteration that reads suite-104-kz16r.log does (backlog 3).
-- laptop GPU: idle until the month5 train step.
-- Process check 15:08: one worker chain, one month5 chain, pack 4 workers,
-  gauntlet runners -- at the ~12-busy budget; do not start more CPU work.
+## Running now (5 Sep 18:35)
+- laptop worker: 120-timev6 (8 s SPRT vs v8.5, 400 games). Laptop background: month5.sh
+  (pack 2024_11 -> train kz16r -> suite); clocktest of 120-timev6 (overnight/eval/clocktest-timev6b.log).
+- desktop worker: 111-singular (attribution, -18 +/- 42 at 170), then v85-120s-b (40 games at
+  120 s of the live v8.5 build).
+- overnight/eval/v10/speed.md: a research agent is still writing it (init time + knps).
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
@@ -125,36 +134,16 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: fold 110-v85all PROMOTE + v85-clocktest PASS; check v85-120s-b and 111-singular on the desktop; then take backlog 1 (TIME_V6) if the human's session has not already started it (check git log for TIME_V6 before building).
-
-## Next step (older)
-Iteration 10: the usual sweep. (1) Laptop: check
-overnight/laptop/results/110-v85all.gauntlet.log -- if the v8.5 bundle verdict
-landed, record it; a PASS makes v8.5 the bundle candidate pending the
-desktop's v85-clocktest + v85-120s (fold all three together per the v8.5 plan
-above; then drop the moot 102-timev5 tasks from the laptop queue and
-111-singular stays for attribution only). If 110-v85all dies near 450 games
-with no verdict again, read the log tail BEFORE the worker truncates it.
-(2) Desktop: when 092-qscap14.txt lands, log it as VOID (champion changed
-under it) and nothing else. (3) month5: tail
-overnight/eval/pack-2024_11.log (group 270/509 at 15:09, ~roughly an hour to
-go) and grep "month5" overnight/eval/night3.log; on PACK/TRAIN FAILED, fix and
-relaunch `nohup bash overnight/month5.sh &` (idempotent). If
-suite-104-kz16r.log exists, record its numbers and queue 104-kz16r as a net
-task on the shorter queue per backlog 3. If nothing has landed anywhere and
-the CPU budget is full (it was at 15:08), say so and stop -- do NOT start new
-CPU work while the pack and the gauntlet share the laptop.
-Verdict context for the queued challengers: 098-rootorder +3.5% nodes (REJECT
-likely); 099-ttbuckets node-neutral at depth 8 (only long searches can show a
-gain); 101-lmraggr 0.92x nodes at depth 8 (modest); 102-timev5 (floor 18 +
-stable refund) is 120 s only -- judged by its clocktest + the 40-game 120 s
-match, NOT an 8 s SPRT (below LOW_CLOCK the floor never binds, 8 s play is
-byte-identical), and the fixed-movetime endgame suite cannot see a budget
-change so it is waived for this one. 103-lazyacc is EXACT (same nodes, same
-scores, verified lazy==eager on 40 random positions and identical bench node
-counts): +2% knps at depth 8, +5% at depth 10, and the gain should grow at
-long TC where hash cutoffs are denser -- a small-positive SPRT or even
-inconclusive-positive is fine to promote per the exact-change precedent ONLY
-if it does not slow anything (QS_EVAL_CACHE at +2% was closed as not worth it;
-lazyacc differs in that it also helps every non-evaluating node, judge on the
-SPRT).
+Iteration next: (1) fold verdicts (120-timev6, 111-singular, v85-120s-b, clocktest-timev6b);
+if the clocktest passed queue v6-clocktest + v6-120s on the desktop (see v85-120s-b's task
+for the format). (2) Build ADJUDICATION as a switch: pin the ply counter to MATCH plies
+(count from the first get_move call, not fullmove_number), ramp the behind-side draw
+score toward 0 (a full half point) as match ply -> 300, and when
+`match_ply + (100 - halfmove_clock) <= 300` treat non-zeroing lines as draw-reaching for
+the side losing the material adjudication (overnight/eval/v10/games.md "Failure mode 3"
+has the referee's exact rule; harness/referee.py `_adjudicate`). (3) Build HISTORY2_FIX
+(write quiets[ply, searched] = 0 for non-quiet moves; fastsearch.py near `quiets[ply, searched] = move`)
+and KILLER_CLEAR (clear killers[ply+2] on node entry, clear the table between root moves).
+Bench each; then queue the v9 bundle = TIME_V6 + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
+as 130-v9all (laptop 8 s) + v9-clocktest + v9-120s (desktop). Start CONT_HIST in the
+following iteration.

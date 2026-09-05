@@ -1,31 +1,62 @@
-You are one iteration of a continuous improvement loop for a chess engine (AI
-Chessathon entry) in this repository. Work for one iteration, then stop.
+You are one iteration of a recursive improvement pipeline for a chess engine (AI
+Chessathon entry, bot make_no_mistakes). Goal set by the human: ship up to THREE
+improved versions a day until uploads close (11 Sep 2026 11:00), with no prompting
+from him. He uploads by hand; you email him when a version is ready. Work for one
+iteration (at most ~35 minutes of wall time), then stop.
 
-Start by reading, in this order:
-1. overnight/continuous/NOTES.md  (state, rules, backlog, next step -- authoritative)
-2. `bash overnight/desktop_status.sh` output and `tail -n 30 overnight/eval/night3.log`
-   (new verdicts from the desktop and the laptop)
-3. The tail of overnight/JOURNAL.md (last 60 lines)
+Read first, in this order:
+1. overnight/continuous/NOTES.md  (state, rules, pipeline, backlog, next step -- authoritative)
+2. `bash overnight/desktop_status.sh`; `ls overnight/laptop/results overnight/desktop/results`;
+   `tail -n 3 overnight/laptop/results/*.gauntlet.log overnight/desktop/results/*.gauntlet.log`
+3. The tail of overnight/JOURNAL.md (last 60 lines) and overnight/eval/V10_PLAN.md (the ranked idea list)
 
-Then do exactly ONE unit of work, end to end:
-- If new verdicts landed: record them in NOTES.md and JOURNAL.md; promote a PASS
-  into the tree (flip the switch default to True, or copy the net) only when the
-  rules in NOTES.md allow, and re-run the exactness check afterwards.
-- Otherwise take the top backlog item that is not already running: implement it
-  as a switch (off by default), lint + mypy + exactness check, measure it briefly
-  (node counts or the endgame suite), and queue its gauntlet by appending a task
-  to overnight/desktop/tasks.json or overnight/laptop/tasks.json (whichever has
-  the shorter queue; the laptop runs one gauntlet at a time).
-- Or, if two or more switches have passed and no bundle is pending, build and
-  gate the bundle as the rules describe.
+## The pipeline (one cycle = one version)
+A. RESEARCH / PICK: take the top 2-4 items from the backlog that are not built. Small
+   items are bundled without individual gauntlets; only the BUNDLE is tested. Big items
+   (a net retrain, continuation history, a feature-set change) may span several
+   iterations: keep the work-in-progress in the tree behind a switch that is OFF, and
+   keep the exactness check passing at every commit. Save GPU/desktop-heavy work for the
+   night (22:00-08:00 UK) unless the machines are idle.
+B. BUILD: each change is a switch in agent.py, OFF by default in the tree. Before every
+   commit that touches agent.py / fastsearch.py / fastboard.py: `ruff check`,
+   `mypy agent.py fastsearch.py`, and `python -m testing.check_fastsearch --depth 4 --random 30`
+   must PASS. Bench each switch briefly (`python -m testing.bench --agent <challenger dir> --depth 8`,
+   node count and knps) and write the number into NOTES.md.
+C. TEST THE BUNDLE: build one challenger = champion + every new switch flipped on (a task
+   with a `sed` that flips them all; see the 100-v8all / 110-v85all tasks for the format)
+   and queue: (1) an 8 s SPRT vs the champion on the laptop (`games` 400-600),
+   (2) `kind: clocktest` on the desktop, (3) 40 games at 120 s on the desktop
+   (`base_ms` 120000, `openings` platform, `workers` 4, `elo0` -50, `elo1` 50).
+   Time-management changes are only visible at 120 s: for those the desktop 120 s games and
+   the clock test are the gate, plus 200 games at 30 s (`base_ms` 30000) if a slot is free.
+   Queue the next bundle's build while this one tests: never leave a machine idle.
+D. VERDICT: PROMOTE, or INCONCLUSIVE with a positive point estimate over >= 300 games AND
+   a non-negative 120 s result AND clocktest PASS, counts as a pass for a bundle. A bundle
+   that fails is split: drop the most suspicious switch (bench it) and re-queue once; do
+   not chase it further -- record it as closed in NOTES.md and move on.
+E. SHIP: when a bundle passes: flip its switches to True in the tree (that is the new
+   champion; re-run the exactness check), build the zip from the TESTED challenger dir
+   (`python - <<EOF` with zipfile: agent.py, fastboard.py, fastsearch.py from the
+   challenger + the whole weights/ tree minus *.bak; unpacked must stay < 50 MB), measure
+   the cold import in a clean unzip dir (must be < 45 s here; the platform is 1.8x slower
+   with a 90 s budget), copy the zip to C:/Users/tobyc/Downloads/aichessathon-<version>.zip,
+   write overnight/continuous/CANDIDATE.md (first line `# v<N> ...`; then: the switches and
+   what each does in one line, the measured gains -- 8 s SPRT score/Elo, 120 s score,
+   clocktest numbers, bench nodes/knps, import time -- the zip paths, and what is in the
+   next bundle), then run `.venv/Scripts/python.exe -m overnight.continuous.notify --candidate`
+   which emails him the CANDIDATE.md plus the bot's platform record. Version numbering:
+   v9, v9.1, v9.2 ... one per shipped bundle. Never upload anything yourself.
+F. RECORD: update NOTES.md ("Champion", "Running now", "Backlog", "Next step") and append one
+   dated paragraph to JOURNAL.md; `git add` specific files and commit (the loop pushes).
 
-Hard rules (NOTES.md has the full list): never upload, never touch harness/,
-never edit worker result files, switches off in the tree, exactness check must
-pass before any commit that touches agent.py/fastsearch.py/fastboard.py, at most
-~12 busy processes on this laptop, no gauntlet started here while one runs.
-
-Finish by: committing your work with a clear message (git add specific files;
-the loop pushes), updating NOTES.md ("Running now", "Verdicts", "Backlog", and a
-concrete "Next step" for the next iteration), and appending one dated paragraph
-to overnight/JOURNAL.md. If nothing can progress (all queues full, nothing
-landed), say so in NOTES.md's "Next step" and stop.
+## Hard rules (NOTES.md has the full list)
+Never upload. Never touch harness/. Never edit files under overnight/*/results/ (workers
+own them; to stop a task remove it from tasks.json and kill its python process, then reap
+orphans with the `reap_orphans` function in overnight/worker.sh). Switches off in the tree
+except promoted ones. At most ~12 busy python processes on this laptop; one gauntlet at a
+time here (the worker enforces it). The platform suspends our process between moves
+(pondering is dead). Keep every idea in overnight/eval/V10_PLAN.md's "closed" list closed.
+If the previous iteration left a build half-done, finish it first. If nothing can progress
+(everything queued, all machines busy), improve the research side instead: read the
+latest post-mortems in overnight/postmortem/ for the newest platform games and add any new
+failure mode to the backlog with an Elo estimate -- then stop.
