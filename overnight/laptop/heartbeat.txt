@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 00:06
-task 142-v92prune
-progress     126 games  .... llr -2.18 [-2.94, 2.94] after 63 pairs, elo -50.0 +/- 46.2
+time 2026-09-06 00:35
+task 143-nmp
+progress      21 games  .... llr -0.18 [-2.94, 2.94] after 10 pairs, elo -17.4 +/- 109.2
