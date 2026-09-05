@@ -1,0 +1,7 @@
+name 133-conthist
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  133-conthist  no better than the champion
+  +81 =96 -103  score 46.1%  over 280 games
+  terminations: adjudication 4, checkmate 181, fifty_moves 9, insufficient_material 48, stalemate 1, threefold_repetition 37
