@@ -171,10 +171,18 @@ C_NMP_V2 = 41
 # reusing it keeps the kernel signature unchanged. Gravity bonus on a capture
 # cutoff, no malus (v1); decayed >>= 1 per move under HYGIENE like butterfly.
 C_CAPTURE_ORDER = 42
+# C_QS_TT (V10_PLAN #9): probe and store the main transposition table in
+# quiescence. Probe before the static eval (any depth suffices for a QS bound:
+# exact returns, lower >= beta and upper <= alpha cut). Stores are depth 0,
+# move 0, eval NO_EVAL, at the stand-pat cutoff, the capture-loop cutoff and
+# the final return only (delta-pruned and QS_CAP returns are evals, not
+# bounds); a store never evicts a same-key or current-age entry of depth > 0,
+# so main-search entries and their hash moves survive.
+C_QS_TT = 43
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 43
+CTRL_SIZE = 44
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -514,18 +522,63 @@ def unmake_move(
 
 
 @njit(cache=False, nogil=True)
+def qs_tt_store(
+    tt_key: Any, tt_data: Any, key: Any, score: Any, flag: Any, ply: Any, ctrl: Any
+) -> None:
+    age = ctrl[C_AGE]
+    slot = np.int64(key & TT_MASK)
+    if (_F_TT_BUCKETS if _FOLD else ctrl[C_TT_BUCKETS] != 0):
+        dslot = slot & -2
+        if tt_key[dslot] == key:
+            slot = dslot
+        elif tt_key[dslot + 1] == key:
+            slot = dslot + 1
+        elif unpack_age(tt_data[dslot]) != (age & 63):
+            slot = dslot
+        else:
+            slot = dslot + 1
+    old = tt_data[slot]
+    # A same-key deeper entry keeps its hash move; a current-age deeper entry
+    # of another position is worth more than a depth-0 bound.
+    if unpack_depth(old) > 0 and (tt_key[slot] == key or unpack_age(old) == (age & 63)):
+        return
+    tt_key[slot] = key
+    tt_data[slot] = pack(to_table(score, ply), 0, flag, 0, age, NO_EVAL)
+
+
+@njit(cache=False, nogil=True)
 def quiesce(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
     w2t: Any, b2: Any, w3: Any, b3: Any,
     butterfly: Any, moves: Any, scores: Any, ctrl: Any, deadline: Any,
     alpha: Any, beta: Any, depth: Any, ply: Any, scratch: Any,
-    ec_key: Any, ec_val: Any, exts: Any,
+    ec_key: Any, ec_val: Any, exts: Any, tt_key: Any, tt_data: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
         ctrl[C_ABORT] = 1
         return 0
+
+    use_qtt = ctrl[C_QS_TT] != 0 and ctrl[C_TT_OFF] == 0
+    original_alpha = alpha
+    if use_qtt:
+        tkey = keys[meta[fb.PLY]]
+        tslot = np.int64(tkey & TT_MASK)
+        if (_F_TT_BUCKETS if _FOLD else ctrl[C_TT_BUCKETS] != 0):
+            tslot = tslot & -2
+            if tt_key[tslot] != tkey and tt_key[tslot + 1] == tkey:
+                tslot = tslot + 1
+        if tt_key[tslot] == tkey:
+            data = tt_data[tslot]
+            tflag = unpack_flag(data)
+            tscore = from_table(unpack_score(data), ply)
+            if tflag == 0:
+                return tscore
+            if tflag == 1 and tscore >= beta:
+                return tscore
+            if tflag == 2 and tscore <= alpha:
+                return tscore
 
     if ctrl[C_QS_CACHE] != 0:
         qkey = keys[meta[fb.PLY]]
@@ -543,6 +596,8 @@ def quiesce(
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if standing >= beta:
+        if use_qtt:
+            qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], standing, 1, ply, ctrl)
         return standing
     if standing + BIG_DELTA < alpha:
         return standing
@@ -571,14 +626,20 @@ def quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline,
             -beta, -alpha, depth + 1, ply + 1, scratch, ec_key, ec_val, exts,
+            tt_key, tt_data,
         )
         unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
         if ctrl[C_ABORT]:
             return 0
         if score >= beta:
+            if use_qtt:
+                qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], score, 1, ply, ctrl)
             return score
         if score > alpha:
             alpha = score
+    if use_qtt and ctrl[C_ABORT] == 0:
+        qflag = 0 if alpha > original_alpha else 2
+        qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], alpha, qflag, ply, ctrl)
     return alpha
 
 
@@ -693,7 +754,7 @@ def search(
         return quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline, alpha, beta, 0, ply,
-            scratch, ec_key, ec_val, exts,
+            scratch, ec_key, ec_val, exts, tt_key, tt_data,
         )
 
     standing = -INFINITY

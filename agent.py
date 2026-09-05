@@ -1081,6 +1081,18 @@ NMP_V2: Final = False
 # CONT_HIST is closed/rejected (both on together raises at init). Gravity
 # bonus on a capture cutoff, decayed >>= 1 per move under HYGIENE.
 CAPTURE_ORDER: Final = False
+# QS_TT (V10_PLAN #9): probe and store the main transposition table in
+# quiescence. A hit of any depth cuts (exact returns; lower >= beta, upper <=
+# alpha); stores are depth 0 / move 0 bounds at the stand-pat cutoff, the
+# capture-loop cutoff and the final return, and never evict a same-key or
+# current-age entry of depth > 0 (main-search entries keep their hash moves).
+QS_TT: Final = False
+# ASP_WIDE (V10_PLAN #12): aspiration re-search windows widen geometrically
+# (~1.5x per fail: window * 3**fails // 2**fails) instead of 4**fails with a
+# jump to +/-INFINITY on the third fail; full-width only after ten fails as a
+# termination backstop. Cheap re-searches near the score replace one expensive
+# full-width pass when the root swings.
+ASP_WIDE: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2022,6 +2034,7 @@ class FastEngine:
             if CAPTURE_ORDER and CONT_HIST:
                 raise RuntimeError("CAPTURE_ORDER and CONT_HIST share the conthist1 buffer")
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
+            ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
             if INIT_FOLD:
                 for fold_slot, fold_value in _fs.FOLDED.items():
                     if bool(ctrl[fold_slot]) != fold_value:
@@ -2153,9 +2166,27 @@ class FastEngine:
                         # The move that failed high is proven better than the old best:
                         # it leads the wider pass, and TIME_V4 may keep it.
                         best = iteration_best
-                        hi = INFINITY if fails >= 3 else min(INFINITY, score + window * 4**fails)
+                        if ASP_WIDE:
+                            hi = (
+                                INFINITY if fails >= 10
+                                else min(INFINITY, score + window * 3**fails // 2**fails)
+                            )
+                        else:
+                            hi = (
+                                INFINITY if fails >= 3
+                                else min(INFINITY, score + window * 4**fails)
+                            )
                     elif score <= lo:
-                        lo = -INFINITY if fails >= 3 else max(-INFINITY, score - window * 4**fails)
+                        if ASP_WIDE:
+                            lo = (
+                                -INFINITY if fails >= 10
+                                else max(-INFINITY, score - window * 3**fails // 2**fails)
+                            )
+                        else:
+                            lo = (
+                                -INFINITY if fails >= 3
+                                else max(-INFINITY, score - window * 4**fails)
+                            )
                     else:
                         break
                 best = iteration_best
