@@ -1,0 +1,7 @@
+name v9-120s-l
+kind switch
+host tobys-laptop
+base_ms 120000 openings platform games 40
+INCONCLUSIVE  v9-120s-l  ran out of games; champion stays
+  +11 =22 -7  score 55.0%  over 40 games
+  terminations: checkmate 18, fifty_moves 1, insufficient_material 12, stalemate 1, threefold_repetition 8

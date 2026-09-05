@@ -1,0 +1,32 @@
+stage 1: crash gate, v9-120s-l vs random
+  clean over 24 games, 100% vs random
+
+stage 2: SPRT[-50, 50], challenger vs champion
+      2 games  .... llr +0.00 [-2.94, 2.94] after 1 pairs, elo +0.0 +/- inf
+      4 games  .... llr +0.57 [-2.94, 2.94] after 2 pairs, elo +190.8 +/- 2209.2
+      7 games  .... llr +0.25 [-2.94, 2.94] after 3 pairs, elo +58.5 +/- 2341.5
+      8 games  .... llr +0.00 [-2.94, 2.94] after 4 pairs, elo -0.0 +/- 296.6
+     10 games  .... llr +0.00 [-2.94, 2.94] after 5 pairs, elo -0.0 +/- 208.3
+     12 games  .... llr +0.42 [-2.94, 2.94] after 6 pairs, elo +29.0 +/- 186.4
+     14 games  .... llr +0.50 [-2.94, 2.94] after 7 pairs, elo +24.9 +/- 151.2
+     16 games  .... llr +0.58 [-2.94, 2.94] after 8 pairs, elo +21.7 +/- 127.9
+     18 games  .... llr +0.00 [-2.94, 2.94] after 9 pairs, elo -0.0 +/- 117.8
+     20 games  .... llr +0.00 [-2.94, 2.94] after 10 pairs, elo -0.0 +/- 104.6
+     22 games  .... llr -0.64 [-2.94, 2.94] after 11 pairs, elo -15.8 +/- 98.4
+     24 games  .... llr +0.00 [-2.94, 2.94] after 12 pairs, elo -0.0 +/- 96.1
+     27 games  .... llr +0.00 [-2.94, 2.94] after 13 pairs, elo -0.0 +/- 88.0
+     28 games  .... llr +0.68 [-2.94, 2.94] after 14 pairs, elo +12.4 +/- 86.0
+     31 games  .... llr +1.67 [-2.94, 2.94] after 15 pairs, elo +34.9 +/- 94.7
+     32 games  .... llr +1.78 [-2.94, 2.94] after 16 pairs, elo +32.7 +/- 88.0
+     34 games  .... llr +1.90 [-2.94, 2.94] after 17 pairs, elo +30.7 +/- 82.3
+     36 games  .... llr +2.57 [-2.94, 2.94] after 18 pairs, elo +38.8 +/- 79.9
+     38 games  .... llr +1.87 [-2.94, 2.94] after 19 pairs, elo +27.5 +/- 77.9
+     40 games  .... llr +2.53 [-2.94, 2.94] after 20 pairs, elo +34.9 +/- 75.9
+
+C:\dev\aichessathon\starter\overnight\challengers\v9-120s-l vs C:\dev\aichessathon\starter
+  +11 =22 -7  score 55.0%  over 40 games
+  .... llr +2.53 [-2.94, 2.94] after 20 pairs, elo +34.9 +/- 75.9
+  mean game length 153 plies
+  terminations: checkmate 18, fifty_moves 1, insufficient_material 12, stalemate 1, threefold_repetition 8
+
+INCONCLUSIVE  v9-120s-l  ran out of games; champion stays
