@@ -84,6 +84,11 @@ C_TT_KEEP, C_QS_CAP, C_SAFE = 21, 22, 23
 # captures that lose material on the exchange at depth <= 5. C_CHECK_CAP: at most
 # this many check extensions along one line (0 = unlimited, the reference).
 C_QS_CACHE, C_SEE_MAIN, C_CHECK_CAP = 24, 25, 26
+# C_TT_BUCKETS: the table as pairs of slots. The even slot keeps the deeper
+# entry (replaced when the key matches, the entry has aged, or the new depth is
+# not shallower); the odd slot always takes the store. A probe checks both, so
+# a deep entry survives the key traffic that evicts it from a single slot.
+C_TT_BUCKETS = 27
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
@@ -385,6 +390,10 @@ def search(
     cached_eval = NO_EVAL
     if ctrl[C_TT_OFF] == 0:
         slot = np.int64(key & TT_MASK)
+        if ctrl[C_TT_BUCKETS] != 0:
+            slot = slot & -2
+            if tt_key[slot] != key and tt_key[slot + 1] == key:
+                slot = slot + 1
         if tt_key[slot] == key:
             data = tt_data[slot]
             stored_depth = unpack_depth(data)
@@ -637,11 +646,24 @@ def search(
         else:
             flag = 0
         age = ctrl[C_AGE]
-        old = tt_data[slot]
-        if ctrl[C_TT_KEEP] != 0:
+        if ctrl[C_TT_BUCKETS] != 0:
+            dslot = np.int64(key & TT_MASK) & -2
+            old = tt_data[dslot]
+            if tt_key[dslot] == key:
+                slot = dslot
+            elif tt_key[dslot + 1] == key:
+                slot = dslot + 1
+            elif unpack_age(old) != (age & 63) or depth >= unpack_depth(old):
+                slot = dslot
+            else:
+                slot = dslot + 1
+            replace = True
+        elif ctrl[C_TT_KEEP] != 0:
+            old = tt_data[slot]
             handicap = 4 if unpack_age(old) != (age & 63) else 0
             replace = tt_key[slot] == key or depth + handicap >= unpack_depth(old)
         else:
+            old = tt_data[slot]
             replace = (
                 tt_key[slot] == key
                 or unpack_age(old) != (age & 63)

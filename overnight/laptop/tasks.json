@@ -2,5 +2,9 @@
  {
   "name": "098-rootorder",
   "sed": "s/^ROOT_ORDER: Final = False$/ROOT_ORDER: Final = True/"
+ },
+ {
+  "name": "099-ttbuckets",
+  "sed": "s/^TT_BUCKETS: Final = False$/TT_BUCKETS: Final = True/"
  }
 ]

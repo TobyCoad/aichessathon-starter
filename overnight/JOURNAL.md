@@ -649,3 +649,16 @@ verdicts this iteration: desktop mid-run on 091-ttkeep (46 games at 10:30 heartb
 5 Sep 11:08 091-ttkeep (TT age handicap) stopped at 108 games, -32 +/- 52, recorded
 INCONCLUSIVE leaning reject, to start the self-play labelling pilot on the desktop
 (gen-001, gen-002: 3000 games each, 40 ms/move, Stockfish 5000 nodes).
+
+5 Sep 11:45 (loop iter 2) TT_BUCKETS implemented (was backlog 3): the table as
+pairs of slots -- the even slot keeps the deeper entry (replaced on key match,
+age, or equal-or-greater depth), the odd slot always takes the store, probes
+check both. Off in the tree; ruff, mypy, check_fastsearch 70/70 exact all PASS.
+testing.bench depth 8 over 40 positions: 1,605,439 nodes vs 1,605,437 off --
+exactly neutral, as expected: 1.6M nodes against a 4M-slot table has no eviction
+pressure, so only long searches (saturated table, later game phases) can show
+the gain; the second probe costs ~5% knps (197 -> 187, part noise). Queued as
+099-ttbuckets after 098-rootorder in overnight/laptop/tasks.json. No verdicts
+landed: desktop mid-run on 091-ttkeep (108 games at the 11:01 heartbeat, llr
+-1.21, trending REJECT -- consistent with ttkeep and ttbuckets attacking the
+same replacement question from opposite ends); laptop still on the 090 rerun.

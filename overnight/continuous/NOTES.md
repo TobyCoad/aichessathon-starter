@@ -47,11 +47,11 @@ book-off (inconclusive), book-verify (-94), IIR (inconclusive), NMP_GUARD (flat)
 pondering (platform freezes the process), endgame fine-tune of the old net,
 QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect).
 
-## Running now (5 Sep 11:00)
-- desktop: 091-ttkeep (46 games in at 10:30), then 092-qscap14, 093-safe, 095-asp15,
-  096-clocktest-v71, 097-seemain.
+## Running now (5 Sep 11:30)
+- desktop: 091-ttkeep (108 games at 11:01 heartbeat, llr -1.21, trending REJECT),
+  then gen-001/002, 092-qscap14, 093-safe, 095-asp15, 096-clocktest-v71, 097-seemain.
 - laptop CPU: 090-history2 rerun gauntlet (queue8b, outside the worker); the worker
-  is up and holds 098-rootorder (tasks.json) until that gauntlet clears.
+  holds 098-rootorder then 099-ttbuckets (tasks.json) until that gauntlet clears.
 - laptop GPU: net_w512-b1-kz16 (no output buckets, from scratch) -> export/check/suite/gauntlet.
 - download: fetch 2025_04 running -> pack when done.
 
@@ -60,17 +60,19 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect).
    the net), reject the rest, note it here and in JOURNAL.md.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
    (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
-3. Two-slot TT buckets (depth-preferred + always-replace) in fastsearch.
-4. Time: expected-moves floor 26 -> 18 and shrink when stable (120 s only).
-5. Lazy accumulator update (defer make_full's NNUE update until evaluate).
-6. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
-7. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
-8. Anything from overnight/eval/V7_PLAN.md not listed as closed.
+3. Time: expected-moves floor 26 -> 18 and shrink when stable (120 s only).
+4. Lazy accumulator update (defer make_full's NNUE update until evaluate).
+5. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
+6. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
+7. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 2: check results (desktop_status.sh, night3.log, laptop results/ for
-098-rootorder and the 090 rerun). Fold any verdicts. Otherwise take backlog
-item 3 (two-slot TT buckets in fastsearch.py -- kernel change, so the exactness
-check matters doubly); queue its gauntlet to whichever queue is shorter.
-Context for 098-rootorder's verdict: nodes-to-depth-8 measured +3.5% (weakly
-negative), so REJECT is the likely outcome; don't be surprised.
+Iteration 3: check results (desktop_status.sh, night3.log, laptop results/ for
+the 090 rerun, 098-rootorder, 099-ttbuckets; desktop results/ for 091-ttkeep,
+which was trending REJECT at llr -1.21). Fold any verdicts. Otherwise take
+backlog item 3 (time: expected-moves floor 26 -> 18, 120 s only -- needs the
+clocktest and 40 games at 120 s per the rules, not just the 8 s SPRT).
+Verdict context: 098-rootorder measured +3.5% nodes (weakly negative, REJECT
+likely); 099-ttbuckets measured exactly neutral on nodes at depth 8 (table not
+saturated at bench sizes; only long searches can show a gain, and the double
+probe costs ~5% speed, so INCONCLUSIVE/REJECT would not surprise).

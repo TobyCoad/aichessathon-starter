@@ -930,6 +930,10 @@ HISTORY2: Final = False
 # entry replaces an aged one only if it is at most 4 plies shallower. The warm
 # table is what makes the early iterations of the next move free.
 TT_KEEP: Final = False
+# TT_BUCKETS: the transposition table as pairs of slots. The even slot keeps the
+# deeper entry, the odd slot always takes the store, and a probe checks both, so
+# a deep entry survives the key traffic that evicts it from a single slot.
+TT_BUCKETS: Final = False
 # QS_CAP: quiescence depth cap. 8 truncates long exchanges; with SEE pruning the
 # capture tree is small enough to follow to 14.
 QS_CAP: Final = 8
@@ -1870,6 +1874,7 @@ class FastEngine:
             ctrl[_fs.C_QS_CACHE] = 1 if QS_EVAL_CACHE else 0
             ctrl[_fs.C_SEE_MAIN] = 1 if SEE_MAIN else 0
             ctrl[_fs.C_CHECK_CAP] = CHECK_EXT_CAP
+            ctrl[_fs.C_TT_BUCKETS] = 1 if TT_BUCKETS else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
