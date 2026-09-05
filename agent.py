@@ -926,6 +926,11 @@ PONDER_MAX_S: Final = 600.0
 # and how many nodes it searched. The platform shows stderr in the validation log's
 # smoke games, which is the only way to see whether pondering runs there.
 PONDER_DIAG: Final = False
+# PONDER_PROBE: answer "does the platform run us between moves?" through the only
+# channel a rated game gives back, the clock. On our moves 8-12 the search gets a
+# fixed 1.0 s when the ponder thread searched >= 100k nodes in the gap before the
+# request, and a fixed 3.0 s when it did not. Read the PGN clocks of one game.
+PONDER_PROBE: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1934,6 +1939,7 @@ _FAST: FastEngine | None = None
 _PONDER: FastEngine | None = None
 _PONDER_THREAD: threading.Thread | None = None
 _PONDER_STARTED: float = 0.0
+_PONDER_LAST_NODES: int = 0
 if _FAST_OK:
     try:
         _FAST = FastEngine()
@@ -2216,9 +2222,13 @@ def get_move(fen: str, time_left_ms: int) -> str:
     if PONDER:
         had_thread = _PONDER_THREAD is not None
         _stop_ponder()
+        global _PONDER_LAST_NODES
+        _PONDER_LAST_NODES = 0
+        if had_thread and _PONDER is not None:
+            _PONDER_LAST_NODES = int(_PONDER.ctrl[_fs.C_NODES])
         if PONDER_DIAG and had_thread and _PONDER is not None:
             gap = time.monotonic() - _PONDER_STARTED
-            print(f"ponder-diag: gap {gap:.2f}s ponder_nodes {int(_PONDER.ctrl[_fs.C_NODES])}")
+            print(f"ponder-diag: gap {gap:.2f}s ponder_nodes {_PONDER_LAST_NODES}")
     if TIME_V2:
         _note_clock(time_left_ms)
 
@@ -2253,6 +2263,9 @@ def get_move(fen: str, time_left_ms: int) -> str:
         # hands this move to the python-chess engine instead.
         try:
             soft, hard = _budget(board, time_left_ms)
+            if PONDER_PROBE and 8 <= board.fullmove_number <= 12 and time_left_ms > 30_000:
+                fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
+                soft = hard = time.monotonic() + fixed
             candidate = _FAST.play(board, soft, hard)
             if candidate in board.legal_moves:
                 move = candidate
