@@ -46,14 +46,14 @@
   "games": 600
  },
  {
-  "name": "143-v92nmp",
-  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^NMP_V2: Final = False$/NMP_V2: Final = True/",
+  "name": "143-nmp",
+  "sed": "s/^NMP_V2: Final = False$/NMP_V2: Final = True/",
   "games": 600
  },
  {
-  "name": "v92nmp-clocktest-l",
+  "name": "nmp-clocktest-l",
   "kind": "clocktest",
-  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^NMP_V2: Final = False$/NMP_V2: Final = True/"
+  "sed": "s/^NMP_V2: Final = False$/NMP_V2: Final = True/"
  },
  {
   "name": "144-caporder",
