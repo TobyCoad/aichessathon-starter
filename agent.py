@@ -1034,6 +1034,24 @@ _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 RESERVE_FRACTION: Final = 0.10
 # TIME_V2: below this many seconds the budget stops crediting the increment.
 LOW_CLOCK: Final = 15.0
+# TIME_V6 (V10_PLAN #1): what every OpenBench engine measured. (a) The budget
+# credits the increment it actually observes (median of the clock deltas between
+# our calls), keeps a 4% reserve instead of 10%, and drops the low-clock regime
+# to 9 s -- the 13 s absorbing floor in games.md came from the 10% reserve plus
+# remaining/30 below 15 s. (b) The next iteration is never predicted (Ethereal
+# gained +6..+12 removing exactly that); the search stops at an iteration end
+# once elapsed exceeds ideal x stability x score-drop x node-effort, with the
+# hard deadline (4 soft budgets) as the only mid-iteration stop. Stability table
+# from Stash/Viridithas, score-drop 2^(-drop/100) from Stash, node effort
+# max(0.5, 2.4 - 2*bestFraction) from Ethereal/Koivisto. Absorbs TIME_V5's
+# 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
+TIME_V6: Final = False
+RESERVE_FRACTION_V6: Final = 0.04
+LOW_CLOCK_V6: Final = 9.0
+_STABILITY_SCALE: Final = (2.5, 1.2, 0.9, 0.8, 0.75)
+_INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
+_LAST_CLOCK_MS: float = -1.0
+_LAST_SPENT_MS: float = -1.0  # wall time of our previous get_move call
 _MAX_CLOCK_MS: float = 0.0
 # How often the search looks at the clock. time.monotonic() costs well under a
 # microsecond, so polling four times as often under TIME_V2 is free and quarters
@@ -1948,12 +1966,15 @@ class FastEngine:
         previous_score = -INFINITY
         unstable = False
         stable_streak = 0
+        stability = 0  # TIME_V6: consecutive iterations that kept the best move
+        score_hist: list[int] = []  # TIME_V6: one score per completed iteration
         prev_scores: dict[int, int] = {}
         for depth in range(1, 64):
             iteration_started = time.monotonic()
             first_done = False
             iteration_best = best
             pass_scores: dict[int, int] = {}
+            root_nodes: dict[int, int] = {}  # TIME_V6: nodes spent under each root move
             # ASPIRATION: a window around the last score, or the full window.
             window = 0
             if ASPIRATION and depth >= 4 and abs(previous_score) < MATE_THRESHOLD:
@@ -1982,6 +2003,7 @@ class FastEngine:
                     first_done = False
                     for i in range(n):
                         move = int(moves[i])
+                        node_start = int(self.ctrl[_fs.C_NODES]) if TIME_V6 else 0
                         self._make(move)
                         try:
                             if (PVS or LMR_AGGRESSIVE) and i:
@@ -1992,6 +2014,11 @@ class FastEngine:
                                 value = -self.root_search(depth - 1, -hi, -alpha, 1)
                         finally:
                             self._unmake()
+                            if TIME_V6:
+                                root_nodes[move] = (
+                                    root_nodes.get(move, 0)
+                                    + int(self.ctrl[_fs.C_NODES]) - node_start
+                                )
                         if ROOT_ORDER:
                             pass_scores[move] = value
                         if i == 0:
@@ -2041,9 +2068,27 @@ class FastEngine:
                     best != previous_best or score < previous_score - 50
                 )
                 stable_streak = stable_streak + 1 if depth >= 3 and not unstable else 0
+                stability = stability + 1 if depth >= 3 and best == previous_best else 0
                 previous_best, previous_score = best, score
             now = time.monotonic()
-            if TIME_V2:
+            if TIME_V6:
+                score_hist.append(score)
+                elapsed = now - started
+                budget = soft_limit - started
+                factor = 1.0
+                if depth >= 5:
+                    factor = _STABILITY_SCALE[min(stability, 4)]
+                    if len(score_hist) >= 4:
+                        drop = score_hist[-4] - score_hist[-1]
+                        factor *= 2.0 ** (max(-100, min(100, drop)) / 100.0)
+                    total_nodes = sum(root_nodes.values())
+                    if total_nodes > 0:
+                        fraction = root_nodes.get(best, 0) / total_nodes
+                        factor *= max(0.5, 2.4 - 2.0 * fraction)
+                    factor = max(0.3, min(3.0, factor))
+                if elapsed > factor * budget:
+                    break
+            elif TIME_V2:
                 elapsed = now - started
                 budget = soft_limit - started
                 predicted = (now - iteration_started) * 2.5
@@ -2252,9 +2297,16 @@ def _has_non_pawn_material(board: chess.Board, colour: chess.Color) -> bool:
 
 def _note_clock(time_left_ms: int) -> None:
     """Track the largest clock seen: the starting clock, which is never passed in."""
-    global _MAX_CLOCK_MS
+    global _MAX_CLOCK_MS, _LAST_CLOCK_MS
     if time_left_ms > _MAX_CLOCK_MS:
         _MAX_CLOCK_MS = float(time_left_ms)
+    if TIME_V6:
+        if _LAST_CLOCK_MS >= 0.0 and _LAST_SPENT_MS >= 0.0:
+            raw = time_left_ms - (_LAST_CLOCK_MS - _LAST_SPENT_MS)
+            if -50.0 <= raw <= 3000.0:  # a new game or a clock reset is out of range
+                _INC_SAMPLES.append(max(0.0, raw))
+                del _INC_SAMPLES[:-5]
+        _LAST_CLOCK_MS = float(time_left_ms)
 
 
 _MATERIAL: Final = {
@@ -2286,6 +2338,37 @@ def _contempt(board: chess.Board, static: int) -> int:
     if material <= -100 or static <= -60:
         return -CONTEMPT_BEHIND
     return -CONTEMPT_LEVEL
+
+
+def _observed_increment() -> float:
+    """The increment in seconds as seen between our calls; 0 until two samples."""
+    if len(_INC_SAMPLES) < 2:
+        return 0.0
+    ordered = sorted(_INC_SAMPLES)
+    return ordered[len(ordered) // 2] / 1000.0
+
+
+def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
+    """TIME_V6 deadlines: the soft budget is the ideal spend that the stop rule in
+    `choose` scales by stability, score drop and node effort; the hard deadline is
+    the only mid-iteration stop, four soft budgets or a quarter of the clock."""
+    now = time.monotonic()
+    remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
+    inc = _observed_increment()
+    expected = max(18.0, 46.0 - board.fullmove_number * 0.4)
+    if remaining < LOW_CLOCK_V6:
+        # Live on the increment, and on a fortieth of what is left if it is larger.
+        soft = max(0.9 * inc, remaining / 40.0)
+        hard = min(remaining * 0.2, soft * 2.5)
+    else:
+        soft = remaining / expected + 0.8 * inc
+        hard = min(remaining * 0.25, soft * 4.0)
+    reserve = _MAX_CLOCK_MS * RESERVE_FRACTION_V6 / 1000.0
+    if reserve > 0.0:
+        hard = min(hard, max(soft, remaining - reserve))
+    hard = max(hard, 0.02)
+    soft = min(soft, hard)
+    return now + soft, now + hard
 
 
 def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
@@ -2328,6 +2411,8 @@ def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     wall time and applies the increment only *after* the move, so the increment
     cannot be spent in advance; it is counted at a discount.
     """
+    if TIME_V6:
+        return _budget_v6(board, time_left_ms)
     if TIME_V2:
         return _budget_v2(board, time_left_ms)
     now = time.monotonic()
@@ -2343,6 +2428,16 @@ def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
 
 
 def get_move(fen: str, time_left_ms: int) -> str:
+    """Return a legal move in UCI notation; the platform's entry point."""
+    global _LAST_SPENT_MS
+    started = time.monotonic()
+    try:
+        return _get_move(fen, time_left_ms)
+    finally:
+        _LAST_SPENT_MS = (time.monotonic() - started) * 1000.0
+
+
+def _get_move(fen: str, time_left_ms: int) -> str:
     """Return a legal move in UCI notation.
 
     fen           the position to move in; your colour is the side to move
