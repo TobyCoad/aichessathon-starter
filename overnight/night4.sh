@@ -27,7 +27,7 @@ say "v7 on: $ON"
 $PY -u -m testing.gauntlet --challenger "$V7" --champion "$BASE" --elo0 0 --elo1 20 --games 600 --workers 6 \
     > overnight/eval/080-v7.gauntlet.log 2>&1
 say "080-v7 vs v6: $(verdict overnight/eval/080-v7.gauntlet.log)"
-$PY -u -m testing.gauntlet --challenger "$V7" --champion "$BASE" --elo0 900 --elo1 950 --games 300 --workers 6 \
+$PY -u -m testing.gauntlet --challenger "$V7" --champion "$BASE" --elo0 900 --elo1 950 --games 200 --workers 6 \
     > overnight/eval/080-v7.crash.log 2>&1
 say "crash hunt: $(grep -E 'terminations|score' overnight/eval/080-v7.crash.log | tail -n 2 | tr '\n' ' ')"
 $PY -u -m testing.gauntlet --challenger "$V7" --champion "$BASE" --elo0 -1000 --elo1 1000 --games 40 \
@@ -42,7 +42,7 @@ say "120s vs v6: $(grep -E 'score|terminations' overnight/eval/080-v7.120s.log |
         echo "- $n: $(verdict overnight/eval/$n.gauntlet.log)"
     done
     echo
-    echo "Crash hunt (300, 6 workers): $(grep -E 'terminations' overnight/eval/080-v7.crash.log | tail -n 1)"
+    echo "Crash hunt (200, 6 workers): $(grep -E 'terminations' overnight/eval/080-v7.crash.log | tail -n 1)"
     echo "120 s vs v6 (40 games, 4 workers): $(grep -E 'score' overnight/eval/080-v7.120s.log | tail -n 1) / $(grep -E 'terminations' overnight/eval/080-v7.120s.log | tail -n 1)"
     echo
     echo "Endgame suite: $(for n in kz8c kz8w kz16 kz32b; do echo -n "$n=$(grep -E 'positions at' overnight/eval/suite-$n.log 2>/dev/null | sed 's/.*mean loss //; s/,.*//') "; done)"

@@ -9,6 +9,8 @@ BASE=overnight/challengers/060-v6
 until grep -q "queue5 done" "$LOG" 2>/dev/null; do sleep 120; done
 for pair in "kz16:072" "kz8c:070"; do
     name=${pair%%:*}; num=${pair#*:}; d="overnight/challengers/$num-$name"
+    # the 8-zone control only matters if the 16-zone net failed
+    if [ "$name" = "kz8c" ] && grep -qE "^PROMOTE" overnight/eval/072-kz16.gauntlet.log 2>/dev/null; then continue; fi
     if [ ! -f "$d/weights/net.npz" ]; then
         rm -rf "$d"; cp -r "$BASE" "$d"
         $PY -u -m training.export --checkpoint "training/checkpoints/net_w512-b8-$name.pt" --out "$d/weights/net.npz" --half > "overnight/eval/export-$name.log" 2>&1
