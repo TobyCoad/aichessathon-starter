@@ -166,9 +166,12 @@ scale, 6-man TB, book rescan, HalfKA.
 Iteration next: (1) fold verdicts: 131-v9all (laptop, four-switch v9 bundle),
 111-singular, v85-120s-b, v9-clocktest, v9-120s as they land. If 131-v9all PROMOTES
 and v9-clocktest PASSES: ship v9 (flip the four switches, zip from the tested
-challenger, CANDIDATE.md, notify). (2) Continue/start the CONT_HIST build (V10_PLAN
-#2, multi-iteration, switch OFF; search.md 3.1: widen `exts` to 4*MAX_PLY instead of
-new arrays, conthist1 as new kernel args) -- HISTORY2_FIX and KILLER_CLEAR are already
+challenger, CANDIDATE.md, notify). (2) Continue the CONT_HIST build (V10_PLAN
+#2, multi-iteration, switch OFF; search.md 3.1). STEP 1 DONE (c5390ca): `exts`
+widened to 4*MAX_PLY at all three sites, exact 70/70. Next: C_CONT_HIST ctrl slot +
+CONT_HIST switch, conthist1 array as the one new kernel arg, write lane 2
+(piece*64+to) before each recursive call, then ordering/LMR/prune reads + the
+cutoff update (skip when excluded != 0; halve in HYGIENE) -- HISTORY2_FIX and KILLER_CLEAR are already
 in the v9 bundle, so CONT_HIST is the only piece left. (3) If a machine is idle after
 22:00, start the NET_V10 prerequisite (v8.5 endgame-suite baseline) and the NET_V10
 architecture work (mirrored king buckets, rebalanced output buckets, 16-out head) --
