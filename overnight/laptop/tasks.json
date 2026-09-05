@@ -34,5 +34,10 @@
   "name": "140-v92prune",
   "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
   "games": 600
+ },
+ {
+  "name": "141-v92prune",
+  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
+  "games": 600
  }
 ]

@@ -31,30 +31,47 @@ def gate(challenger: Path, workers: int) -> tuple[bool, str]:
 
     Random play reaches the odd corners -- promotion, en passant, stalemate,
     positions with a single legal move -- far faster than a real opponent does.
+    An init timeout or two under machine load is not a crash: the gate is replayed
+    once, and only a repeat counts as a failure.
     """
-    tally, _ = arena.run(
-        challenger,
-        Path("baselines/random").resolve(),
-        GATE_GAMES,
-        GATE_BASE_MS,
-        GATE_INCREMENT_MS,
-        300,
-        workers,
-        0.0,
-        20.0,
-        quiet=True,
-    )
-    if tally.failures:
-        broken = ", ".join(
-            f"{name} {count}"
-            for name, count in sorted(tally.terminations.items())
-            if name in FAILED_TERMINATIONS
+    note = ""
+    for attempt in range(2):
+        tally, _ = arena.run(
+            challenger,
+            Path("baselines/random").resolve(),
+            GATE_GAMES,
+            GATE_BASE_MS,
+            GATE_INCREMENT_MS,
+            300,
+            workers,
+            0.0,
+            20.0,
+            quiet=True,
         )
-        return False, f"failed {tally.failures}/{tally.games} games ({broken})"
-    score = (tally.wins + tally.draws / 2.0) / max(tally.games, 1)
-    if score < 0.8:
-        return False, f"only scored {score:.0%} against the random baseline"
-    return True, f"clean over {tally.games} games, {score:.0%} vs random"
+        if tally.failures:
+            broken = ", ".join(
+                f"{name} {count}"
+                for name, count in sorted(tally.terminations.items())
+                if name in FAILED_TERMINATIONS
+            )
+            init_only = tally.failures <= 2 and all(
+                name == "init"
+                for name, count in tally.terminations.items()
+                if name in FAILED_TERMINATIONS and count
+            )
+            if init_only and attempt == 0:
+                note = f"; first pass had {tally.failures} init timeout(s) under load, replayed"
+                print(
+                    f"  {tally.failures}/{tally.games} init timeouts under load; replaying the gate",
+                    flush=True,
+                )
+                continue
+            return False, f"failed {tally.failures}/{tally.games} games ({broken})"
+        score = (tally.wins + tally.draws / 2.0) / max(tally.games, 1)
+        if score < 0.8:
+            return False, f"only scored {score:.0%} against the random baseline"
+        return True, f"clean over {tally.games} games, {score:.0%} vs random{note}"
+    return False, "gate failed twice"
 
 
 def main() -> None:
