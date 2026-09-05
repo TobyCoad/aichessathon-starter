@@ -111,7 +111,10 @@ uploads in the morning; the upload cap resets 12:00). Order of work:
    futility / LMR / NMP, NMP_V2 (R = 3 + d/4 + eval margin, verification at depth >= 10),
    CAPTURE_ORDER (SEE-ordered captures below quiets + capture history). Build all three as
    switches, bench each, one SPRT for the bundle.
-3. NET_V10 on the GPU (V10_PLAN #4, network.md scoping): first the v8/v9 endgame-suite
+3. GPU IS FREE: the month5 chain finished 16:47 -- kz16r (five months) restored a best epoch
+   with validation loss 0.004659, IDENTICAL to the b8-kz16 start, i.e. the fifth month added
+   nothing measurable; run its suite only if cheap, otherwise skip 104-kz16r and go straight
+   to NET_V10. NET_V10 on the GPU (V10_PLAN #4, network.md scoping): first the v8/v9 endgame-suite
    baseline (~18 min CPU, run while a gauntlet is NOT at its checkpoint), then train the
    mirrored-king-bucket net with rebalanced output buckets warm-started from
    training/checkpoints/net_w512-b8-kz16.pt (check the month5 chain first: if kz16r is
