@@ -4,6 +4,20 @@
   "sed": "s/^TT_KEEP: Final = False$/TT_KEEP: Final = True/"
  },
  {
+  "name": "gen-001",
+  "kind": "generate",
+  "games": 3000,
+  "nodes": 5000,
+  "movetime_ms": 40
+ },
+ {
+  "name": "gen-002",
+  "kind": "generate",
+  "games": 3000,
+  "nodes": 5000,
+  "movetime_ms": 40
+ },
+ {
   "name": "092-qscap14",
   "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"
  },
@@ -23,19 +37,5 @@
  {
   "name": "097-seemain",
   "sed": "s/^SEE_MAIN: Final = False$/SEE_MAIN: Final = True/"
- },
- {
-  "name": "gen-001",
-  "kind": "generate",
-  "games": 3000,
-  "nodes": 5000,
-  "movetime_ms": 40
- },
- {
-  "name": "gen-002",
-  "kind": "generate",
-  "games": 3000,
-  "nodes": 5000,
-  "movetime_ms": 40
  }
 ]
