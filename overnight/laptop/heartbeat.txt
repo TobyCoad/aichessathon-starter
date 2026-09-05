@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 00:35
+time 2026-09-06 00:45
 task 143-nmp
-progress      21 games  .... llr -0.18 [-2.94, 2.94] after 10 pairs, elo -17.4 +/- 109.2
+progress      56 games  .... llr +1.20 [-2.94, 2.94] after 28 pairs, elo +75.6 +/- 71.2
