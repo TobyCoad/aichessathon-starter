@@ -736,3 +736,22 @@ b8-kz16 checkpoint -> export float16 + check_nnue + endgame suite into
 challengers/104-kz16r. Gauntlet queueing is left to the iteration that reads
 the suite. Self-play parquets deliberately excluded from this retrain (equal
 shard rotation would overweight 570k positions ~250x).
+
+5 Sep 14:55 (loop iter 8) Book rebuild started (was backlog 4). No new verdicts
+this pass: desktop mid-092-qscap14 (62 games, llr -0.68, leaning negative),
+laptop 100-v8all rerun healthy at 202 games llr +1.09, month5 pack running
+since 14:15. Work: (1) worker.sh gained a `book` task field mirroring `net` --
+a task can now swap weights/book.bin in the challenger dir, and if the named
+book file has not landed in the tree yet the worker logs it and retries in
+120 s rather than silently running the champion book; (2) launched
+training.build_book detached on 2 workers (the gauntlet and pack own the CPU):
+--min-count 20 --max-drop 10 over 60 row groups of 2025_01 ->
+overnight/books/book-mc20-md10.bin, log overnight/eval/book2-build.log;
+(3) queued 105-bookprune on the desktop (shorter queue, 5 pending): champion +
+the new book, platform openings, SPRT[0,20] at 8 s -- the earlier
+--max-drop 30 prune tested exactly 50.0% on DEFAULT openings where the book
+barely fires, hence the platform pool this time; (4) added
+overnight/book_coverage.py and took the champion baseline on the 80-FEN
+platform pool: 610,028 entries, coverage 28/80, 2.6 moves per covered
+position, mean 1.25 in-book plies from a pool start. Next iteration commits
+the built book (the desktop task waits on it) and records its coverage.

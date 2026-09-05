@@ -76,6 +76,10 @@ run_task() {
     cp weights/net.npz weights/book.bin "$d/weights/"; cp -r weights/syzygy "$d/weights/"
     local net; net=$(field "$task" net "")
     [ -n "$net" ] && cp "$net" "$d/weights/net.npz"   # a task may test a different net
+    local book; book=$(field "$task" book "")
+    if [ -n "$book" ] && ! cp "$book" "$d/weights/book.bin"; then
+        say "task $name: book $book missing -- waiting for it to land"; sleep 120; return 1
+    fi
     [ -n "$sed_expr" ] && sed -i "$sed_expr" "$d/agent.py"
     local log="$RESULTS/$name.gauntlet.log"
     while [ "$(busy_gauntlets)" != "0" ] && [ -n "$(busy_gauntlets)" ]; do sleep 60; done

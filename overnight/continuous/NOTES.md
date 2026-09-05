@@ -55,10 +55,23 @@ cannot close an SPRT. Together with v8-clocktest PASS this says the v8 switches
 as a group are strongly positive at long TC; single-switch verdicts still decide
 what enters a bundle.
 
-## Running now (5 Sep 14:10)
-- desktop: on 092-qscap14; then 093-safe, 095-asp15, 096-clocktest-v71,
-  097-seemain, 103-lazyacc. v8-120s verdict recorded above.
-- laptop CPU: 100-v8all RESTARTED -- the 11:43 gauntlet died silently at ~453
+## Running now (5 Sep 14:50)
+- desktop: on 092-qscap14 (62 games, llr -0.68, leaning negative at 14:32);
+  then 093-safe, 095-asp15, 096-clocktest-v71, 097-seemain, 103-lazyacc,
+  105-bookprune (NEW: champion + book-mc20-md10.bin, platform openings,
+  SPRT[0,20] at 8 s). worker.sh gained a `book` task field (mirrors `net`,
+  swaps weights/book.bin in the challenger dir); if the book file is not yet
+  in the tree the worker logs "book ... missing" and retries in 120 s -- it
+  does NOT run with the champion book by mistake.
+- laptop CPU: book rebuild running detached (backlog 4):
+  `training.build_book --min-count 20 --max-drop 10 --workers 2` over 60 row
+  groups of 2025_01 -> overnight/books/book-mc20-md10.bin, log
+  overnight/eval/book2-build.log. Started 14:39; 2 workers is slow (~30+ min
+  expected). The book file must be COMMITTED before the desktop reaches
+  105-bookprune (hours away). Prior art: --max-drop 30 tested exactly 50.0%
+  over 400 games on DEFAULT openings (book barely fires there); this one is
+  stricter and judged on platform openings per the backlog.
+- laptop gauntlet: 100-v8all RESTARTED -- the 11:43 gauntlet died silently at ~453
   games (llr -0.45); the worker found no verdict line, discarded the result and
   re-ran the task at 13:49, now ~50 games. That evidence is lost; the rerun
   starts from zero. Only ONE worker chain is alive (PID check: the second
@@ -91,18 +104,31 @@ what enters a bundle.
    shorter queue. The self-play parquets (gen-001/002, ~570k positions) were
    deliberately left OUT of this retrain (a sixth rotating shard would get
    ~250x per-position weight); a self-play mix is a separate future experiment.
-4. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
+4. RUNNING as the detached book build + queued 105-bookprune (see above).
+   When book-mc20-md10.bin exists: run the coverage compare
+   (`python overnight/book_coverage.py weights/book.bin overnight/books/book-mc20-md10.bin`),
+   record the numbers, and COMMIT the book binary so the desktop can build the
+   challenger. Champion baseline: 9.76 MB, 610,028 entries, pool coverage
+   28/80, 2.6 moves per covered position, mean 1.25 in-book plies from a pool
+   start.
 5. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 8: check results (desktop for 092-qscap14 / 093 / 095; laptop for the
-100-v8all rerun -- if it dies again near 450 games with no verdict, read the
-tail of overnight/laptop/results/100-v8all.gauntlet.log BEFORE the worker
-truncates it, and consider capping games at 400 so it can finish). Check the
-month5 chain: grep "month5" overnight/eval/night3.log -- on FETCH/PACK/TRAIN
-FAILED, fix and relaunch `nohup bash overnight/month5.sh &` (idempotent). If
+Iteration 9: FIRST check overnight/eval/book2-build.log -- if it wrote
+overnight/books/book-mc20-md10.bin, measure coverage vs weights/book.bin on
+testing/platform_openings.txt (79 FENs: coverage, moves per position, mean
+in-book plies), record the numbers here and in JOURNAL.md, and `git add`
+overnight/books/book-mc20-md10.bin (the desktop's 105-bookprune waits on that
+commit; if the build FAILED, fix or remove 105-bookprune from
+overnight/desktop/tasks.json). Then the usual sweep: desktop results for
+092-qscap14 / 093 / 095; laptop 100-v8all rerun (if it dies again near 450
+games with no verdict, read the tail of
+overnight/laptop/results/100-v8all.gauntlet.log BEFORE the worker truncates
+it, and consider capping games at 400). Check the month5 chain: grep "month5"
+overnight/eval/night3.log (pack running since 14:15; on PACK/TRAIN FAILED, fix
+and relaunch `nohup bash overnight/month5.sh &`, idempotent). If
 suite-104-kz16r.log exists, record its numbers and queue the 104-kz16r net
-task per backlog 3. Otherwise take backlog 4 (book rebuild).
+task per backlog 3.
 Verdict context for the queued challengers: 098-rootorder +3.5% nodes (REJECT
 likely); 099-ttbuckets node-neutral at depth 8 (only long searches can show a
 gain); 101-lmraggr 0.92x nodes at depth 8 (modest); 102-timev5 (floor 18 +

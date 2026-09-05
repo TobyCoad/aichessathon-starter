@@ -57,5 +57,12 @@
  {
   "name": "103-lazyacc",
   "sed": "s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/"
+ },
+ {
+  "name": "105-bookprune",
+  "sed": "",
+  "book": "overnight/books/book-mc20-md10.bin",
+  "openings": "platform",
+  "games": 600
  }
 ]
