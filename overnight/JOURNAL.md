@@ -667,3 +667,18 @@ same replacement question from opposite ends); laptop still on the 090 rerun.
 laptop can run 100-v8all next: v7.1 + HISTORY2 + ROOT_ORDER + TT_BUCKETS + QS_CAP 14 +
 SAFE_BITS + ASPIRATION_WINDOW 15 + SEE_MAIN, one SPRT vs v7.1 to see the overall
 effect before the single-switch verdicts finish.
+
+5 Sep 12:20 (loop iter 3) LMR_AGGRESSIVE finished (was backlog 0, found half-done
+and uncommitted in the tree with 101-lmraggr already queued): reduce plain quiets
+from the SECOND searched move with the steeper log(d)*log(m)/1.8 + 0.5 table,
+adjusted by butterfly history (-1 ply above +8000, +1 below -8000, clamped at 0,
+reduced depth never below 1), PVS forced on inside the same switch. Off in the
+tree; ruff, mypy, check_fastsearch 70/70 exact all PASS. Bench: 1,471,277 vs
+1,605,437 nodes to depth 8 over 40 positions (0.92x); depth 10 over 12 positions
+0.95x -- a real but modest cut, not the hoped <0.6x: at bench depths the steeper
+table only adds ~1 ply and the PVS re-searches take part of it back. Queued
+challenger dir verified byte-identical to the tree + flip; SPRT will judge when
+the worker reaches 101-lmraggr. Verdicts recorded: 091-ttkeep INCONCLUSIVE
+leaning reject (stopped at 108 games, -32 +/- 52) moved to the closed list;
+gen-001 done on the desktop (281,853 positions), gen-002 running; 100-v8all at
+167 games llr +1.01 (+34 +/- 43), trending pass but undecided.

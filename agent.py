@@ -955,6 +955,14 @@ SEE_MAIN: Final = False
 # The book/hash move still leads. Fail-low values are only upper bounds, but
 # the relative order they induce is what most engines sort the root by.
 ROOT_ORDER: Final = False
+# LMR_AGGRESSIVE: depth is the main lever. Reduce quiet moves from the second
+# one searched with the steeper log(d)*log(m)/1.8 + 0.5 table, adjusted by
+# butterfly history (one ply less above +8000, one more below -8000, never
+# below depth 1), and turn PVS on inside the same switch: the null-window
+# re-searches are what make the deeper reductions cheap. PVS failed alone
+# twice; paired with reductions is the standard reason it exists. Needs
+# COMPILED_SEARCH.
+LMR_AGGRESSIVE: Final = False
 # CHECK_EXT_CAP: at most this many check extensions on one line (0 = unlimited).
 CHECK_EXT_CAP: Final = 0
 BOOK_VERIFY_MARGIN: Final = 25
@@ -1856,7 +1864,7 @@ class FastEngine:
             ctrl[_fs.C_TT_OFF] = 0
             ctrl[_fs.C_HYGIENE] = 1 if HYGIENE else 0
             ctrl[_fs.C_FUTILITY] = 1 if FUTILITY else 0
-            ctrl[_fs.C_PVS] = 1 if PVS else 0
+            ctrl[_fs.C_PVS] = 1 if PVS or LMR_AGGRESSIVE else 0
             ctrl[_fs.C_LMR] = 1 if LMR else 0
             ctrl[_fs.C_LMP] = 1 if LMP else 0
             ctrl[_fs.C_SEE] = 1 if SEE else 0
@@ -1875,6 +1883,7 @@ class FastEngine:
             ctrl[_fs.C_SEE_MAIN] = 1 if SEE_MAIN else 0
             ctrl[_fs.C_CHECK_CAP] = CHECK_EXT_CAP
             ctrl[_fs.C_TT_BUCKETS] = 1 if TT_BUCKETS else 0
+            ctrl[_fs.C_LMR_AGGR] = 1 if LMR_AGGRESSIVE else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -1939,7 +1948,7 @@ class FastEngine:
                         move = int(moves[i])
                         self._make(move)
                         try:
-                            if PVS and i:
+                            if (PVS or LMR_AGGRESSIVE) and i:
                                 value = -self.root_search(depth - 1, -alpha - 1, -alpha, 1)
                                 if alpha < value < hi:
                                     value = -self.root_search(depth - 1, -hi, -alpha, 1)

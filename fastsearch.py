@@ -89,6 +89,12 @@ C_QS_CACHE, C_SEE_MAIN, C_CHECK_CAP = 24, 25, 26
 # not shallower); the odd slot always takes the store. A probe checks both, so
 # a deep entry survives the key traffic that evicts it from a single slot.
 C_TT_BUCKETS = 27
+# C_LMR_AGGR: reduce quiet moves from the second one searched (not the third)
+# with the steeper LMR_TABLE_AGGR, adjusted by butterfly history: one ply less
+# above +8000, one more below -8000, never below zero and never into quiescence.
+# agent.py turns PVS on alongside it -- null-window re-searches are what make
+# the deeper reductions cheap.
+C_LMR_AGGR = 28
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
@@ -115,6 +121,11 @@ LMR_TABLE = np.zeros((64, 64), dtype=np.int64)
 for _d in range(1, 64):
     for _m in range(1, 64):
         LMR_TABLE[_d, _m] = int(0.75 + np.log(_d) * np.log(_m) / 2.25)
+# The steeper table C_LMR_AGGR uses: cuts about one ply more from the same spot.
+LMR_TABLE_AGGR = np.zeros((64, 64), dtype=np.int64)
+for _d in range(1, 64):
+    for _m in range(1, 64):
+        LMR_TABLE_AGGR[_d, _m] = int(0.5 + np.log(_d) * np.log(_m) / 1.8)
 # LMP: at depth d, once this many moves have been searched, remaining quiet
 # moves are skipped when not in check and not near a mate.
 LMP_LIMIT = np.array([0, 5, 8, 13], dtype=np.int64)
@@ -510,6 +521,7 @@ def search(
     searched = 0
     pvs = ctrl[C_PVS] != 0
     lmr = ctrl[C_LMR] != 0 and depth >= 3 and not in_check
+    aggr = ctrl[C_LMR_AGGR] != 0
     lmp = ctrl[C_LMP] != 0 and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
     for i in range(n):
         move = fb.pick_move(mv, sc, i, n)
@@ -533,12 +545,22 @@ def search(
         if (
             lmr
             and plain
-            and searched >= 2
+            and searched >= (1 if aggr else 2)
             and move != hash_move
             and move != killers[ply, 0]
             and move != killers[ply, 1]
         ):
-            reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
+            if aggr:
+                reduction = LMR_TABLE_AGGR[min(depth, 63), min(searched, 63)]
+                hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
+                if hist > 8000:
+                    reduction -= 1
+                elif hist < -8000:
+                    reduction += 1
+                if reduction < 0:
+                    reduction = 0
+            else:
+                reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
         fb.make_full(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
         )

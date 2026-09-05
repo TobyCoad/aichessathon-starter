@@ -45,27 +45,25 @@ PROMOTE: 050 compiled, 052 LMR, 054 aspiration, 055 SEE, 057 twofold, 072 kz16.
 REJECT/closed: PVS (x2), LMP, RFP_PHASE (suite), correction history (x2), TT_EVAL,
 book-off (inconclusive), book-verify (-94), IIR (inconclusive), NMP_GUARD (flat),
 pondering (platform freezes the process), endgame fine-tune of the old net,
-QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect).
+QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
+091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject).
 
-## Running now (5 Sep 11:30)
-- desktop: 091-ttkeep (108 games at 11:01 heartbeat, llr -1.21, trending REJECT),
-  then gen-001/002, 092-qscap14, 093-safe, 095-asp15, 096-clocktest-v71, 097-seemain.
-- laptop CPU: 090-history2 rerun gauntlet (queue8b, outside the worker); the worker
-  holds 098-rootorder then 099-ttbuckets (tasks.json) until that gauntlet clears.
-- laptop GPU: net_w512-b1-kz16 (no output buckets, from scratch) -> export/check/suite/gauntlet.
-- download: fetch 2025_04 running -> pack when done.
+## Running now (5 Sep 12:20)
+- desktop: gen-001 DONE (281,853 positions / 3000 games / 48.9 min ->
+  results/data/gen-001.parquet); gen-002 running; then 092-qscap14, 093-safe,
+  095-asp15, 096-clocktest-v71, 097-seemain.
+- laptop CPU: 100-v8all gauntlet (167 games, llr +1.01, +34 +/- 43 -- trending
+  PASS but undecided). Worker queue after it: 101-lmraggr, 073-kz16w,
+  098-rootorder, 099-ttbuckets.
+- laptop GPU: net_w512-b1-kz16 training (if still up -- not re-verified this iter).
+- download: fetch 2025_04 idling ("nothing new to analyse").
 
 ## Backlog (ranked; take the top item that is not running)
-0. LMR_AGGRESSIVE (depth is the main lever; current mean depth 12.4 at 4 s/move):
-   a single switch that (a) reduces from the SECOND quiet move (searched >= 1),
-   (b) uses a steeper table log(d)*log(m)/1.8 + 0.5, (c) adjusts the reduction by
-   history: -1 for a quiet with butterfly history above +8000 (or the top of its
-   band), +1 below -8000, (d) never reduces below depth 1, and (e) turns PVS on
-   inside the same switch (null-window re-search makes the reductions cheap;
-   PVS failed alone twice, this pairing is the standard reason it exists).
-   Measure nodes to depth 8 on the bench (expect well under 0.6x) before queueing.
 1. Fold every landed verdict: promote passes into the tree (switch -> True, or
-   the net), reject the rest, note it here and in JOURNAL.md.
+   the net), reject the rest, note it here and in JOURNAL.md. NOTE: 100-v8all
+   is a BUNDLE probe (7 switches at once) vs v7.1 -- it cannot promote a single
+   switch by itself; if it PASSES, treat it as evidence for backlog 2 and gate
+   a proper bundle from the single-switch passes only.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
    (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
 3. Time: expected-moves floor 26 -> 18 and shrink when stable (120 s only).
@@ -75,12 +73,14 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect).
 7. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 3: check results (desktop_status.sh, night3.log, laptop results/ for
-the 090 rerun, 098-rootorder, 099-ttbuckets; desktop results/ for 091-ttkeep,
-which was trending REJECT at llr -1.21). Fold any verdicts. Otherwise take
+Iteration 4: check results (desktop_status.sh + laptop results/ for 100-v8all,
+which was llr +1.01 at 167 games; desktop for gen-002 and then 092/093/095).
+Fold any verdicts (see the 100-v8all caveat in backlog 1). Otherwise take
 backlog item 3 (time: expected-moves floor 26 -> 18, 120 s only -- needs the
 clocktest and 40 games at 120 s per the rules, not just the 8 s SPRT).
 Verdict context: 098-rootorder measured +3.5% nodes (weakly negative, REJECT
-likely); 099-ttbuckets measured exactly neutral on nodes at depth 8 (table not
-saturated at bench sizes; only long searches can show a gain, and the double
-probe costs ~5% speed, so INCONCLUSIVE/REJECT would not surprise).
+likely); 099-ttbuckets exactly node-neutral at depth 8 (only long searches can
+show a gain); 101-lmraggr measured 0.92x nodes to depth 8 / 0.95x at depth 10
+(modest, not the hoped <0.6x -- the steeper table only adds ~1 ply of reduction
+at bench depths; PVS re-search costs eat part of it back). All three are SPRT's
+call now.
