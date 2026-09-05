@@ -38,11 +38,6 @@
   "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"
  },
  {
-  "name": "096-clocktest-v71",
-  "kind": "clocktest",
-  "sed": ""
- },
- {
   "name": "103-lazyacc",
   "sed": "s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/"
  },
