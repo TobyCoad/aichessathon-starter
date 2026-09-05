@@ -1,0 +1,16 @@
+v85-clocktest: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+   147 plies  1-0           lowest clock   11.7s  longest move   7.7s  at ply 30   75.6s  used w   140s b   139s
+compiled board: on
+   147 plies  1-0           lowest clock   11.6s  longest move  12.8s  at ply 30   78.5s  used w   142s b   141s
+compiled board: on
+   170 plies  0-1           lowest clock   11.1s  longest move   8.2s  at ply 30   91.7s  used w   148s b   147s
+compiled board: on
+   196 plies  1/2-1/2       lowest clock   11.8s  longest move   9.5s  at ply 30   86.8s  used w   154s b   155s
+compiled board: on
+   112 plies  1/2-1/2       lowest clock   12.5s  longest move  10.5s  at ply 30   72.9s  used w   134s b   130s
+compiled board: on
+   152 plies  0-1           lowest clock   11.6s  longest move  13.0s  at ply 30   87.3s  used w   144s b   144s
+
+flags 0/6  errors 0  lowest clock 11.1s  longest move 13.0s
+PASS
