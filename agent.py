@@ -926,6 +926,21 @@ BOOK_ENABLED: Final = True
 # malus for the quiet moves searched before a cutoff; a counter-move table keyed
 # on the opponent's last move, ranked just below the killers. Needs COMPILED_SEARCH.
 HISTORY2: Final = False
+# TT_KEEP: table entries from the previous search are not evicted freely; a new
+# entry replaces an aged one only if it is at most 4 plies shallower. The warm
+# table is what makes the early iterations of the next move free.
+TT_KEEP: Final = False
+# QS_CAP: quiescence depth cap. 8 truncates long exchanges; with SEE pruning the
+# capture tree is small enough to follow to 14.
+QS_CAP: Final = 8
+# SAFE_BITS: mate-distance pruning, null-move reduction growing with depth, and
+# a forced move played without searching.
+SAFE_BITS: Final = False
+# BOOK_VERIFY: a book move is searched first and played only if the search's own
+# best is not better by more than BOOK_VERIFY_MARGIN centipawns. Closes the book
+# lines measured at -68 and -165 cp on the platform's own start positions.
+BOOK_VERIFY: Final = False
+BOOK_VERIFY_MARGIN: Final = 25
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
 # and how many nodes it searched. The platform shows stderr in the validation log's
@@ -1418,6 +1433,8 @@ class FastEngine:
         "ctrl",
         "deadline",
         "draw_root",
+        "first_score",
+        "hint",
         "history",
         "killers",
         "killers2",
@@ -1459,6 +1476,8 @@ class FastEngine:
         self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 24, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
+        self.hint = 0  # a book move to search first and verify
+        self.first_score = -INFINITY
         if COMPILED_SEARCH:
             self.tt = _fs.new_table()
         self.scores = np.zeros(_fb.MOVE_CAP, dtype=np.int64)
@@ -1825,6 +1844,9 @@ class FastEngine:
             ctrl[_fs.C_PH_17_20] = RFP_PHASE_PERCENT[3]
             ctrl[_fs.C_IIR] = 1 if IIR else 0
             ctrl[_fs.C_HISTORY2] = 1 if HISTORY2 else 0
+            ctrl[_fs.C_TT_KEEP] = 1 if TT_KEEP else 0
+            ctrl[_fs.C_QS_CAP] = QS_CAP
+            ctrl[_fs.C_SAFE] = 1 if SAFE_BITS else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -1838,6 +1860,13 @@ class FastEngine:
         if n == 0:
             raise ValueError("no legal moves")
         best = int(moves[0])
+        if SAFE_BITS and n == 1:
+            self.root_best = best
+            return best
+        hint = self.hint
+        if hint:
+            best = hint
+        self.first_score = -INFINITY
 
         if HYGIENE:
             self.butterfly >>= 1
@@ -1862,7 +1891,9 @@ class FastEngine:
                     score = -INFINITY
                     alpha = lo
                     failed_high = False
-                    _fb.order_moves(moves, n, pos.sq, best, 0, 0, self.butterfly, self.scores)
+                    _fb.order_moves(
+                        moves, n, pos.sq, hint if hint else best, 0, 0, self.butterfly, self.scores
+                    )
                     iteration_best = int(moves[0])
                     first_done = False
                     for i in range(n):
@@ -1881,6 +1912,7 @@ class FastEngine:
                             # A first move that fell out of the window proves nothing
                             # about the others; with the full window this is always true.
                             first_done = value > lo
+                            first_value = value
                         if value > score:
                             score = value
                             iteration_best = move
@@ -1889,6 +1921,8 @@ class FastEngine:
                                 if alpha >= hi:
                                     failed_high = True
                                     break
+                    if hint and first_done:
+                        self.first_score = first_value
                     if not window:
                         break
                     fails += 1
@@ -1930,6 +1964,15 @@ class FastEngine:
             elif now > soft_limit:
                 break
 
+        # The book move was searched first with a full window, so its score is
+        # exact; keep it unless the search found something clearly better.
+        if (
+            hint
+            and best != hint
+            and self.first_score > -INFINITY
+            and score - self.first_score <= BOOK_VERIFY_MARGIN
+        ):
+            best = hint
         self.root_best = best
         return best
 
@@ -2255,7 +2298,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
         opening = _book_move(board) if BOOK_ENABLED else None
     except Exception:  # never let the book cost a game
         opening = None
-    if opening is not None:
+    if opening is not None and not (BOOK_VERIFY and _FAST is not None):
         return opening.uci()
 
     # Exact play once the position is small enough. This is what converts a won
@@ -2274,6 +2317,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
         # hands this move to the python-chess engine instead.
         try:
             soft, hard = _budget(board, time_left_ms)
+            _FAST.hint = _fb.move_from_chess(opening) if opening is not None else 0
             if PONDER_PROBE and 8 <= board.fullmove_number <= 10 and time_left_ms > 30_000:
                 fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
                 soft = hard = time.monotonic() + fixed

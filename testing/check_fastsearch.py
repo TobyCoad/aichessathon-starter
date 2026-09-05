@@ -105,6 +105,7 @@ class Kernel:
         self.ctrl[fs.C_HYGIENE] = 1 if agent.HYGIENE else 0
         self.ctrl[fs.C_FUTILITY] = 1 if agent.FUTILITY else 0
         self.ctrl[fs.C_ROOT_SIDE] = int(self.pos.meta[0])
+        self.ctrl[fs.C_QS_CAP] = 8  # the reference's quiescence cap
 
     def search(self, depth: int) -> tuple[int, int, int, float]:
         """(score, nodes, best move, seconds) after iterative deepening to `depth`."""

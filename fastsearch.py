@@ -74,6 +74,11 @@ C_PH_LE8, C_PH_9_12, C_PH_13_16, C_PH_17_20 = 16, 17, 18, 19
 # C_HISTORY2: side-indexed history with gravity and malus, plus counter moves.
 C_HISTORY2 = 20
 HISTORY_MAX = 16384
+# C_TT_KEEP: an entry from an older search is replaced only by one at most 4
+# plies shallower, instead of unconditionally. C_QS_CAP: quiescence depth cap
+# (8 in the reference). C_SAFE: mate-distance pruning and null-move reduction
+# growing with depth.
+C_TT_KEEP, C_QS_CAP, C_SAFE = 21, 22, 23
 CTRL_SIZE = 24
 
 
@@ -272,7 +277,7 @@ def quiesce(
         return standing
     if standing > alpha:
         alpha = standing
-    if depth >= 8 or ply >= fb.MAX_PLY - 2:
+    if depth >= ctrl[C_QS_CAP] or ply >= fb.MAX_PLY - 2:
         return standing
 
     captures = moves[ply]
@@ -338,6 +343,16 @@ def search(
             return draw_score(meta, ctrl)
     if ply >= fb.MAX_PLY - 8:
         return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+
+    if ctrl[C_SAFE] != 0 and ply > 0:
+        # Mate-distance pruning: no line from here can beat a mate already found
+        # closer to the root, in either direction.
+        if alpha < -MATE + ply:
+            alpha = -MATE + ply
+        if beta > MATE - ply - 1:
+            beta = MATE - ply - 1
+        if alpha >= beta:
+            return alpha
 
     original_alpha = alpha
     hash_move = 0
@@ -417,12 +432,15 @@ def search(
         and fb.non_pawn_material(bb, meta[fb.SIDE])
         and (ctrl[C_NMP_GUARD] == 0 or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
     ):
+        null_depth = depth - 1 - NMP_REDUCTION
+        if ctrl[C_SAFE] != 0:
+            null_depth -= depth // 6  # deeper nodes can afford a bigger reduction
         fb.make_null(bb, meta, undo, keys)
         score = -search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
+            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
         )
         fb.unmake_null(meta, undo)
         if ctrl[C_ABORT]:
@@ -575,7 +593,16 @@ def search(
             flag = 0
         age = ctrl[C_AGE]
         old = tt_data[slot]
-        if tt_key[slot] == key or unpack_age(old) != (age & 63) or depth >= unpack_depth(old):
+        if ctrl[C_TT_KEEP] != 0:
+            handicap = 4 if unpack_age(old) != (age & 63) else 0
+            replace = tt_key[slot] == key or depth + handicap >= unpack_depth(old)
+        else:
+            replace = (
+                tt_key[slot] == key
+                or unpack_age(old) != (age & 63)
+                or depth >= unpack_depth(old)
+            )
+        if replace:
             tt_key[slot] = key
             tt_data[slot] = pack(
                 to_table(best_score, ply), best_move, flag, depth, age, cached_eval
@@ -607,6 +634,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1
     ctrl[C_FUTILITY] = 1
+    ctrl[C_QS_CAP] = 8
     search(  # type: ignore[call-arg]
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
