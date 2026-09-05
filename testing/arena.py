@@ -142,8 +142,10 @@ def checkpoint_verdict(
     """The every-N-games rule: promote a positive trend, reject a clearly negative one
     from the second checkpoint on, otherwise play on."""
     if verdict.elo >= promote_at:
-        print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, trending positive -> PROMOTE early",
-              flush=True)
+        print(
+            f"  checkpoint {games}: {verdict.elo:+.0f} Elo, trending positive -> PROMOTE early",
+            flush=True,
+        )
         return replace(verdict, decision="accept")
     if games >= 2 * checkpoint and verdict.elo <= reject_at:
         print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, negative -> REJECT early",
