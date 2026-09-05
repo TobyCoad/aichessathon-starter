@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 20:27
+time 2026-09-05 20:37
 task 111-singular
-progress     470 games  .... llr -1.97 [-2.94, 2.94] after 235 pairs, elo -8.1 +/- 26.6
+progress     486 games  .... llr -1.81 [-2.94, 2.94] after 243 pairs, elo -5.7 +/- 25.8
