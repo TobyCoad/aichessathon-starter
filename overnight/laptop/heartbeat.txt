@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-05 21:17
+time 2026-09-05 21:27
 task 133-conthist
-progress     106 games  .... llr -2.03 [-2.94, 2.94] after 53 pairs, elo -46.2 +/- 46.3
+progress     148 games  .... llr -2.83 [-2.94, 2.94] after 74 pairs, elo -49.6 +/- 40.5
