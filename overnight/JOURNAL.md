@@ -783,3 +783,11 @@ still finishing the void 092-qscap14 (heartbeat 14:53), the laptop's
 was healthy at group 270/509 (15:09). Process check: one worker chain, one
 month5 chain -- the laptop is at its ~12-busy budget, so no new CPU work was
 started.
+
+5 Sep 17:40 v8.5 PROMOTED in the tree and uploaded by the human (18:00 slot): 110-v85all
++36 over 477 games at 8 s, clocktest PASS; the 120 s gate (v85-120s-b) still queued on the
+desktop behind 111-singular (170 games, -18 +/- 42). check_fastsearch 70/70 exact with the
+five switches on. Laptop worker queue emptied (073-kz16w stopped at 14 games; the TIME_V5-only
+tests dropped since TIME_V6 absorbs them). Research pass consolidated in overnight/eval/V10_PLAN.md.
+Round 25 (17:00) lost as white vs the roooookkk: slow slide -55 (m21) -> -213 (m63) -> -826
+(m99) while spending 1-3 s/move with 50 s on the clock; the over-banking games.md describes.

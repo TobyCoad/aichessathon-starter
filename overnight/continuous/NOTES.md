@@ -35,6 +35,11 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   `.`), games, openings (default|platform), workers, elo0, elo1, base_ms.
 
 ## Champion
+- v8.5 (uploaded by the human 5 Sep ~17:30, 18:00 slot) = v8 + LMR_AGGRESSIVE + LAZY_ACC +
+  TIME_V5 + PRUNE_V2 + SINGULAR, all True in the tree since 5 Sep 17:40. Evidence: 8 s
+  SPRT PROMOTE +36 over 477 games (55.2%), clocktest PASS 0/6; the 40 games at 120 s
+  (v85-120s-b, desktop) are still to come and now measure the live build. Import ~41 s
+  here (~75 s platform, budget 90) -- init time is a live risk, see V10_PLAN #10.
 - v8 (5 Sep 14:55) = v7.1 + HISTORY2 + ROOT_ORDER + TT_BUCKETS + QS_CAP 14 + SAFE_BITS
   + ASPIRATION_WINDOW 15 + SEE_MAIN, all now True in the tree. Evidence: 40 games at
   120 s on platform openings 67.5% (+18 =18 -4); 8 s SPRT flat (+3.5 +/- 25 at 502,

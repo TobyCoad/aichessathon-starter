@@ -859,7 +859,7 @@ TIME_V4: Final = True
 # iteration is allowed 1.0 soft budgets instead of 1.5. Only the 120 s control
 # can see it -- below LOW_CLOCK the budget is remaining/30 and the floor never
 # binds, so 8 s games are unchanged; judged by clocktest + 40 games at 120 s.
-TIME_V5: Final = False
+TIME_V5: Final = True
 # CORRECTION: correction history. The static evaluation is wrong in ways that
 # repeat. In the platform's round-8 loss it said +400 to +1010 in a rook-and-knight
 # ending that the search itself scored between -37 and -164, and reverse futility
@@ -970,7 +970,7 @@ ROOT_ORDER: Final = True
 # re-searches are what make the deeper reductions cheap. PVS failed alone
 # twice; paired with reductions is the standard reason it exists. Needs
 # COMPILED_SEARCH.
-LMR_AGGRESSIVE: Final = False
+LMR_AGGRESSIVE: Final = True
 # CHECK_EXT_CAP: at most this many check extensions on one line (0 = unlimited).
 CHECK_EXT_CAP: Final = 0
 # LAZY_ACC: defer the NNUE accumulator update from make to the first evaluate
@@ -978,21 +978,21 @@ CHECK_EXT_CAP: Final = 0
 # hash table, a repetition, or the null move before any static evaluation never
 # pays the two 512-float row updates or the astack save/restore, which profiled
 # at 15.4% of search time. Needs COMPILED_SEARCH.
-LAZY_ACC: Final = False
+LAZY_ACC: Final = True
 # PRUNE_V2: prune plain quiet moves harder at depth <= 4, after the first move
 # at a node, when not in check and not near a mate: futility with a margin of
 # 100 cp per ply of depth, and a history cut for quiets whose butterfly score
 # is below -1500 per ply of depth. Removes whole subtrees rather than
 # shortening them, which is what a depth gain needs. Needs COMPILED_SEARCH and
 # HISTORY2 (the history cut reads the side-to-move band).
-PRUNE_V2: Final = False
+PRUNE_V2: Final = True
 # SINGULAR: singular extensions. At depth >= 7 with a hash move whose stored
 # bound is exact or a lower bound at depth >= depth - 3, the node is searched
 # again without that move at half depth with a window two pawns per ply below
 # the stored score; if nothing else reaches it the hash move is the only move
 # and is searched a ply deeper. Capped at six check-or-singular extensions on
 # a line. Needs COMPILED_SEARCH.
-SINGULAR: Final = False
+SINGULAR: Final = True
 BOOK_VERIFY_MARGIN: Final = 25
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
