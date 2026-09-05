@@ -1994,6 +1994,7 @@ _PONDER: FastEngine | None = None
 _PONDER_THREAD: threading.Thread | None = None
 _PONDER_STARTED: float = 0.0
 _PONDER_LAST_NODES: int = 0
+_SEARCHED_MOVES: int = 0  # requests answered by the search (not the book or a tablebase)
 if _FAST_OK:
     try:
         _FAST = FastEngine()
@@ -2299,6 +2300,13 @@ def get_move(fen: str, time_left_ms: int) -> str:
     except Exception:  # never let the book cost a game
         opening = None
     if opening is not None and not (BOOK_VERIFY and _FAST is not None):
+        if PONDER and _PONDER is not None:
+            try:
+                board.push(opening)
+                _start_ponder(board)
+                board.pop()
+            except Exception:
+                pass
         return opening.uci()
 
     # Exact play once the position is small enough. This is what converts a won
@@ -2318,7 +2326,9 @@ def get_move(fen: str, time_left_ms: int) -> str:
         try:
             soft, hard = _budget(board, time_left_ms)
             _FAST.hint = _fb.move_from_chess(opening) if opening is not None else 0
-            if PONDER_PROBE and 8 <= board.fullmove_number <= 10 and time_left_ms > 30_000:
+            global _SEARCHED_MOVES
+            _SEARCHED_MOVES += 1
+            if PONDER_PROBE and 2 <= _SEARCHED_MOVES <= 4 and time_left_ms > 30_000:
                 fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
                 soft = hard = time.monotonic() + fixed
             candidate = _FAST.play(board, soft, hard)
