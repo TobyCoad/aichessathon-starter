@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-05 15:38
+time 2026-09-05 15:48
 task 110-v85all
-progress      98 games  .... llr +0.01 [-2.94, 2.94] after 49 pairs, elo +10.6 +/- 63.4
+progress     134 games  .... llr +0.22 [-2.94, 2.94] after 67 pairs, elo +18.2 +/- 54.3
