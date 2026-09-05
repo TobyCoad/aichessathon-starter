@@ -614,3 +614,12 @@ engine (6f6398d, PONDER off; zip byte-identical to 4df72cf's build) and handed b
 for upload. Platform facts from the log: init 35.7-38.6 s of a 90 s budget (their box
 ~1.8x slower than ours), slowest smoke move 8.2-8.6 s, "compiled board: on".
 night4 gates abandoned; queue7 (16-zone net vs v6) proceeds as the v7.1 candidate.
+
+5 Sep 10:20 v7.1 = v6 engine + 16-zone net (kz16: 4 months, val 0.004659, strata
+improved in every band; 072 gauntlet +30 +/- 25 over 479 vs v6, still running; endgame
+suite 7.4 vs 7.0). Net promoted in the tree (weights/net.npz, float16 W1). Upload build
+submission-v71diag.zip = v7.1 + PONDER + PONDER_DIAG (rated match logs capture stderr:
+one line per move with the ponder gap and node count answers whether the platform runs
+us between moves). Quick 120 s check 4 games clean. v8 switches (HISTORY2, TT_KEEP,
+QS_CAP 14, SAFE_BITS, BOOK_VERIFY) queued vs 072-kz16 (queue8). Round 17 draw: book
+moves 7-10 so the clock probe never fired; the v2 probe keys on searched moves.
