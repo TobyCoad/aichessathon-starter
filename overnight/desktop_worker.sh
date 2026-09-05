@@ -26,6 +26,15 @@ sync_down() {
     git fetch origin main >/dev/null 2>&1 || { say "fetch failed"; return 1; }
     git pull --rebase origin main >/dev/null 2>&1 || { say "pull --rebase failed; resetting"; git rebase --abort 2>/dev/null; git reset --hard origin/main; }
 }
+heartbeat() {  # $1 = task name, $2 = log; commits a status line every 10 minutes while $3 (pid) runs
+    while kill -0 "$3" 2>/dev/null; do
+        sleep 600
+        kill -0 "$3" 2>/dev/null || break
+        { echo "host $(hostname)"; echo "time $(date '+%Y-%m-%d %H:%M')"; echo "task $1"; echo "progress $(grep -E 'games' "$2" | tail -n 1)"; } > overnight/desktop/heartbeat.txt
+        git add overnight/desktop/heartbeat.txt
+        git -c user.name=desktop -c user.email=desktop@local commit -q -m "desktop heartbeat: $1" && push_up
+    done
+}
 push_up() {
     for attempt in 1 2 3 4 5; do
         git push origin main >/dev/null 2>&1 && return 0
@@ -64,14 +73,16 @@ run_task() {  # $1 = task json
     [ -n "$sed_expr" ] && sed -i "$sed_expr" "$d/agent.py"
     local log="$RESULTS/$name.gauntlet.log"
     if [ "$kind" = "clocktest" ]; then
-        $PY -u -m testing.clocktest --agent "$d" --workers 4 > "$log" 2>&1
+        $PY -u -m testing.clocktest --agent "$d" --workers 4 > "$log" 2>&1 &
+        heartbeat "$name" "$log" $!; wait
         { echo "name $name"; echo "kind clocktest"; echo "host $(hostname)"; grep -E "^flags|PASS|FAIL" "$log"; } > "$RESULTS/$name.txt"
     else
         local inc=$(( tc / 200 ))  # 8000 -> 40? keep the harness defaults: 8 s + 80 ms, 120 s + 500 ms
         [ "$tc" -ge 100000 ] && inc=500 || inc=80
         GAUNTLET_OPENINGS=$([ "$openings" = platform ] && echo platform || echo "") \
         $PY -u -m testing.gauntlet --challenger "$d" --champion "$champion" --elo0 "$elo0" --elo1 "$elo1" \
-            --games "$games" --workers "$workers" --base-ms "$tc" --increment-ms "$inc" > "$log" 2>&1
+            --games "$games" --workers "$workers" --base-ms "$tc" --increment-ms "$inc" > "$log" 2>&1 &
+        heartbeat "$name" "$log" $!; wait
         { echo "name $name"; echo "kind $kind"; echo "host $(hostname)"; echo "base_ms $tc openings $openings games $games";
           grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$log" | tail -n 1; grep -E "score|terminations" "$log" | tail -n 2; } > "$RESULTS/$name.txt"
     fi
