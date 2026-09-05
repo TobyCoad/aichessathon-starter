@@ -34,10 +34,6 @@
   "elo1": 50
  },
  {
-  "name": "092-qscap14",
-  "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"
- },
- {
   "name": "103-lazyacc",
   "sed": "s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/"
  },
