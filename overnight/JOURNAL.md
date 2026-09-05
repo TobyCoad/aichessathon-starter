@@ -623,3 +623,9 @@ one line per move with the ponder gap and node count answers whether the platfor
 us between moves). Quick 120 s check 4 games clean. v8 switches (HISTORY2, TT_KEEP,
 QS_CAP 14, SAFE_BITS, BOOK_VERIFY) queued vs 072-kz16 (queue8). Round 17 draw: book
 moves 7-10 so the clock probe never fired; the v2 probe keys on searched moves.
+
+5 Sep 10:10 094-bookverify REJECT -94 +/- 53 over 76 games on the platform openings
+(vs 072-kz16). Verifying book moves with a search costs clock and the low-depth search
+disagrees with the book too often; the book stays as is. 090-history2's first run
+failed its crash gate on init timeouts (3 jobs sharing the machine); rerun queued.
+Desktop worker live (E:/dev/aichessathon-starter): 091/092/093 vs v7.1.
