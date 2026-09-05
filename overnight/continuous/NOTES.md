@@ -28,6 +28,12 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   their box is ~1.8x ours; stay under ~45 s of local import.
 
 ## Machines
+- DESKTOP IS SHUT DOWN (5 Sep 20:05, the human's message). Do NOT queue anything in
+  overnight/desktop/tasks.json and do not wait for desktop results (v9core-120s,
+  111-singular, v85-120s-b will never land). Everything runs on the laptop: the worker
+  takes gauntlets, clocktests and 120 s games in order, one at a time. Budget the queue:
+  an 8 s bundle SPRT to its 200-game checkpoint ~1 h, clocktest ~10 min, 40 games at
+  120 s ~45 min with 4 workers. Keep the laptop plugged in and awake.
 - Laptop (this machine): editing, GPU training, `overnight/laptop/tasks.json` ->
   worker `bash overnight/worker.sh laptop` -> `overnight/laptop/results/`.
 - Desktop (E:/dev/aichessathon-starter, 16 cores): `overnight/desktop/tasks.json`

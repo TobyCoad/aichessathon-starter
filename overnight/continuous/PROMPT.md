@@ -6,8 +6,8 @@ iteration (at most ~35 minutes of wall time), then stop.
 
 Read first, in this order:
 1. overnight/continuous/NOTES.md  (state, rules, pipeline, backlog, next step -- authoritative)
-2. `bash overnight/desktop_status.sh`; `ls overnight/laptop/results overnight/desktop/results`;
-   `tail -n 3 overnight/laptop/results/*.gauntlet.log overnight/desktop/results/*.gauntlet.log`
+2. `ls overnight/laptop/results`; `tail -n 3 overnight/laptop/results/*.gauntlet.log`
+   (the desktop is off; ignore overnight/desktop/)
 3. The tail of overnight/JOURNAL.md (last 60 lines) and overnight/eval/V10_PLAN.md (the ranked idea list)
 4. overnight/eval/ARCHITECTURE.md when you build or brief a research agent (what exists, how it
    is measured, what is closed) -- every research brief must tell the agent to read it first.
@@ -26,11 +26,12 @@ B. BUILD: each change is a switch in agent.py, OFF by default in the tree. Befor
    node count and knps) and write the number into NOTES.md.
 C. TEST THE BUNDLE: build one challenger = champion + every new switch flipped on (a task
    with a `sed` that flips them all; see the 100-v8all / 110-v85all tasks for the format)
-   and queue: (1) an 8 s SPRT vs the champion on the laptop (`games` 400-600),
-   (2) `kind: clocktest` on the desktop, (3) 40 games at 120 s on the desktop
+   and queue ON THE LAPTOP (the desktop is shut down; never queue desktop tasks):
+   (1) an 8 s SPRT vs the champion (`games` 400-600), (2) `kind: clocktest`, (3) 40 games at 120 s
    (`base_ms` 120000, `openings` platform, `workers` 4, `elo0` -50, `elo1` 50).
-   Time-management changes are only visible at 120 s: for those the desktop 120 s games and
-   the clock test are the gate, plus 200 games at 30 s (`base_ms` 30000) if a slot is free.
+   Time-management changes are only visible at 120 s: for those the 120 s games and the
+   clock test are the gate. Order the laptop queue so the current version's gate runs
+   before the next bundle's SPRT.
    Queue the next bundle's build while this one tests: never leave a machine idle.
 D. VERDICT (the human's rule): the gauntlet judges itself every 200 games -- at or above
    +10 Elo it PROMOTES early, at or below -10 from 400 games on it REJECTS, in between it
