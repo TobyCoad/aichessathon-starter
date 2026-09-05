@@ -2135,7 +2135,7 @@ class FastEngine:
                     if total_nodes > 0:
                         fraction = root_nodes.get(best, 0) / total_nodes
                         factor *= max(0.5, 2.0 - 1.6 * fraction)
-                    factor = max(0.4, min(1.6, factor))
+                    factor = max(0.4, min(1.5, factor))
                 if elapsed > factor * budget:
                     break
             elif TIME_V2:
@@ -2433,14 +2433,17 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
     inc = _observed_increment()
-    expected = max(24.0, 50.0 - board.fullmove_number * 0.4)
+    expected = max(30.0, 56.0 - board.fullmove_number * 0.4)
     if remaining < LOW_CLOCK_V6:
-        # Live on most of the increment, or a fortieth of what is left if larger.
-        soft = max(0.5 * inc, remaining / 50.0)
-        hard = min(remaining * 0.12, soft * 1.5)
+        # An eighteenth of what is left, as a hard stop: with the kernel aborting at the
+        # deadline (TIME_V4 keeps the partial result) the spend is exact, so the clock
+        # settles where remaining/18 x charge = increment -- 6 s under the 1.5x
+        # clocktest charge (measured 5.1-6.3 s at /16), ~8 s on the platform.
+        soft = max(0.02, remaining / 18.0)
+        hard = soft
     else:
-        soft = remaining / expected + 0.8 * inc
-        hard = min(remaining * 0.12, soft * 3.0)
+        soft = remaining / expected + 0.7 * inc
+        hard = min(remaining * 0.10, soft * 2.5)
     reserve = _MAX_CLOCK_MS * RESERVE_FRACTION_V6 / 1000.0
     if reserve > 0.0:
         hard = min(hard, max(soft, remaining - reserve))
