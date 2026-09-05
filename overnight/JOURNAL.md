@@ -629,3 +629,8 @@ moves 7-10 so the clock probe never fired; the v2 probe keys on searched moves.
 disagrees with the book too often; the book stays as is. 090-history2's first run
 failed its crash gate on init timeouts (3 jobs sharing the machine); rerun queued.
 Desktop worker live (E:/dev/aichessathon-starter): 091/092/093 vs v7.1.
+
+5 Sep 10:30 PONDERING CLOSED DEFINITIVELY: round-18 match log ponder-diag lines show
+6-11k ponder nodes for every gap up to 9.6 s -> the process is frozen while the
+opponent thinks. Init with the ponder engine + 16-zone net was 50.1 s of 90 on their
+box (v6: 36-39 s). Upload for 12:00 = v7.1 clean (16-zone net, all switches as v6).
