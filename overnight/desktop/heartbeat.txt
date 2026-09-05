@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 11:46
+time 2026-09-05 11:57
 task gen-001
-progress   worker 4: 300/500 games, 29179 positions, 17 pos/s
+progress   worker 3: 425/500 games, 39749 positions, 17 pos/s
