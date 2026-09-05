@@ -12,7 +12,7 @@ RESULTS="overnight/$ROLE/results"
 if ! [ -x "$PY" ] || ! "$PY" -c "import chess, numba, numpy" 2>/dev/null; then
     echo "$(date '+%H:%M') setting up .venv"
     python -m venv .venv || py -3.12 -m venv .venv || exit 1
-    "$PY" -m pip install -q "numpy==2.5.2" "numba==0.67.0" "chess==1.11.2" || exit 1
+    "$PY" -m pip install -q "numpy==2.5.2" "numba==0.67.0" "chess==1.11.2" "pyarrow==21.0.0" || exit 1
 fi
 "$PY" -c "import chess, numba, numpy; print('env ok', numba.__version__)" || exit 1
 mkdir -p "$RESULTS" overnight/challengers overnight/eval
@@ -73,7 +73,18 @@ run_task() {
     [ -n "$sed_expr" ] && sed -i "$sed_expr" "$d/agent.py"
     local log="$RESULTS/$name.gauntlet.log"
     while [ "$(busy_gauntlets)" != "0" ] && [ -n "$(busy_gauntlets)" ]; do sleep 60; done
-    if [ "$kind" = "clocktest" ]; then
+    if [ "$kind" = "generate" ]; then
+        # self-play positions labelled by Stockfish; the Parquet is committed as a result
+        local games nodes movetime
+        games=$(field "$task" games 2000); nodes=$(field "$task" nodes 5000); movetime=$(field "$task" movetime_ms 40)
+        $PY -m pip install -q "pyarrow==21.0.0" >/dev/null 2>&1
+        mkdir -p "$RESULTS/data"
+        [ "$workers" = "0" ] && workers=$(( $(nproc 2>/dev/null || echo 8) - 2 ))
+        $PY -u -m training.generate --games "$games" --nodes "$nodes" --movetime-ms "$movetime"             --workers "$workers" --out "$RESULTS/data/$name.parquet" > "$log" 2>&1 &
+        heartbeat "$name" "$log" $!; wait
+        { echo "name $name"; echo "kind generate"; echo "host $(hostname)"; grep -E "^wrote" "$log" | tail -n 1 | sed 's/^/flags /'; } > "$RESULTS/$name.txt"
+        git add "$RESULTS/data/$name.parquet" 2>/dev/null
+    elif [ "$kind" = "clocktest" ]; then
         $PY -u -m testing.clocktest --agent "$d" --workers 4 > "$log" 2>&1 &
         heartbeat "$name" "$log" $!; wait
         { echo "name $name"; echo "kind clocktest"; echo "host $(hostname)"; grep -E "^flags|PASS|FAIL" "$log"; } > "$RESULTS/$name.txt"
