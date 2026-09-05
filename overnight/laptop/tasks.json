@@ -5,6 +5,10 @@
   "games": 600
  },
  {
+  "name": "101-lmraggr",
+  "sed": "s/^LMR_AGGRESSIVE: Final = False$/LMR_AGGRESSIVE: Final = True/"
+ },
+ {
   "name": "073-kz16w",
   "net": "overnight/challengers/073-kz16w/weights/net.npz",
   "sed": ""
