@@ -951,7 +951,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     scratch = np.zeros(2 * acc, dtype=np.float32)
     rep_keys = np.zeros(0, dtype=np.uint64)
     ec_key, ec_val = new_eval_cache()
-    exts = np.zeros(fb.MAX_PLY, dtype=np.int64)
+    exts = np.zeros(4 * fb.MAX_PLY, dtype=np.int64)  # 4 lanes, see agent.FastEngine
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1
     ctrl[C_FUTILITY] = 1

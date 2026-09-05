@@ -100,7 +100,7 @@ class Kernel:
         self.scratch = np.zeros(2 * acc, np.float32)
         self.counter = np.zeros(4096, np.int32)
         self.ec_key, self.ec_val = fs.new_eval_cache()
-        self.exts = np.zeros(fb.MAX_PLY, np.int64)
+        self.exts = np.zeros(4 * fb.MAX_PLY, np.int64)  # 4 lanes, see agent.FastEngine
         self.quiets = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), np.int32)
         self.ctrl = np.zeros(fs.CTRL_SIZE, np.int64)
         self.ctrl[fs.C_TT_OFF] = 0 if table_on else 1

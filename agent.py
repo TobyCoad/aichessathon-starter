@@ -1566,7 +1566,9 @@ class FastEngine:
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
         self.butterfly = np.zeros(8192, dtype=np.int32)
         self.counter = np.zeros(4096, dtype=np.int32)
-        self.exts = np.zeros(_fb.MAX_PLY, dtype=np.int64)
+        # 4 lanes of MAX_PLY: [0] extension count, [1] static eval, [2] piece*64+to
+        # of the move made at this ply (CONT_HIST), [3] spare; only lane 0 is read yet
+        self.exts = np.zeros(4 * _fb.MAX_PLY, dtype=np.int64)
         self.ec_key = np.zeros(1, dtype=np.uint64)
         self.ec_val = np.zeros(1, dtype=np.int32)
         self.quiets = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
