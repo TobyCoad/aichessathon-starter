@@ -1,0 +1,14 @@
+compiled board: on
+  50/400  mean loss so far 5.6  123s
+  100/400  mean loss so far 6.9  257s
+  150/400  mean loss so far 6.5  376s
+  200/400  mean loss so far 10.2  515s
+  250/400  mean loss so far 9.9  638s
+  300/400  mean loss so far 9.2  761s
+  350/400  mean loss so far 8.3  882s
+  400/400  mean loss so far 10.8  1005s
+
+.: 400 positions at 2.5s: mean loss 10.8 cp, median 0 cp, best move 54.2%, >=100 cp on 2.0%
+    5-8 pieces: n=114 mean loss 17.0 cp
+   9-12 pieces: n=135 mean loss 12.0 cp
+  13-16 pieces: n=151 mean loss 5.0 cp

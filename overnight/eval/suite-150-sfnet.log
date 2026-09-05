@@ -1,0 +1,14 @@
+compiled board: on
+  50/400  mean loss so far 7.9  131s
+  100/400  mean loss so far 5.7  284s
+  150/400  mean loss so far 5.0  408s
+  200/400  mean loss so far 7.6  543s
+  250/400  mean loss so far 7.3  670s
+  300/400  mean loss so far 6.9  802s
+  350/400  mean loss so far 10.9  937s
+  400/400  mean loss so far 10.8  1063s
+
+overnight\challengers\150-sfnet: 400 positions at 2.5s: mean loss 10.8 cp, median 0 cp, best move 53.5%, >=100 cp on 2.2%
+    5-8 pieces: n=114 mean loss 16.7 cp
+   9-12 pieces: n=135 mean loss 8.4 cp
+  13-16 pieces: n=151 mean loss 8.4 cp

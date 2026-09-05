@@ -84,5 +84,11 @@
   "name": "cutnode-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
+ },
+ {
+  "name": "150-sfnet",
+  "net": "overnight/challengers/150-sfnet/weights/net.npz",
+  "sed": "",
+  "games": 600
  }
 ]

@@ -1,0 +1,67 @@
+device: NVIDIA GeForce RTX 5070 Laptop GPU  torch 2.11.0+cu128
+data: 72,478,341 positions from data\sf\feb24_00.npy
+data: 72,071,322 positions from data\sf\feb24_01.npy
+data: 72,269,002 positions from data\sf\feb24_02.npy
+data: 72,421,057 positions from data\sf\feb24_03.npy
+data: 73,475,587 positions from data\sf\feb24_04.npy
+data: 72,192,498 positions from data\sf\feb24_05.npy
+data: 72,000,923 positions from data\sf\feb24_06.npy
+data: 72,512,602 positions from data\sf\feb24_07.npy
+data: 1,304,118 positions from data\sf\feb24_08.npy
+validation: 500,000 positions from games not in training
+training 24 epochs, batch 16384, accumulator 512, buckets 8, king zones 16
+  resumed from training\checkpoints\net_w512-b8-kz16.pt into 8 output bucket(s) and 16 king zone(s)
+  initial validation loss 0.006879
+  initial strata (x1e-3) 2-8:5.90 9-12:11.39 13-16:9.99 17-20:8.81 21-24:6.06 25-28:3.13 29-32:1.54 eq<=16:5.10 eq29-32:0.99
+  shard data\sf\feb24_00.npy
+C:\dev\aichessathon\starter\training\train.py:428: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:837.)
+  running += float(loss) * len(target)
+  epoch 1/24  train 0.004863  0.30M pos/s  246s  val 0.004754  gap -0.000109  *best
+    strata (x1e-3) 2-8:3.66 9-12:7.74 13-16:6.89 17-20:6.41 21-24:4.66 25-28:2.27 29-32:1.06 eq<=16:3.07 eq29-32:0.65
+  shard data\sf\feb24_01.npy
+  epoch 2/24  train 0.004437  0.29M pos/s  249s  val 0.004582  gap +0.000145  *best
+    strata (x1e-3) 2-8:3.43 9-12:7.46 13-16:6.70 17-20:6.21 21-24:4.54 25-28:2.21 29-32:1.01 eq<=16:2.93 eq29-32:0.63
+  shard data\sf\feb24_02.npy
+  epoch 3/24  train 0.004304  0.29M pos/s  250s  val 0.004474  gap +0.000170  *best
+    strata (x1e-3) 2-8:3.30 9-12:7.29 13-16:6.59 17-20:6.09 21-24:4.45 25-28:2.15 29-32:0.99 eq<=16:2.79 eq29-32:0.61
+  shard data\sf\feb24_03.npy
+  epoch 4/24  train 0.004240  0.29M pos/s  249s  val 0.004407  gap +0.000167  *best
+    strata (x1e-3) 2-8:3.21 9-12:7.18 13-16:6.48 17-20:6.02 21-24:4.42 25-28:2.14 29-32:0.97 eq<=16:2.72 eq29-32:0.60
+  shard data\sf\feb24_04.npy
+  epoch 5/24  train 0.004196  0.29M pos/s  252s  val 0.004375  gap +0.000179  *best
+    strata (x1e-3) 2-8:3.17 9-12:7.14 13-16:6.42 17-20:6.01 21-24:4.38 25-28:2.12 29-32:0.96 eq<=16:2.67 eq29-32:0.59
+  shard data\sf\feb24_05.npy
+  epoch 6/24  train 0.004151  0.29M pos/s  248s  val 0.004332  gap +0.000180  *best
+    strata (x1e-3) 2-8:3.11 9-12:7.07 13-16:6.37 17-20:5.96 21-24:4.36 25-28:2.10 29-32:0.95 eq<=16:2.64 eq29-32:0.58
+  shard data\sf\feb24_06.npy
+  epoch 7/24  train 0.004117  0.29M pos/s  249s  val 0.004291  gap +0.000175  *best
+    strata (x1e-3) 2-8:3.08 9-12:7.00 13-16:6.31 17-20:5.89 21-24:4.33 25-28:2.09 29-32:0.94 eq<=16:2.62 eq29-32:0.58
+  shard data\sf\feb24_07.npy
+  epoch 8/24  train 0.004094  0.29M pos/s  250s  val 0.004261  gap +0.000167  *best
+    strata (x1e-3) 2-8:3.04 9-12:6.98 13-16:6.27 17-20:5.88 21-24:4.28 25-28:2.07 29-32:0.93 eq<=16:2.58 eq29-32:0.57
+  shard data\sf\feb24_08.npy
+  epoch 9/24  train 0.004104  0.31M pos/s  4s  val 0.003913  gap -0.000191  *best
+    strata (x1e-3) 2-8:2.70 9-12:6.37 13-16:5.79 17-20:5.42 21-24:3.97 25-28:1.97 29-32:0.90 eq<=16:2.40 eq29-32:0.56
+  shard data\sf\feb24_00.npy
+  epoch 10/24  train 0.003974  0.29M pos/s  248s  val 0.004096  gap +0.000122
+    strata (x1e-3) 2-8:2.88 9-12:6.66 13-16:6.05 17-20:5.66 21-24:4.15 25-28:2.03 29-32:0.92 eq<=16:2.48 eq29-32:0.57
+  shard data\sf\feb24_01.npy
+  epoch 11/24  train 0.003947  0.29M pos/s  248s  val 0.004117  gap +0.000171
+    strata (x1e-3) 2-8:2.90 9-12:6.71 13-16:6.08 17-20:5.68 21-24:4.17 25-28:2.03 29-32:0.92 eq<=16:2.48 eq29-32:0.57
+  shard data\sf\feb24_02.npy
+  epoch 12/24  train 0.003922  0.29M pos/s  247s  val 0.004106  gap +0.000183
+    strata (x1e-3) 2-8:2.88 9-12:6.69 13-16:6.06 17-20:5.67 21-24:4.17 25-28:2.03 29-32:0.91 eq<=16:2.47 eq29-32:0.56
+  shard data\sf\feb24_03.npy
+  epoch 13/24  train 0.003918  0.29M pos/s  249s  val 0.004102  gap +0.000184
+    strata (x1e-3) 2-8:2.87 9-12:6.70 13-16:6.04 17-20:5.68 21-24:4.16 25-28:2.03 29-32:0.91 eq<=16:2.46 eq29-32:0.55
+  shard data\sf\feb24_04.npy
+  epoch 14/24  train 0.003918  0.30M pos/s  244s  val 0.004096  gap +0.000178
+    strata (x1e-3) 2-8:2.85 9-12:6.69 13-16:6.06 17-20:5.68 21-24:4.15 25-28:2.02 29-32:0.91 eq<=16:2.48 eq29-32:0.55
+  shard data\sf\feb24_05.npy
+  epoch 15/24  train 0.003908  0.29M pos/s  246s  val 0.004085  gap +0.000178
+    strata (x1e-3) 2-8:2.85 9-12:6.66 13-16:6.03 17-20:5.67 21-24:4.15 25-28:2.02 29-32:0.91 eq<=16:2.45 eq29-32:0.55
+  early stop: validation has not improved for 6 epochs
+  restored the best epoch, validation loss 0.003913
+wrote training\checkpoints\net_w512-b8-kz16-sf.pt
+wrote training\checkpoints\net_w512-b8-kz16-sf.json: {'best_val': 0.0039133768371343615, 'initial_val': 0.0068791510676145555, 'epochs': 15.0}
