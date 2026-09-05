@@ -100,6 +100,30 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   gauntlet: it ships inside v9.1 (INIT GUARD rule: CONT_HIST pairs with INIT_FOLD). At v9.1
   zip time flip INIT_FOLD True in the tested challenger, re-check bench nodes + import.
   Scratch build kept in overnight/challengers/initfold.
+## Overnight programme (5->6 Sep; the human's instruction: keep iterating all night)
+The last ladder game is 22:00; there are no games 22:00-08:00 UK, so the laptop is free
+for testing and the GPU for training. Do NOT stop. Emails still go out per candidate (he
+uploads in the morning; the upload cap resets 12:00). Order of work:
+1. Finish v9.1: fold the TIME_V6 120 s verdict and 133-conthist; ship v9.1 = TIME_V6 (if the
+   120 s games are not negative) + CONT_HIST (if positive) + INIT_FOLD, with the init guard
+   (clean-unzip import < 45 s) -- INIT_FOLD is what makes CONT_HIST affordable.
+2. Bigger search bundle for v9.2 (V10_PLAN #5-#6-#7): IMPROVING + CUTNODE flags gating RFP /
+   futility / LMR / NMP, NMP_V2 (R = 3 + d/4 + eval margin, verification at depth >= 10),
+   CAPTURE_ORDER (SEE-ordered captures below quiets + capture history). Build all three as
+   switches, bench each, one SPRT for the bundle.
+3. NET_V10 on the GPU (V10_PLAN #4, network.md scoping): first the v8/v9 endgame-suite
+   baseline (~18 min CPU, run while a gauntlet is NOT at its checkpoint), then train the
+   mirrored-king-bucket net with rebalanced output buckets warm-started from
+   training/checkpoints/net_w512-b8-kz16.pt (check the month5 chain first: if kz16r is
+   training, let it finish and evaluate it; the GPU takes one job at a time). Export
+   --half, check_nnue, suite, then a net task ({"net": ...}) SPRT. A net that passes ships
+   as its own version.
+4. If everything above is queued and the laptop is saturated: QS transposition table
+   (V10_PLAN #9), aspiration widening 1.5x, ENDGAME_SHRINK scoping against the suite.
+Rules of the night: one gauntlet at a time (the worker enforces it); the endgame suite and
+training count as load -- do not start them while a gauntlet is within 30 games of a
+checkpoint; keep the exactness check green at every commit; never edit results files.
+
 ## Champion
 - v9 (candidate emailed 5 Sep 19:54, awaiting the human's upload) = v8.5 +
   QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR, all True in the tree

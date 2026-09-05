@@ -57,6 +57,10 @@ F. RECORD: update NOTES.md ("Champion", "Running now", "Backlog", "Next step") a
    dated paragraph to JOURNAL.md; `git add` specific files and commit (the loop pushes).
 
 
+## Overnight
+Between 22:00 and 08:00 UK there are no platform games: follow NOTES.md's "Overnight
+programme" (bigger bundles, the GPU net retrain) and keep shipping candidates by email.
+
 ## Token discipline
 Research is delegated, never done in your own context: any subagent you spawn (the Agent
 tool) MUST use `model: "opus"`, at most two at a time, each with a tight brief that names
