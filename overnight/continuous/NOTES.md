@@ -97,31 +97,32 @@ what enters a bundle.
 - Process check 15:08: one worker chain, one month5 chain, pack 4 workers,
   gauntlet runners -- at the ~12-busy budget; do not start more CPU work.
 
-## Backlog (ranked; take the top item that is not running)
-1. Fold every landed verdict: promote passes into the tree (switch -> True, or
-   the net), reject the rest, note it here and in JOURNAL.md. NOTE: 100-v8all
-   is a BUNDLE probe (7 switches at once) vs v7.1 -- it cannot promote a single
-   switch by itself; if it PASSES, treat it as evidence for backlog 2 and gate
-   a proper bundle from the single-switch passes only.
-2. When >= 2 switches have passed: build the bundle challenger, run its gate
-   (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
-3. RUNNING as overnight/month5.sh (see above). When suite-104-kz16r.log lands,
-   queue 104-kz16r as a net task ({"name": "104-kz16r", "net":
-   "overnight/challengers/104-kz16r/weights/net.npz", "sed": ""}) on the
-   shorter queue. The self-play parquets (gen-001/002, ~570k positions) were
-   deliberately left OUT of this retrain (a sixth rotating shard would get
-   ~250x per-position weight); a self-play mix is a separate future experiment.
-4. CLOSED (was: book rebuild + 105-bookprune). The mc20-md10 build collapsed
-   coverage (7/80, see Verdicts). Optional future item, LOW priority given
-   every book experiment so far was flat-or-worse: rebuild scanning ALL 599
-   row groups of 2025_01 (~4.5 h on 2 workers; only when the CPU budget
-   allows) so min-count 20 keeps coverage, then re-run the coverage compare
-   before queueing any gauntlet. Champion baseline for that compare: 9.76 MB,
-   610,028 entries, coverage 28/80, 2.6 moves per covered position, mean 1.38
-   in-book plies from a pool start.
-5. Anything from overnight/eval/V7_PLAN.md not listed as closed.
+## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
+0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
+   is v85-120s-b on the desktop (the first run hit 6/24 init timeouts under leftover
+   load, not an engine fault). When v85-120s-b passes: flip the five v8.5 switches in
+   the tree (that is v8.5 = the new champion), note it, and submission-v85.zip is
+   already built from the tested challenger for the human.
+1. TIME_V6 (V10_PLAN #1): reserve 0.10 -> 0.04, LOW_CLOCK 15 -> 9, node-effort +
+   stability + score-drop factors, no next-iteration prediction; absorbs TIME_V5.
+   Judged by clocktest + 40 games at 120 s on the desktop only.
+2. CONT_HIST bundle (V10_PLAN #2): continuation history + HISTORY2_FIX (stale quiets[]
+   malus, fastsearch ~line 769) + killer clearing. 8 s SPRT on the laptop.
+3. ADJUDICATION (V10_PLAN #3): ply-300 material adjudication awareness. Small; bundle
+   with 2.
+4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets, after the
+   v8 endgame-suite baseline and 104-kz16r. One gauntlet slot.
+5. IMPROVING + CUTNODE, NMP_V2 (V10_PLAN #5-6) as one bundle.
+6. Exact kernel speed (see allocation, evaluate blocking) and init-time insurance per
+   overnight/eval/v10/speed.md when it lands.
+Closed by the research pass (do not reopen): staged movegen, multi-cut, IID, TT
+replacement, QS checks, correction history, wider nets, distillation, int8, self-play at
+scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+Iteration next: fold 110-v85all PROMOTE + v85-clocktest PASS; check v85-120s-b and 111-singular on the desktop; then take backlog 1 (TIME_V6) if the human's session has not already started it (check git log for TIME_V6 before building).
+
+## Next step (older)
 Iteration 10: the usual sweep. (1) Laptop: check
 overnight/laptop/results/110-v85all.gauntlet.log -- if the v8.5 bundle verdict
 landed, record it; a PASS makes v8.5 the bundle candidate pending the
