@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 12:48
-task gen-002
-progress   worker 2: 425/500 games, 39614 positions, 17 pos/s
+time 2026-09-05 13:19
+task v8-120s
+progress       8 games  .... llr +1.14 [-2.94, 2.94] after 4 pairs, elo +190.8 +/- 2209.2
