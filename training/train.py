@@ -313,12 +313,17 @@ def format_strata(strata: dict[str, float]) -> str:
 
 
 @torch.no_grad()
-def evaluate_loss(net: Net, batches: "Batches", generator: torch.Generator) -> float:
+def evaluate_loss(
+    net: Net, batches: "Batches", generator: torch.Generator, weighted: bool = False
+) -> float:
+    """Held-out loss; with `weighted`, the same per-sample weights as training, so
+    a weighted run selects its best epoch on its own objective."""
     net.eval()
     total = 0.0
     seen = 0
     for white, black, mask, stm, target in batches.epoch(generator):
-        total += float(loss_fn(net(white, black, mask, stm), target)) * len(target)
+        weight = sample_weights(mask.sum(1), target) if weighted else None
+        total += float(loss_fn(net(white, black, mask, stm), target, weight)) * len(target)
         seen += len(target)
     net.train()
     return total / max(seen, 1)
@@ -392,7 +397,9 @@ def train(
     if val_batches is not None and resume is not None:
         # The resumed net sets the bar: a continuation that never beats it hands
         # back the checkpoint it started from, not a worse one.
-        initial = evaluate_loss(net, val_batches, torch.Generator().manual_seed(0))
+        initial = evaluate_loss(
+            net, val_batches, torch.Generator().manual_seed(0), weighted=weight_endgame
+        )
         best_loss = initial
         best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
         print(f"  initial validation loss {initial:.6f}")
@@ -427,7 +434,9 @@ def train(
             f"{rate / 1e6:.2f}M pos/s  {elapsed:.0f}s"
         )
         if val_batches is not None:
-            held_out = evaluate_loss(net, val_batches, torch.Generator().manual_seed(0))
+            held_out = evaluate_loss(
+                net, val_batches, torch.Generator().manual_seed(0), weighted=weight_endgame
+            )
             gap = held_out - running / seen
             line += f"  val {held_out:.6f}  gap {gap:+.6f}"
             # Keep the epoch that generalised best, not the last one. Training loss
