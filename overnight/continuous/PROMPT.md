@@ -49,6 +49,14 @@ E. SHIP: when a bundle passes: flip its switches to True in the tree (that is th
 F. RECORD: update NOTES.md ("Champion", "Running now", "Backlog", "Next step") and append one
    dated paragraph to JOURNAL.md; `git add` specific files and commit (the loop pushes).
 
+
+## Token discipline
+Research is delegated, never done in your own context: any subagent you spawn (the Agent
+tool) MUST use `model: "opus"`, at most two at a time, each with a tight brief that names
+the report file to write under overnight/eval/v10/. Read the existing reports there before
+asking for new research; do not re-research anything they already cover. Keep your own
+work to building, testing and folding results.
+
 ## Hard rules (NOTES.md has the full list)
 Never upload. Never touch harness/. Never edit files under overnight/*/results/ (workers
 own them; to stop a task remove it from tasks.json and kill its python process, then reap
