@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 11:11
-task 091-ttkeep
-progress     126 games  .... llr -1.84 [-2.94, 2.94] after 63 pairs, elo -44.4 +/- 47.7
+time 2026-09-05 11:26
+task gen-001
+progress   worker 4: 75/500 games, 7434 positions, 17 pos/s
