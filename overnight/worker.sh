@@ -39,10 +39,13 @@ push_up() {
 busy_gauntlets() {  # other gauntlets or clock tests running on this machine
     powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'testing.gauntlet|testing.clocktest' }).Count" 2>/dev/null | tr -d '\r' | tail -n 1
 }
-heartbeat() {  # task, log, pid
+heartbeat() {  # task, log, pid: notice the end within 30 s, commit progress every 10 min
+    local waited=0
     while kill -0 "$3" 2>/dev/null; do
-        sleep 600
+        sleep 30; waited=$((waited + 30))
         kill -0 "$3" 2>/dev/null || break
+        [ $waited -lt 600 ] && continue
+        waited=0
         { echo "host $(hostname)"; echo "time $(date '+%Y-%m-%d %H:%M')"; echo "task $1"; echo "progress $(grep -E 'games' "$2" | tail -n 1)"; } > "overnight/$ROLE/heartbeat.txt"
         git add "overnight/$ROLE/heartbeat.txt"
         git -c user.name="$ROLE" -c user.email="$ROLE@local" commit -q -m "$ROLE heartbeat: $1" && push_up
@@ -102,7 +105,7 @@ run_task() {
     if ! grep -qE "^(PROMOTE|REJECT|INCONCLUSIVE|flags)" "$RESULTS/$name.txt"; then
         rm -f "$RESULTS/$name.txt"
         say "task $name produced no verdict; see $log"; tail -n 5 "$log"
-        sleep 300
+        sleep 60
         return 1
     fi
     cat "$RESULTS/$name.txt"
