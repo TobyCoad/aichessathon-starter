@@ -1,0 +1,7 @@
+name 132-v9core
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  132-v9core  +23 Elo over 200 games
+  +70 =73 -57  score 53.2%  over 200 games
+  terminations: adjudication 4, checkmate 125, fifty_moves 9, insufficient_material 32, stalemate 1, threefold_repetition 29
