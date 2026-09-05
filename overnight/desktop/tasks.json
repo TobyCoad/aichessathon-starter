@@ -50,6 +50,17 @@
   "elo1": 50
  },
  {
+  "name": "v85-120s-b",
+  "kind": "switch",
+  "sed": "s/^LMR_AGGRESSIVE: Final = False$/LMR_AGGRESSIVE: Final = True/; s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/; s/^TIME_V5: Final = False$/TIME_V5: Final = True/; s/^PRUNE_V2: Final = False$/PRUNE_V2: Final = True/; s/^SINGULAR: Final = False$/SINGULAR: Final = True/",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
+ },
+ {
   "name": "111-singular",
   "sed": "s/^SINGULAR: Final = False$/SINGULAR: Final = True/",
   "games": 600

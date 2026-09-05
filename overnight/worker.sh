@@ -36,6 +36,9 @@ push_up() {
     done
     say "push failed after retries"; return 1
 }
+reap_orphans() {  # python pool workers whose parent died (a Ctrl-C'd gauntlet) keep playing games
+    powershell -NoProfile -Command "\$all = Get-CimInstance Win32_Process; \$ids = @{}; foreach (\$p in \$all) { \$ids[\$p.ProcessId] = 1 }; \$o = \$all | Where-Object { \$_.Name -match 'python' -and -not \$ids.ContainsKey(\$_.ParentProcessId) -and \$_.CommandLine -match 'multiprocessing|harness' }; foreach (\$x in \$o) { Stop-Process -Id \$x.ProcessId -Force -ErrorAction SilentlyContinue }; \"reaped \$(\$o.Count) orphans\"" 2>/dev/null | tr -d ''
+}
 busy_gauntlets() {  # other gauntlets or clock tests running on this machine
     # python processes only: the query's own PowerShell command line would match itself
     powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.Name -match 'python' -and \$_.CommandLine -match 'testing.gauntlet|testing.clocktest' } | Measure-Object).Count" 2>/dev/null | tr -d '\r' | tail -n 1
@@ -82,6 +85,7 @@ run_task() {
     fi
     [ -n "$sed_expr" ] && sed -i "$sed_expr" "$d/agent.py"
     local log="$RESULTS/$name.gauntlet.log"
+    reap_orphans
     while [ "$(busy_gauntlets)" != "0" ] && [ -n "$(busy_gauntlets)" ]; do sleep 60; done
     if [ "$kind" = "generate" ]; then
         # self-play positions labelled by Stockfish; the Parquet is committed as a result
