@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 13:29
+time 2026-09-05 13:39
 task v8-120s
-progress      16 games  .... llr +3.20 [-2.94, 2.94] after 8 pairs, elo +137.0 +/- 188.4
+progress      32 games  .... llr +10.00 [-2.94, 2.94] after 16 pairs, elo +124.5 +/- 84.5
