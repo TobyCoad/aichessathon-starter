@@ -5,6 +5,11 @@
   "games": 600
  },
  {
+  "name": "v9core-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"
+ },
+ {
   "name": "v9-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^TIME_V6: Final = False$/TIME_V6: Final = True/; s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"

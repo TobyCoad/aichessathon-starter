@@ -858,3 +858,22 @@ tasks to v9core-clocktest/v9core-120s (same-name tasks are skipped once a result
 file exists, so the four-switch clocktest -- mandatory for shipping v9core --
 would never have run). Desktop otherwise untouched: 111-singular at 272 games
 (-6 +/- 36), then v85-120s-b.
+
+5 Sep 19:30 (loop iter 3) INIT_FOLD built and verified -- the init-insurance item the
+INIT GUARD rule demands before CONT_HIST can ship (platform init was 63.2 s on v8.5
+against the 90 s budget). agent.INIT_FOLD (False in the tree) is the switch; fastsearch
+scans agent.py's `NAME: Final = True|False` lines at import and, when the flag is on,
+compiles the 18 settled switch slots as constants -- every folded read is a
+`_F_X if _FOLD else ctrl[C_X] != 0` ternary, and a four-shape numba experiment confirmed
+dead-arm pruning happens before typing for exactly these forms, so with the flag off the
+kernel is today's byte-for-byte and with it on the settled branches never reach LLVM.
+In-flight slots (QS_CACHE, HIST2_FIX, KILLER_CLEAR, CONT_HIST) and every value/state slot
+stay live ctrl reads so challenger seds keep working; C_PVS folds as PVS-or-LMR_AGGRESSIVE
+mirroring agent's own write; prepare() raises on any fold/ctrl mismatch as build-time
+insurance. Measured back-to-back under gauntlet load: import 43.2 s tree -> 38.4 s folded
+(-4.8 s, ~-8 s platform-scaled), bench depth 8 exactly 1,491,095 nodes -- bit-identical,
+so it ships inside v9.1 with no gauntlet of its own. ruff/mypy/check_fastsearch 70/70 all
+PASS. Meanwhile 132-v9core hit its 200-game checkpoint at +23 Elo -> PROMOTE early: v9
+now waits only on the mandatory four-switch clocktest, so v9core-clocktest-l was inserted
+at the front of the laptop queue (the desktop copy is hours back behind 111-singular at
+352 games and v85-120s-b). Next iteration ships v9 if that clocktest passes.

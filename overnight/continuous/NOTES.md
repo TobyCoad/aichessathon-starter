@@ -77,6 +77,23 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   knps -- hits the spec's <= 0.90x target. ruff/mypy/exact 70/70 PASS. Queued as
   133-conthist on the laptop (600 games at 8 s) behind 132-v9core; SPRT verdict
   decides whether it anchors the v9.1 bundle. CONT_HIST2 (2-ply) only if 1-ply passes.
+- INIT_FOLD (speed.md section 2) BUILT 5 Sep 19:25, off in the tree behind agent.INIT_FOLD:
+  fastsearch scans agent.py's flag lines at import and, when INIT_FOLD is True, compiles the
+  18 settled switch slots (FOLDED in fastsearch.py) as constants via `_F_X if _FOLD else
+  ctrl[C_X] != 0` ternaries that numba prunes before typing (pruning verified for all four
+  condition shapes used). In-flight slots (C_QS_CACHE, C_HIST2_FIX, C_KILLER_CLEAR,
+  C_CONT_HIST) and all value/state slots stay live reads, so challenger seds still work;
+  C_PVS folds as PVS-or-LMR_AGGRESSIVE (mirrors agent line 1958). prepare() raises on any
+  fold/ctrl mismatch. Measured back-to-back under gauntlet load: import 43.2 s (tree) ->
+  38.4 s (folded), -4.8 s; bench depth 8 EXACTLY 1,491,095 nodes (bit-identical);
+  ruff/mypy/check_fastsearch 70/70 PASS with the fold off. Exact by construction, so no
+  gauntlet: it ships inside v9.1 (INIT GUARD rule: CONT_HIST pairs with INIT_FOLD). At v9.1
+  zip time flip INIT_FOLD True in the tested challenger, re-check bench nodes + import.
+  Scratch build kept in overnight/challengers/initfold.
+- 132-v9core PROMOTED at checkpoint 200: +23 Elo, trending positive (5 Sep 19:30; the
+  worker's .txt was still being written). v9 ship now waits only on the mandatory
+  four-switch clocktest: v9core-clocktest-l INSERTED at the front of the laptop queue
+  (19:30) so it runs hours before the desktop copy; ship v9 when it PASSES.
 - 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
   SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
 
@@ -139,9 +156,10 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 18:50)
-- laptop worker: 132-v9core (crash gate started 18:29, then 600 games at 8 s vs v8.5),
-  then 133-conthist (600 games at 8 s). month5.sh chain COMPLETED 16:47 -- folded.
+## Running now (5 Sep 19:30)
+- laptop worker: 132-v9core PROMOTED (+23 at checkpoint 200); queue now
+  v9core-clocktest-l (gates shipping v9), then v9-clocktest-l + v9-120s-l (TIME_V6's
+  gate, five-switch), then 133-conthist (600 games at 8 s).
 - desktop worker: 111-singular (attribution, -6 +/- 36 at 272, heartbeat 18:21), then
   v85-120s-b (40 games at 120 s of the live v8.5 build), then v9-clocktest + v9-120s
   (five-switch sed WITH TIME_V6 -- these judge TIME_V6), then v9core-clocktest +
@@ -163,14 +181,18 @@ what enters a bundle.
    NOTHING (val flat at 0.0046589): only an architecture change can move the net now.
    Prereq left: the v8/v8.5 endgame-suite baseline for comparison. One gauntlet slot.
 5. IMPROVING + CUTNODE, NMP_V2 (V10_PLAN #5-6) as one bundle.
-6. Exact kernel speed (see allocation, evaluate blocking) and init-time insurance per
-   overnight/eval/v10/speed.md when it lands.
+6. Init-time insurance: INIT_FOLD BUILT and verified (see above; -4.8 s import, exact).
+   Remaining from speed.md: eager signatures on the fastboard leaves (~-3 s more) and
+   exact kernel speed (see allocation, evaluate blocking).
 Closed by the research pass (do not reopen): staged movegen, multi-cut, IID, TT
 replacement, QS checks, correction history, wider nets, distillation, int8, self-play at
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: (1) fold verdicts as they land: 132-v9core (laptop),
+Iteration next: (0) 132-v9core PROMOTED -- when v9core-clocktest-l (laptop, running
+next) PASSES, ship v9: flip QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
+in the tree, exactness check, zip from the TESTED challenger dir, CANDIDATE.md, notify.
+(1) fold the other verdicts as they land: 132-v9core's .txt,
 111-singular, v85-120s-b, v9-clocktest/v9-120s (TIME_V6's gate), v9core-clocktest/
 v9core-120s, 133-conthist. If 132-v9core PROMOTES and v9core-clocktest PASSES: ship
 v9 (flip the four switches in the tree, re-run the exactness check, zip from the

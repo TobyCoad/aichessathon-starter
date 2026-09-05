@@ -26,7 +26,9 @@ Constants below mirror agent.py; testing/check_fastsearch asserts they match.
 
 from __future__ import annotations
 
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -146,6 +148,57 @@ EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
 CTRL_SIZE = 40
+
+# INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
+# constants. The values are scanned from agent.py next to this file, so a sed
+# that flips a flag there is mirrored here on the next import. Every folded
+# read is written `_F_X if _FOLD else ctrl[C_X] != 0`: numba prunes the dead
+# arm of a ternary on a constant global before typing, so with _FOLD off the
+# kernel is byte-for-byte today's ctrl-reading one (testing/check_fastsearch
+# runs that arm against the reference with a zeroed ctrl), and with _FOLD on
+# the settled branches vanish from the compile, cutting fs.warm_up ~18%
+# (overnight/eval/v10/speed.md section 2). Slots still under test (C_QS_CACHE,
+# C_HIST2_FIX, C_KILLER_CLEAR, C_CONT_HIST) and all value/state slots stay
+# live reads. agent.py asserts ctrl matches FOLDED at engine init when folded.
+
+
+def _scan_agent_flags() -> dict[str, bool]:
+    try:
+        src = Path(__file__).with_name("agent.py").read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    pattern = r"^([A-Z][A-Z0-9_]*): Final = (True|False)$"
+    return {m.group(1): m.group(2) == "True" for m in re.finditer(pattern, src, re.MULTILINE)}
+
+
+_AGENT_FLAGS = _scan_agent_flags()
+_FOLD = _AGENT_FLAGS.get("INIT_FOLD", False)
+_F_HYGIENE = _AGENT_FLAGS.get("HYGIENE", False)
+_F_FUTILITY = _AGENT_FLAGS.get("FUTILITY", False)
+_F_PVS = _AGENT_FLAGS.get("PVS", False) or _AGENT_FLAGS.get("LMR_AGGRESSIVE", False)
+_F_LMR = _AGENT_FLAGS.get("LMR", False)
+_F_LMP = _AGENT_FLAGS.get("LMP", False)
+_F_SEE = _AGENT_FLAGS.get("SEE", False)
+_F_NMP_GUARD = _AGENT_FLAGS.get("NMP_GUARD", False)
+_F_RFP_PHASE = _AGENT_FLAGS.get("RFP_PHASE", False)
+_F_IIR = _AGENT_FLAGS.get("IIR", False)
+_F_HISTORY2 = _AGENT_FLAGS.get("HISTORY2", False)
+_F_TT_KEEP = _AGENT_FLAGS.get("TT_KEEP", False)
+_F_SAFE = _AGENT_FLAGS.get("SAFE_BITS", False)
+_F_SEE_MAIN = _AGENT_FLAGS.get("SEE_MAIN", False)
+_F_TT_BUCKETS = _AGENT_FLAGS.get("TT_BUCKETS", False)
+_F_LMR_AGGR = _AGENT_FLAGS.get("LMR_AGGRESSIVE", False)
+_F_LAZY_ACC = _AGENT_FLAGS.get("LAZY_ACC", False)
+_F_PRUNE2 = _AGENT_FLAGS.get("PRUNE_V2", False)
+_F_SINGULAR = _AGENT_FLAGS.get("SINGULAR", False)
+
+FOLDED = {
+    C_HYGIENE: _F_HYGIENE, C_FUTILITY: _F_FUTILITY, C_PVS: _F_PVS, C_LMR: _F_LMR,
+    C_LMP: _F_LMP, C_SEE: _F_SEE, C_NMP_GUARD: _F_NMP_GUARD, C_RFP_PHASE: _F_RFP_PHASE,
+    C_IIR: _F_IIR, C_HISTORY2: _F_HISTORY2, C_TT_KEEP: _F_TT_KEEP, C_SAFE: _F_SAFE,
+    C_SEE_MAIN: _F_SEE_MAIN, C_TT_BUCKETS: _F_TT_BUCKETS, C_LMR_AGGR: _F_LMR_AGGR,
+    C_LAZY_ACC: _F_LAZY_ACC, C_PRUNE2: _F_PRUNE2, C_SINGULAR: _F_SINGULAR,
+}
 
 
 @njit(cache=False)
@@ -390,7 +443,7 @@ def make_move(
     ctrl: Any,
 ) -> Any:
     """make_full, or under C_LAZY_ACC make_light with the accumulator deferred."""
-    if ctrl[C_LAZY_ACC] != 0:
+    if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
         frm = move & 63
         code = sq[frm]
         us = meta[fb.SIDE]
@@ -417,7 +470,7 @@ def unmake_move(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     white: Any, black: Any, astack: Any, zones: Any, ctrl: Any,
 ) -> Any:
-    if ctrl[C_LAZY_ACC] != 0:
+    if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
         fb.unmake_light(bb, sq, meta, undo, keys)
         ply = meta[fb.PLY]
         if ctrl[C_ACC_PLY] > ply:
@@ -453,13 +506,13 @@ def quiesce(
         if ec_key[qslot] == qkey:
             standing = np.int64(ec_val[qslot])
         else:
-            if ctrl[C_LAZY_ACC] != 0:
+            if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                 sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             ec_key[qslot] = qkey
             ec_val[qslot] = standing
     else:
-        if ctrl[C_LAZY_ACC] != 0:
+        if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if standing >= beta:
@@ -475,7 +528,7 @@ def quiesce(
     n = fb.gen_legal(bb, sq, meta, captures, True)
     sc = scores[ply]
     fb.score_moves(captures, n, sq, 0, 0, 0, butterfly, sc)
-    use_see = ctrl[C_SEE] != 0
+    use_see = _F_SEE if _FOLD else ctrl[C_SEE] != 0
     for i in range(n):
         move = fb.pick_move(captures, sc, i, n)
         victim = sq[(move >> 6) & 63]
@@ -537,14 +590,14 @@ def search(
                 return -MATE + ply
             return draw_score(meta, ctrl)
     if ply >= fb.MAX_PLY - 8:
-        if ctrl[C_LAZY_ACC] != 0:
+        if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if ctrl[C_KILLER_CLEAR] != 0:
         killers[ply + 2, 0] = 0
         killers[ply + 2, 1] = 0
 
-    if ctrl[C_SAFE] != 0 and ply > 0:
+    if (_F_SAFE if _FOLD else ctrl[C_SAFE] != 0) and ply > 0:
         # Mate-distance pruning: no line from here can beat a mate already found
         # closer to the root, in either direction.
         if alpha < -MATE + ply:
@@ -559,14 +612,14 @@ def search(
     slot = np.int64(0)
     cached_eval = NO_EVAL
     excluded = 0
-    if ctrl[C_SINGULAR] != 0 and ctrl[C_EXCL_PLY] == ply:
+    if (_F_SINGULAR if _FOLD else ctrl[C_SINGULAR] != 0) and ctrl[C_EXCL_PLY] == ply:
         excluded = ctrl[C_EXCL_MOVE]
     tt_depth = -1
     tt_flag = 2
     tt_score = 0
     if ctrl[C_TT_OFF] == 0 and excluded == 0:
         slot = np.int64(key & TT_MASK)
-        if ctrl[C_TT_BUCKETS] != 0:
+        if (_F_TT_BUCKETS if _FOLD else ctrl[C_TT_BUCKETS] != 0):
             slot = slot & -2
             if tt_key[slot] != key and tt_key[slot + 1] == key:
                 slot = slot + 1
@@ -591,7 +644,7 @@ def search(
                     return stored_score
 
     if (
-        ctrl[C_IIR] != 0
+        (_F_IIR if _FOLD else ctrl[C_IIR] != 0)
         and depth >= 4
         and hash_move == 0
         and ctrl[C_TT_OFF] == 0
@@ -618,18 +671,19 @@ def search(
 
     standing = -INFINITY
     percent = 100
-    if ctrl[C_RFP_PHASE] != 0:
+    if _F_RFP_PHASE if _FOLD else ctrl[C_RFP_PHASE] != 0:
         percent = phase_percent(ctrl, meta[fb.PIECES])
     if (
         percent != 0
         and depth <= RFP_MAX_DEPTH
         and not in_check
-        and (ctrl[C_HYGIENE] == 0 or abs(beta) < DISTANCE_THRESHOLD)
+        and (((not _F_HYGIENE) if _FOLD else ctrl[C_HYGIENE] == 0)
+             or abs(beta) < DISTANCE_THRESHOLD)
     ):
         if cached_eval != NO_EVAL:
             standing = cached_eval
         else:
-            if ctrl[C_LAZY_ACC] != 0:
+            if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                 sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             cached_eval = standing
@@ -638,7 +692,7 @@ def search(
 
     futile = False
     if (
-        ctrl[C_FUTILITY] != 0
+        (_F_FUTILITY if _FOLD else ctrl[C_FUTILITY] != 0)
         and percent != 0
         and depth <= 2
         and not in_check
@@ -648,7 +702,7 @@ def search(
             if cached_eval != NO_EVAL:
                 standing = cached_eval
             else:
-                if ctrl[C_LAZY_ACC] != 0:
+                if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                     sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
                 standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
                 cached_eval = standing
@@ -659,11 +713,12 @@ def search(
         and not in_check
         and abs(beta) < DISTANCE_THRESHOLD
         and fb.non_pawn_material(bb, meta[fb.SIDE])
-        and (ctrl[C_NMP_GUARD] == 0 or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
+        and (((not _F_NMP_GUARD) if _FOLD else ctrl[C_NMP_GUARD] == 0)
+             or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
         and excluded == 0
     ):
         null_depth = depth - 1 - NMP_REDUCTION
-        if ctrl[C_SAFE] != 0:
+        if (_F_SAFE if _FOLD else ctrl[C_SAFE] != 0):
             null_depth -= depth // 6  # deeper nodes can afford a bigger reduction
         fb.make_null(bb, meta, undo, keys)
         score = -search(
@@ -674,7 +729,7 @@ def search(
             ec_key, ec_val, exts, conthist1,
         )
         fb.unmake_null(meta, undo)
-        if ctrl[C_LAZY_ACC] != 0 and ctrl[C_ACC_PLY] > meta[fb.PLY]:
+        if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0) and ctrl[C_ACC_PLY] > meta[fb.PLY]:
             # A sync inside the null search labelled the accumulators with the
             # null ply; the null move left the board unchanged, so they are
             # equally current here -- relabel, or the next lazy make at this
@@ -687,7 +742,7 @@ def search(
 
     extend_hash = 0
     if (
-        ctrl[C_SINGULAR] != 0
+        (_F_SINGULAR if _FOLD else ctrl[C_SINGULAR] != 0)
         and excluded == 0
         and ply > 0
         and depth >= SINGULAR_MIN_DEPTH
@@ -718,7 +773,7 @@ def search(
     if n == 0:
         return -MATE + ply if in_check else 0
     sc = scores[ply]
-    history2 = ctrl[C_HISTORY2] != 0
+    history2 = _F_HISTORY2 if _FOLD else ctrl[C_HISTORY2] != 0
     base = 0
     counter_move = 0
     if history2:
@@ -757,12 +812,15 @@ def search(
     best_score = -INFINITY
     best_move = 0
     searched = 0
-    pvs = ctrl[C_PVS] != 0
-    lmr = ctrl[C_LMR] != 0 and depth >= 3 and not in_check
-    aggr = ctrl[C_LMR_AGGR] != 0
-    lmp = ctrl[C_LMP] != 0 and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
+    pvs = _F_PVS if _FOLD else ctrl[C_PVS] != 0
+    lmr = (_F_LMR if _FOLD else ctrl[C_LMR] != 0) and depth >= 3 and not in_check
+    aggr = _F_LMR_AGGR if _FOLD else ctrl[C_LMR_AGGR] != 0
+    lmp = (
+        (_F_LMP if _FOLD else ctrl[C_LMP] != 0)
+        and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
+    )
     prune2 = (
-        ctrl[C_PRUNE2] != 0
+        (_F_PRUNE2 if _FOLD else ctrl[C_PRUNE2] != 0)
         and depth <= 4
         and not in_check
         and abs(alpha) < DISTANCE_THRESHOLD
@@ -785,7 +843,7 @@ def search(
             if hist < -HIST_PRUNE_SLOPE * depth:
                 continue
         if (
-            ctrl[C_SEE_MAIN] != 0
+            (_F_SEE_MAIN if _FOLD else ctrl[C_SEE_MAIN] != 0)
             and not quiet
             and (move >> 12) == 0
             and depth <= 5
@@ -963,7 +1021,7 @@ def search(
         else:
             flag = 0
         age = ctrl[C_AGE]
-        if ctrl[C_TT_BUCKETS] != 0:
+        if (_F_TT_BUCKETS if _FOLD else ctrl[C_TT_BUCKETS] != 0):
             dslot = np.int64(key & TT_MASK) & -2
             old = tt_data[dslot]
             if tt_key[dslot] == key:
@@ -975,7 +1033,7 @@ def search(
             else:
                 slot = dslot + 1
             replace = True
-        elif ctrl[C_TT_KEEP] != 0:
+        elif _F_TT_KEEP if _FOLD else ctrl[C_TT_KEEP] != 0:
             old = tt_data[slot]
             handicap = 4 if unpack_age(old) != (age & 63) else 0
             replace = tt_key[slot] == key or depth + handicap >= unpack_depth(old)

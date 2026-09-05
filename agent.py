@@ -1056,6 +1056,14 @@ KILLER_CLEAR: Final = False
 # history test; butterfly-style gravity update on a cutoff, halved under
 # HYGIENE, no read or update after a null move.
 CONT_HIST: Final = False
+# INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
+# when this is True, compiles the settled switch slots (the eighteen in
+# _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
+# before typing, cutting fs.warm_up ~18% (~-4.3 s local, ~-8 s platform). Node
+# and score exact by construction; prepare() asserts ctrl matches _fs.FOLDED.
+# Off in the tree so testing/check_fastsearch can still zero ctrl and hold the
+# kernel to the flags-off reference.
+INIT_FOLD: Final = False
 # How many earlier occurrences of a position make it a draw inside the search.
 _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
@@ -1982,6 +1990,13 @@ class FastEngine:
             ctrl[_fs.C_HIST2_FIX] = 1 if HISTORY2_FIX else 0
             ctrl[_fs.C_KILLER_CLEAR] = 1 if KILLER_CLEAR else 0
             ctrl[_fs.C_CONT_HIST] = 1 if CONT_HIST else 0
+            if INIT_FOLD:
+                for fold_slot, fold_value in _fs.FOLDED.items():
+                    if bool(ctrl[fold_slot]) != fold_value:
+                        raise RuntimeError(
+                            f"INIT_FOLD: ctrl slot {fold_slot} is {int(ctrl[fold_slot])} "
+                            f"but fastsearch folded it as {fold_value}"
+                        )
             if KILLER_CLEAR:
                 self.killers2[:] = 0  # killers from the previous search are noise
             ctrl[_fs.C_HMC_DRAW] = 100
