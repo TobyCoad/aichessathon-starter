@@ -105,6 +105,13 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   Decoder training/binpack_decode.py (validated: 435k sample entries, 0 invalid boards /
   illegal moves; scores are side-to-move internal units, int16-wrapped, VALUE_NONE 32002
   dropped; scale 0.45 cp per unit = median vs SF 17.1 depth 12, corr 0.90).
+- MISMATCH MEASURED 23:30: the champion net (b8-kz16, Lichess-trained) scores validation
+  loss 0.006879 on the Stockfish self-play validation set vs 0.00465 on Lichess data --
+  48% worse overall, and the endgame strata are 2-3x worse (x1e-3: 9-12 pieces 11.39,
+  13-16 9.99, eq<=16 5.10). That is the distribution gap games.md predicted. Training on
+  the SF shards is running (24 epochs, ~2.5 min each). Baseline endgame suite of the champion
+  net under the v9.1 search: 10.8 cp mean (5-8 pieces 17.0, 9-12 12.0, 13-16 5.0) --
+  compare 150-sfnet's suite against THIS number, not the old 7.0.
 - DONE 23:07: 581,225,450 positions in data/sf/feb24_00..08.npy (+ feb24_val.npy 500k) from
   1.03B decoded in 45.6 min (370k pos/s, 8 workers); the chain is now on the baseline suite.
 - Plan was: decode data/sf/test80-2024-02-feb-2tb7p.min-v2.v6.binpack.zst to ~580M kept

@@ -919,3 +919,9 @@ pays it back. Also committed: the previous iteration's uncommitted NMP_V2 build 
 + agent together, per the 22:40 rule; the exact check ran on the combined tree). State:
 decode done (581M), the interactive session's v9.1 endgame-suite baseline at 300/400,
 the worker holding 142-v92prune until it exits; desktop off.
+
+5 Sep 23:30 Stockfish data: 581M positions decoded (45.6 min); the champion net's loss on the
+SF validation set is 0.006879 vs 0.00465 on Lichess (endgame strata 2-3x worse) -- the
+distribution mismatch is real and large. Warm-started retrain on the SF shards running
+(overnight/sf_train.sh); baseline suite under v9.1 search 10.8 cp. 141-v92prune failed its
+gate 19/24 on init timeouts under the decode; worker now waits for decode/suite; 142 queued.
