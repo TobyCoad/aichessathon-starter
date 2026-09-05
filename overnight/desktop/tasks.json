@@ -19,5 +19,9 @@
   "name": "096-clocktest-v71",
   "kind": "clocktest",
   "sed": ""
+ },
+ {
+  "name": "097-seemain",
+  "sed": "s/^SEE_MAIN: Final = False$/SEE_MAIN: Final = True/"
  }
 ]
