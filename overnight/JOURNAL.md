@@ -597,3 +597,12 @@ PROMOTE +90 over 167 (62.6%); crash hunt 500 games, 0 failures (62.7%); clocktes
 load. 059-kz32b (32 zones, val 0.004690 vs 0.004843) INCONCLUSIVE 52.2%/600 vs the
 v5.5 engine with the old net; endgame suite 8.1 vs 7.0 cp -> not shipped.
 Handed to the user. queue5 (v7 switches vs 060-v6) started 03:25 with 061-ponder.
+
+5 Sep 07:46 v7 BUILT (a7cf304) = v6 + PONDER. Evidence: 061-ponder PROMOTE +109 over 92
+games vs 060-v6 at 8 s (65.2%, no failures, 6 workers); quick 120 s check 4/4 games no
+flags (separate processes); crash gate 24 clean. Full gates (night4.sh: SPRT vs v6,
+200-game hunt, 40 x 120 s) running behind the upload. queue5 verdicts vs v6: nobook
+INCONCLUSIVE 51.4%, pvs REJECT, iir INCONCLUSIVE 52.4%, nmpguard stopped at 406 games
+(-9 +/- 28). Nets: kz8c val 0.004700, kz8w restored initial (selection on the plain
+loss), kz16 val 0.004659 (best; strata improved in every band) -> 072-kz16 gauntlet
+after night4 as the v7.1 candidate.
