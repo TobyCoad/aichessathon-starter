@@ -1026,6 +1026,29 @@ CONTEMPT_AHEAD: Final = 25
 CONTEMPT_AHEAD_LATE: Final = 50
 CONTEMPT_BEHIND: Final = -20
 ADJUDICATION_PLY: Final = 300
+# ADJUDICATION (V10_PLAN #3): play the referee's ply-300 material adjudication,
+# not just chess. (a) The ply counter is pinned to MATCH plies at our first
+# request (the referee counts from the curated start FEN; fullmove_number counts
+# from the real initial position and ran 13 ahead in round 18). (b) Behind on
+# raw material the draw score ramps from +20 cp to a large bonus as the cap
+# nears -- at ply 280 a repetition is worth a half point, not 20 cp (round 18
+# shuffled an eval-0 K+R+N vs K+Q into a material adjudication loss). (c) When
+# behind AND a fifty-move draw is reachable before the cap
+# (match_ply + 100 - halfmove_clock <= 300), the kernel's draw threshold
+# C_HMC_DRAW drops to halfmove_clock + ADJ_HORIZON: a horizon's worth of
+# non-zeroing plies scores as the draw we are steering for. Also uses HISTORY2's
+# quiets fix and KILLER_CLEAR slots in the same ctrl block.
+ADJUDICATION: Final = False
+ADJ_BEHIND_LATE: Final = 300  # cp added to the behind-side draw score by the cap
+ADJ_WINDOW: Final = 80  # arm the fifty-move plan only this close to the cap
+ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
+# HISTORY2_FIX (v10 search.md 3.7): zero quiets[ply, searched] for non-quiet
+# moves; without it the cutoff malus punishes stale moves recorded by an earlier
+# node at the same ply. KILLER_CLEAR (same source): clear killers[ply + 2] on
+# node entry and the whole table between root moves; killers from another
+# subtree or the previous search are noise in move ordering.
+HISTORY2_FIX: Final = False
+KILLER_CLEAR: Final = False
 # How many earlier occurrences of a position make it a draw inside the search.
 _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
@@ -1041,15 +1064,22 @@ LOW_CLOCK: Final = 15.0
 # remaining/30 below 15 s. (b) The next iteration is never predicted (Ethereal
 # gained +6..+12 removing exactly that); the search stops at an iteration end
 # once elapsed exceeds ideal x stability x score-drop x node-effort, with the
-# hard deadline (4 soft budgets) as the only mid-iteration stop. Stability table
-# from Stash/Viridithas, score-drop 2^(-drop/100) from Stash, node effort
-# max(0.5, 2.4 - 2*bestFraction) from Ethereal/Koivisto. Absorbs TIME_V5's
+# hard deadline (3 soft budgets, 12% of the clock) as the only mid-iteration stop.
+# Stability 1.2 -> 0.8 (Ethereal), score-drop 2^(-drop/100) (Stash), node effort
+# max(0.5, 2.0 - 1.6*bestFraction) (Ethereal/Koivisto), product clamped [0.4, 2].
+# The first cut (Stash's 2.5x table, 4 soft budgets, 4% reserve) drained the clock
+# to 1.6 s with 19 s moves under the 1.5x clocktest charge; these are the tamed
+# values. Absorbs TIME_V5's
 # 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
 TIME_V6: Final = False
-RESERVE_FRACTION_V6: Final = 0.04
+RESERVE_FRACTION_V6: Final = 0.06
 LOW_CLOCK_V6: Final = 9.0
-_STABILITY_SCALE: Final = (2.5, 1.2, 0.9, 0.8, 0.75)
+_STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
 _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
+# ADJUDICATION: chess ply of the game's first request, and the last ply seen
+# (a ply that goes backwards means a new game in the same process).
+_MATCH_BASE_PLY: int = -1
+_LAST_GAME_PLY: int = -1
 _LAST_CLOCK_MS: float = -1.0
 _LAST_SPENT_MS: float = -1.0  # wall time of our previous get_move call
 _MAX_CLOCK_MS: float = 0.0
@@ -2084,8 +2114,8 @@ class FastEngine:
                     total_nodes = sum(root_nodes.values())
                     if total_nodes > 0:
                         fraction = root_nodes.get(best, 0) / total_nodes
-                        factor *= max(0.5, 2.4 - 2.0 * fraction)
-                    factor = max(0.3, min(3.0, factor))
+                        factor *= max(0.5, 2.0 - 1.6 * fraction)
+                    factor = max(0.4, min(2.0, factor))
                 if elapsed > factor * budget:
                     break
             elif TIME_V2:
@@ -2355,14 +2385,14 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
     inc = _observed_increment()
-    expected = max(18.0, 46.0 - board.fullmove_number * 0.4)
+    expected = max(22.0, 50.0 - board.fullmove_number * 0.4)
     if remaining < LOW_CLOCK_V6:
-        # Live on the increment, and on a fortieth of what is left if it is larger.
-        soft = max(0.9 * inc, remaining / 40.0)
-        hard = min(remaining * 0.2, soft * 2.5)
+        # Live on most of the increment, or a fortieth of what is left if larger.
+        soft = max(0.6 * inc, remaining / 40.0)
+        hard = min(remaining * 0.15, soft * 2.0)
     else:
         soft = remaining / expected + 0.8 * inc
-        hard = min(remaining * 0.25, soft * 4.0)
+        hard = min(remaining * 0.12, soft * 3.0)
     reserve = _MAX_CLOCK_MS * RESERVE_FRACTION_V6 / 1000.0
     if reserve > 0.0:
         hard = min(hard, max(soft, remaining - reserve))
