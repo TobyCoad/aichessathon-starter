@@ -61,6 +61,22 @@
   "elo1": 50
  },
  {
+  "name": "v9-clocktest",
+  "kind": "clocktest",
+  "sed": "s/^TIME_V6: Final = False$/TIME_V6: Final = True/; s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"
+ },
+ {
+  "name": "v9-120s",
+  "kind": "switch",
+  "sed": "s/^TIME_V6: Final = False$/TIME_V6: Final = True/; s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
+ },
+ {
   "name": "111-singular",
   "sed": "s/^SINGULAR: Final = False$/SINGULAR: Final = True/",
   "games": 600

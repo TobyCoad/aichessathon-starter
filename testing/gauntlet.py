@@ -69,7 +69,9 @@ def main() -> None:
     parser.add_argument("--elo1", type=float, default=20.0)
     parser.add_argument("--checkpoint", type=int, default=200, help="judge every N games; 0 = off")
     parser.add_argument("--promote-at", type=float, default=10.0, help="checkpoint Elo to promote")
-    parser.add_argument("--reject-at", type=float, default=-10.0, help="2nd+ checkpoint Elo to reject")
+    parser.add_argument(
+        "--reject-at", type=float, default=-10.0, help="2nd+ checkpoint Elo to reject"
+    )
     arguments = parser.parse_args()
 
     workers = arguments.workers or arena.default_workers()

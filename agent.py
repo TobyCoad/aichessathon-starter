@@ -1073,7 +1073,7 @@ LOW_CLOCK: Final = 15.0
 # 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
 TIME_V6: Final = False
 RESERVE_FRACTION_V6: Final = 0.06
-LOW_CLOCK_V6: Final = 9.0
+LOW_CLOCK_V6: Final = 12.0
 _STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
 _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
 # ADJUDICATION: chess ply of the game's first request, and the last ply seen
@@ -2133,7 +2133,7 @@ class FastEngine:
                     if total_nodes > 0:
                         fraction = root_nodes.get(best, 0) / total_nodes
                         factor *= max(0.5, 2.0 - 1.6 * fraction)
-                    factor = max(0.4, min(2.0, factor))
+                    factor = max(0.4, min(1.6, factor))
                 if elapsed > factor * budget:
                     break
             elif TIME_V2:
@@ -2431,11 +2431,11 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
     inc = _observed_increment()
-    expected = max(22.0, 50.0 - board.fullmove_number * 0.4)
+    expected = max(24.0, 50.0 - board.fullmove_number * 0.4)
     if remaining < LOW_CLOCK_V6:
         # Live on most of the increment, or a fortieth of what is left if larger.
-        soft = max(0.6 * inc, remaining / 40.0)
-        hard = min(remaining * 0.15, soft * 2.0)
+        soft = max(0.5 * inc, remaining / 50.0)
+        hard = min(remaining * 0.12, soft * 1.5)
     else:
         soft = remaining / expected + 0.8 * inc
         hard = min(remaining * 0.12, soft * 3.0)

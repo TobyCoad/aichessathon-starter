@@ -151,7 +151,8 @@ def checkpoint_verdict(
         print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, negative -> REJECT early",
               flush=True)
         return replace(verdict, decision="reject")
-    print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, undecided -> {checkpoint} more", flush=True)
+    print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, undecided -> {checkpoint} more",
+              flush=True)
     return verdict
 
 
