@@ -1,0 +1,4 @@
+name 093-safe
+kind switch
+host DESKTOP-B9VDHIJ
+base_ms 8000 openings default games 600

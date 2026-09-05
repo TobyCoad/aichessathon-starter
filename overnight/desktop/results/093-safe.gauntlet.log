@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "E:\dev\aichessathon-starter\testing\gauntlet.py", line 21, in <module>
+    from testing import arena, sprt
+  File "E:\dev\aichessathon-starter\testing\arena.py", line 26, in <module>
+    from testing import openings, sprt
+  File "E:\dev\aichessathon-starter\testing\openings.py", line 16, in <module>
+    import chess
+ModuleNotFoundError: No module named 'chess'
