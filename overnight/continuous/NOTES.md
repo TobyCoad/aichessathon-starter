@@ -100,6 +100,19 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   gauntlet: it ships inside v9.1 (INIT GUARD rule: CONT_HIST pairs with INIT_FOLD). At v9.1
   zip time flip INIT_FOLD True in the tested challenger, re-check bench nodes + import.
   Scratch build kept in overnight/challengers/initfold.
+## Stockfish-data net (the human's overnight priority, run by the interactive session -- NOT the loop)
+- Source: linrock/test80-2024 binpacks (Stockfish self-play, engine-distribution positions).
+  Decoder training/binpack_decode.py (validated: 435k sample entries, 0 invalid boards /
+  illegal moves; scores are side-to-move internal units, int16-wrapped, VALUE_NONE 32002
+  dropped; scale 0.45 cp per unit = median vs SF 17.1 depth 12, corr 0.90).
+- Tonight: decode data/sf/test80-2024-02-feb-2tb7p.min-v2.v6.binpack.zst to ~580M kept
+  positions in RECORD shards data/sf/feb24_NN.npy (+ feb24_val.npy), then train the same
+  architecture (512x16 zones, 8 buckets) warm-started from training/checkpoints/
+  net_w512-b8-kz16.pt on those shards -> export --half -> check_nnue -> endgame suite ->
+  net task gauntlet vs the champion -> compare with the Lichess-trained net. THE GPU IS
+  RESERVED for this until it finishes; the loop must not start NET_V10 or any training
+  before then (search bundles continue as normal). Results will be recorded here.
+
 ## Overnight programme (5->6 Sep; the human's instruction: keep iterating all night)
 The last ladder game is 22:00; there are no games 22:00-08:00 UK, so the laptop is free
 for testing and the GPU for training. Do NOT stop. Emails still go out per candidate (he
