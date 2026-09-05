@@ -589,3 +589,11 @@ kz32b (kz8c control, kz8w weighted, kz16; export/check/suite/gauntlet each).
 x(0,300,200,160) 11.6; (0,200,150,130) 15.8; (100,150,130,115) 7.6; (100,130,120,110)
 7.5. Wider margins cost depth in the 9-12 band every time. The pruning margins are
 not the endgame problem. Switch left in the code, off; dropped from queue5.
+
+5 Sep 03:25 v6 BUILT (4df72cf): compiled search + LMR (reviewed) + ASPIRATION + SEE +
+REPETITION_TWOFOLD + exact speed patches, old 8-zone net. Gates vs 058-v5.5: SPRT
+PROMOTE +90 over 167 (62.6%); crash hunt 500 games, 0 failures (62.7%); clocktest
+0 flags, lowest 10.2 s; 120 s 40 games 56.2%. Zip 27 MB unpacked, import 25 s under
+load. 059-kz32b (32 zones, val 0.004690 vs 0.004843) INCONCLUSIVE 52.2%/600 vs the
+v5.5 engine with the old net; endgame suite 8.1 vs 7.0 cp -> not shipped.
+Handed to the user. queue5 (v7 switches vs 060-v6) started 03:25 with 061-ponder.
