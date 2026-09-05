@@ -3,5 +3,10 @@
   "name": "110-v85all",
   "sed": "s/^LMR_AGGRESSIVE: Final = False$/LMR_AGGRESSIVE: Final = True/; s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/; s/^TIME_V5: Final = False$/TIME_V5: Final = True/; s/^PRUNE_V2: Final = False$/PRUNE_V2: Final = True/; s/^SINGULAR: Final = False$/SINGULAR: Final = True/",
   "games": 600
+ },
+ {
+  "name": "130-v9all",
+  "sed": "s/^TIME_V6: Final = False$/TIME_V6: Final = True/; s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/",
+  "games": 500
  }
 ]

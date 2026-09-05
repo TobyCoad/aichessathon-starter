@@ -791,3 +791,22 @@ five switches on. Laptop worker queue emptied (073-kz16w stopped at 14 games; th
 tests dropped since TIME_V6 absorbs them). Research pass consolidated in overnight/eval/V10_PLAN.md.
 Round 25 (17:00) lost as white vs the roooookkk: slow slide -55 (m21) -> -213 (m63) -> -826
 (m99) while spending 1-3 s/move with 50 s on the clock; the over-banking games.md describes.
+
+5 Sep 18:20 (loop) v9 bundle parts built: ADJUDICATION, HISTORY2_FIX, KILLER_CLEAR
+as switches, off in the tree (593053f). ADJUDICATION plays the referee, not just
+chess: the ply counter is pinned to match plies at the first request (round 18's
+counter ran 13 ahead), the behind-side draw score ramps +20 -> +320 cp as match
+ply -> 300 (a repetition near the cap is a half point, not noise), and when a
+fifty-move draw is reachable before the cap the kernel's draw threshold C_HMC_DRAW
+drops to hmc+16 so a horizon of non-zeroing plies scores as the draw. A smoke test
+against the sed-flipped challenger verified pinning (301 on the round-18 final
+position), the ramp (+320), arming (56 in the reachable case) and the
+ahead/unreachable cases (100). HISTORY2_FIX zeroes quiets[ply, searched] for
+non-quiet moves (the malus was punishing stale entries); KILLER_CLEAR clears
+killers[ply+2] on node entry and the table between root moves. Bench at depth 8 vs
+the champion's 1,491,095 nodes: adj 1.00x, h2fix 1.02x, kclear 0.97x; ruff, mypy,
+check_fastsearch 70/70 exact all PASS. Queued 130-v9all on the laptop: the full
+five-switch v9 bundle (tamed TIME_V6 + QS_EVAL_CACHE + these three), 500 games at
+8 s vs v8.5. A parallel session tamed TIME_V6 (f8286b8) and restarted its
+clocktest; if that fails, the next iteration pulls 130-v9all and re-queues it
+without the TIME_V6 flip. Desktop untouched (111-singular, then v85-120s-b).

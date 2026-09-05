@@ -53,12 +53,16 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   binaries); (c) int8/int16 inference is 1.9x SLOWER than float32 (closed for good);
   (d) the only big node-rate lever left is a 32->16 output head (+15% knps, needs a
   retrain) -> fold into NET_V10.
-- Bundle in flight for v9: TIME_V6 + QS_EVAL_CACHE (built, off; 120-timev6 8 s SPRT queued on the laptop,
-  clocktest rerunning on the laptop, desktop 120 s games to queue once the clocktest
-  passes) + ADJUDICATION (to build, V10_PLAN #3) + HISTORY2_FIX and KILLER_CLEAR (the two
-  defects in overnight/eval/v10/search.md 3.7). CONT_HIST (V10_PLAN #2, the biggest
-  search item) is the multi-iteration build for v9.1; follow search.md 3.1 exactly
-  (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as new kernel args).
+- Bundle in flight for v9 -- ALL FIVE SWITCHES BUILT (off in the tree), the 8 s SPRT of
+  the whole bundle is queued as 130-v9all on the laptop (500 games vs v8.5): TIME_V6
+  (tamed values, f8286b8; its solo clocktest is rerunning in
+  overnight/eval/clocktest-timev6b.log) + QS_EVAL_CACHE (exact, +4.2% knps) +
+  ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR (593053f; bench vs champion 1.00x / 1.02x /
+  0.97x nodes, smoke test of the adjudication arming passed, exact 70/70). Desktop
+  v9-clocktest + v9-120s to queue once v85-120s-b finishes. If clocktest-timev6b FAILS
+  again, pull 130-v9all and re-queue it without the TIME_V6 flip. CONT_HIST (V10_PLAN #2,
+  the biggest search item) is the multi-iteration build for v9.1; follow search.md 3.1
+  exactly (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as new kernel args).
 - 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
   SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
 
@@ -113,12 +117,13 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 18:35)
-- laptop worker: 120-timev6 (8 s SPRT vs v8.5, 400 games). Laptop background: month5.sh
-  (pack 2024_11 -> train kz16r -> suite); clocktest of 120-timev6 (overnight/eval/clocktest-timev6b.log).
+## Running now (5 Sep 18:20)
+- laptop worker: 130-v9all (8 s SPRT of the five-switch v9 bundle vs v8.5, 500 games;
+  120-timev6 was pulled after the untamed clocktest drained to 1.6 s). Laptop background:
+  month5.sh (pack 2024_11 -> train kz16r -> suite); clocktest of tamed TIME_V6 restarted
+  ~17:50 (overnight/eval/clocktest-timev6b.log).
 - desktop worker: 111-singular (attribution, -18 +/- 42 at 170), then v85-120s-b (40 games at
   120 s of the live v8.5 build).
-- overnight/eval/v10/speed.md: a research agent is still writing it (init time + knps).
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
@@ -129,10 +134,9 @@ what enters a bundle.
 1. TIME_V6 (V10_PLAN #1): reserve 0.10 -> 0.04, LOW_CLOCK 15 -> 9, node-effort +
    stability + score-drop factors, no next-iteration prediction; absorbs TIME_V5.
    Judged by clocktest + 40 games at 120 s on the desktop only.
-2. CONT_HIST bundle (V10_PLAN #2): continuation history + HISTORY2_FIX (stale quiets[]
-   malus, fastsearch ~line 769) + killer clearing. 8 s SPRT on the laptop.
-3. ADJUDICATION (V10_PLAN #3): ply-300 material adjudication awareness. Small; bundle
-   with 2.
+2. CONT_HIST (V10_PLAN #2): continuation history alone -- HISTORY2_FIX and KILLER_CLEAR
+   are built and in the v9 bundle (130-v9all). 8 s SPRT on the laptop.
+3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (130-v9all).
 4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets, after the
    v8 endgame-suite baseline and 104-kz16r. One gauntlet slot.
 5. IMPROVING + CUTNODE, NMP_V2 (V10_PLAN #5-6) as one bundle.
@@ -143,16 +147,12 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: (1) fold verdicts (120-timev6, 111-singular, v85-120s-b, clocktest-timev6b);
-if the clocktest passed queue v6-clocktest + v6-120s on the desktop (see v85-120s-b's task
-for the format). (2) Build ADJUDICATION as a switch: pin the ply counter to MATCH plies
-(count from the first get_move call, not fullmove_number), ramp the behind-side draw
-score toward 0 (a full half point) as match ply -> 300, and when
-`match_ply + (100 - halfmove_clock) <= 300` treat non-zeroing lines as draw-reaching for
-the side losing the material adjudication (overnight/eval/v10/games.md "Failure mode 3"
-has the referee's exact rule; harness/referee.py `_adjudicate`). (3) Build HISTORY2_FIX
-(write quiets[ply, searched] = 0 for non-quiet moves; fastsearch.py near `quiets[ply, searched] = move`)
-and KILLER_CLEAR (clear killers[ply+2] on node entry, clear the table between root moves).
-Bench each; then queue the v9 bundle = TIME_V6 + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
-as 130-v9all (laptop 8 s) + v9-clocktest + v9-120s (desktop). Start CONT_HIST in the
-following iteration.
+Iteration next: (1) fold verdicts: clocktest-timev6b (tamed TIME_V6; if it FAILS pull
+130-v9all from the laptop queue and re-queue it without the TIME_V6 flip), 111-singular,
+v85-120s-b, and 130-v9all when it lands. (2) When v85-120s-b is done, queue v9-clocktest
++ v9-120s on the desktop (same seds as 130-v9all; see v85-120s-b's task for the 120 s
+format). (3) Start the CONT_HIST build (V10_PLAN #2, multi-iteration, switch OFF;
+search.md 3.1: widen `exts` to 4*MAX_PLY instead of new arrays, conthist1 as new kernel
+args) -- HISTORY2_FIX and KILLER_CLEAR are already built and in the v9 bundle, so
+CONT_HIST is the only piece left of that bundle item. (4) If a machine is idle after
+22:00, start the NET_V10 prerequisites (v8 endgame-suite baseline; 104-kz16r fold).
