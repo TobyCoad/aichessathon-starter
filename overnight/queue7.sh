@@ -6,7 +6,7 @@ LOG=overnight/eval/night3.log
 say() { echo "$(date '+%H:%M') $*" >> "$LOG"; }
 verdict() { grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$1" 2>/dev/null | tail -n 1; }
 BASE=overnight/challengers/060-v6
-until grep -q "queue5 done" "$LOG" 2>/dev/null; do sleep 120; done
+until grep -q "night4 done" "$LOG" 2>/dev/null; do sleep 120; done
 for pair in "kz16:072" "kz8c:070"; do
     name=${pair%%:*}; num=${pair#*:}; d="overnight/challengers/$num-$name"
     # the 8-zone control only matters if the 16-zone net failed

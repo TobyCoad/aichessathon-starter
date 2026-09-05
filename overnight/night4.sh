@@ -9,8 +9,8 @@ REPORT=overnight/eval/V7_REPORT.md
 say() { echo "$(date '+%H:%M') $*" >> "$LOG"; }
 verdict() { grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$1" 2>/dev/null | tail -n 1; }
 passed() { grep -qE "^PROMOTE" "$1" 2>/dev/null; }
-until grep -q "queue7 done" "$LOG" 2>/dev/null; do sleep 120; done
-say "night4: assembling v7"
+until grep -q "queue5 done" "$LOG" 2>/dev/null; do sleep 120; done
+say "night4: assembling v7 (pondering only; nets follow as v7.1)"
 
 BASE=overnight/challengers/060-v6
 V7=overnight/challengers/080-v7
