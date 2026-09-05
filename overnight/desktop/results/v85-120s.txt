@@ -1,0 +1,5 @@
+name v85-120s
+kind switch
+host DESKTOP-B9VDHIJ
+base_ms 120000 openings platform games 40
+REJECT  v85-120s is not safe to ship

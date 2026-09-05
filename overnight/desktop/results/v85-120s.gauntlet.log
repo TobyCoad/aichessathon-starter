@@ -1,0 +1,4 @@
+stage 1: crash gate, v85-120s vs random
+  failed 6/24 games (init 6)
+
+REJECT  v85-120s is not safe to ship
