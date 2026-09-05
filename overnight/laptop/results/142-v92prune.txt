@@ -1,0 +1,7 @@
+name 142-v92prune
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  142-v92prune  no better than the champion
+  +33 =46 -61  score 40.0%  over 140 games
+  terminations: adjudication 1, checkmate 93, fifty_moves 2, insufficient_material 17, threefold_repetition 27
