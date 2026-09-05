@@ -123,7 +123,7 @@ class Kernel:
                 self.killers, self.butterfly, self.moves, self.scores, self.rep,
                 self.ctrl, time.monotonic() + 3600, d, -agent.INFINITY, agent.INFINITY, 0,
                 self.scratch, self.counter, self.quiets, self.ec_key, self.ec_val, self.exts,
-                self.conthist1,
+                self.conthist1, 0,
             )
         seconds = time.perf_counter() - started
         slot = int(pos.keys[0] & fs.TT_MASK)

@@ -144,10 +144,22 @@ C_HMC_DRAW, C_HIST2_FIX, C_KILLER_CLEAR = 35, 36, 37
 # reads and updates nothing.
 C_CONT_HIST = 38
 CONT_LMR_DIV = 6000
+# C_IMPROVING (v10 search.md 3.3): static_eval(ply) > static_eval(ply - 2).
+# The eval is computed at every non-check node that reaches the move loop and
+# stored in exts[MAX_PLY + ply] (sentinel -INFINITY in check; the SINGULAR
+# excluded-move re-search must not overwrite its own ply's slot). Not improving:
+# RFP margin uses depth - improving, prune2 futility FUTILITY_MARGIN2[depth -
+# improving], LMR reduction += 1. Default improving at ply < 2 and after a
+# sentinel (never over-prune the first two plies).
+# C_CUTNODE (same source): is this node expected to fail high? Passed down as
+# the kernel's one new parameter: the null-move child is always a cut node, a
+# null-window child is a cut node iff its parent was not, a full-window child
+# of a PV node is a PV node. Use: LMR reduction += 1 at cut nodes.
+C_IMPROVING, C_CUTNODE = 39, 40
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 40
+CTRL_SIZE = 42
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -564,7 +576,7 @@ def search(
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
     depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any, counter: Any, quiets: Any,
-    ec_key: Any, ec_val: Any, exts: Any, conthist1: Any,
+    ec_key: Any, ec_val: Any, exts: Any, conthist1: Any, cutnode: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
@@ -670,6 +682,25 @@ def search(
         )
 
     standing = -INFINITY
+    improving = 1  # ply < 2 and sentinel ancestors default to improving (never over-prune)
+    if ctrl[C_IMPROVING] != 0:
+        if in_check:
+            if excluded == 0:
+                exts[fb.MAX_PLY + ply] = -INFINITY  # sentinel: no usable eval at this ply
+            improving = 0
+        else:
+            if cached_eval == NO_EVAL:
+                if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
+                    sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
+                cached_eval = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+            if excluded == 0:
+                # The SINGULAR re-search re-enters this ply: writing there would
+                # flip the grandchildren's improving flag mid-node.
+                exts[fb.MAX_PLY + ply] = cached_eval
+            if ply >= 2:
+                prev2 = exts[fb.MAX_PLY + ply - 2]
+                if prev2 != -INFINITY and cached_eval <= prev2:
+                    improving = 0
     percent = 100
     if _F_RFP_PHASE if _FOLD else ctrl[C_RFP_PHASE] != 0:
         percent = phase_percent(ctrl, meta[fb.PIECES])
@@ -687,7 +718,8 @@ def search(
                 sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             cached_eval = standing
-        if standing - RFP_MARGIN * depth * percent // 100 >= beta:
+        rfp_depth = depth - improving if ctrl[C_IMPROVING] != 0 else depth
+        if standing - RFP_MARGIN * rfp_depth * percent // 100 >= beta:
             return standing
 
     futile = False
@@ -726,7 +758,7 @@ def search(
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
             null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
-            ec_key, ec_val, exts, conthist1,
+            ec_key, ec_val, exts, conthist1, 1,
         )
         fb.unmake_null(meta, undo)
         if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0) and ctrl[C_ACC_PLY] > meta[fb.PLY]:
@@ -760,7 +792,7 @@ def search(
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
             (depth - 1) // 2, sbeta - 1, sbeta, ply, scratch, counter, quiets,
-            ec_key, ec_val, exts, conthist1,
+            ec_key, ec_val, exts, conthist1, cutnode,
         )
         ctrl[C_EXCL_PLY] = -1
         if ctrl[C_ABORT]:
@@ -812,6 +844,11 @@ def search(
     best_score = -INFINITY
     best_move = 0
     searched = 0
+    # Children (search.md 3.3): a null-window child is a cut node iff this node
+    # was not; a full-window child of a PV node is a PV node. Read only when
+    # C_CUTNODE is on, so the values cost nothing with the switch off.
+    scout_cut = 1 - cutnode
+    full_cut = 0 if beta - alpha > 1 else scout_cut
     pvs = _F_PVS if _FOLD else ctrl[C_PVS] != 0
     lmr = (_F_LMR if _FOLD else ctrl[C_LMR] != 0) and depth >= 3 and not in_check
     aggr = _F_LMR_AGGR if _FOLD else ctrl[C_LMR_AGGR] != 0
@@ -835,7 +872,8 @@ def search(
         if futile and plain:
             continue
         if prune2 and plain and searched > 0:
-            if standing + FUTILITY_MARGIN2[depth] <= alpha:
+            f2_depth = depth - improving if ctrl[C_IMPROVING] != 0 else depth
+            if standing + FUTILITY_MARGIN2[f2_depth] <= alpha:
                 continue
             hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
             if ch_base >= 0:
@@ -883,6 +921,10 @@ def search(
                     reduction = 0
             else:
                 reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
+            if ctrl[C_IMPROVING] != 0 and improving == 0:
+                reduction += 1
+            if ctrl[C_CUTNODE] != 0 and cutnode != 0:
+                reduction += 1
         make_move(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones, ctrl
         )
@@ -899,7 +941,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 reduced, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts, conthist1,
+                ec_key, ec_val, exts, conthist1, scout_cut,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
@@ -911,7 +953,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                        ec_key, ec_val, exts, conthist1,
+                        ec_key, ec_val, exts, conthist1, scout_cut,
                     )
                 else:
                     score = -search(
@@ -919,7 +961,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
-                        ec_key, ec_val, exts, conthist1,
+                        ec_key, ec_val, exts, conthist1, full_cut,
                     )
         elif pvs and searched > 0:
             score = -search(
@@ -927,7 +969,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts, conthist1,
+                ec_key, ec_val, exts, conthist1, scout_cut,
             )
         else:
             ext = 0
@@ -939,7 +981,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1 + ext, -beta, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts, conthist1,
+                ec_key, ec_val, exts, conthist1, full_cut,
             )
             if ext != 0:
                 exts[ply] -= 1
@@ -951,7 +993,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts, conthist1,
+                ec_key, ec_val, exts, conthist1, 0,
             )
         unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
         if ctrl[C_ABORT]:
@@ -1084,5 +1126,5 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
         ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch, counter, quiets,
-        ec_key, ec_val, exts, conthist1,
+        ec_key, ec_val, exts, conthist1, 0,
     )

@@ -140,6 +140,12 @@ Rules of the night: one gauntlet at a time (the worker enforces it); the endgame
 training count as load -- do not start them while a gauntlet is within 30 games of a
 checkpoint; keep the exactness check green at every commit; never edit results files.
 
+- 5 Sep 22:40 (session): iteration 7 died on the usage limit mid-edit, leaving the IMPROVING /
+  CUTNODE kernel code (C_IMPROVING, C_CUTNODE = 39, 40; CTRL_SIZE 42) uncommitted while the
+  committed agent.py already referenced it -- origin was inconsistent. Verified exact
+  (70/70, 40/40) and committed as-is; 141-v92prune tests the pair. ALWAYS commit kernel +
+  agent together; never leave the tree with a half-done build at the end of an iteration.
+
 ## Champion
 - v9.1 (5 Sep 21:55, uploaded by the human when he reads the email) = v9 + TIME_V6, all True
   in the tree (exact 70/70). Evidence: 40 games at 120 s vs v9 55.0% (+11 =22 -7), clocktest
