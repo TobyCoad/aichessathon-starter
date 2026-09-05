@@ -953,7 +953,7 @@ SAFE_BITS: Final = True
 # lines measured at -68 and -165 cp on the platform's own start positions.
 BOOK_VERIFY: Final = False
 # QS_EVAL_CACHE: memoise quiescence static evaluations by position key (exact).
-QS_EVAL_CACHE: Final = False
+QS_EVAL_CACHE: Final = True
 # SEE_MAIN: in the main search skip captures losing more than 20*depth^2 on the
 # exchange at depth <= 5 (never the first move).
 SEE_MAIN: Final = True
@@ -1038,7 +1038,7 @@ ADJUDICATION_PLY: Final = 300
 # C_HMC_DRAW drops to halfmove_clock + ADJ_HORIZON: a horizon's worth of
 # non-zeroing plies scores as the draw we are steering for. Also uses HISTORY2's
 # quiets fix and KILLER_CLEAR slots in the same ctrl block.
-ADJUDICATION: Final = False
+ADJUDICATION: Final = True
 ADJ_BEHIND_LATE: Final = 300  # cp added to the behind-side draw score by the cap
 ADJ_WINDOW: Final = 80  # arm the fifty-move plan only this close to the cap
 ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
@@ -1047,8 +1047,8 @@ ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
 # node at the same ply. KILLER_CLEAR (same source): clear killers[ply + 2] on
 # node entry and the whole table between root moves; killers from another
 # subtree or the previous search are noise in move ordering.
-HISTORY2_FIX: Final = False
-KILLER_CLEAR: Final = False
+HISTORY2_FIX: Final = True
+KILLER_CLEAR: Final = True
 # CONT_HIST (v10 search.md 3.1): 1-ply continuation history. A 768x768 int32
 # table indexed by (previous move's piece*64+to, this quiet's piece*64+to),
 # added to the quiet ordering score, the LMR history term (continuous

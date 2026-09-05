@@ -56,19 +56,23 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   binaries); (c) int8/int16 inference is 1.9x SLOWER than float32 (closed for good);
   (d) the only big node-rate lever left is a 32->16 output head (+15% knps, needs a
   retrain) -> fold into NET_V10.
-- Bundle in flight for v9 -- gate SPLIT 18:28 (the parallel TIME_V6 session, ec3b65e):
-  132-v9core on the laptop (600 games at 8 s vs v8.5) tests the FOUR core switches:
-  QS_EVAL_CACHE (exact, +4.2% knps) + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
-  (593053f; bench vs champion 1.00x / 1.02x / 0.97x nodes, adjudication smoke test
-  passed, exact 70/70). Its predecessor 131-v9all was stopped at 98 games (+28 +/- 57,
-  llr +0.46) for the re-queue. TIME_V6 was REVIVED 18:29 (71b7b50, after two earlier
-  cuts failed the clocktest): final constants = low clock rem/18 exact stop, horizon
-  56-0.4m floor 30, hard min(10%, 2.5x soft), factor cap 1.5; local clock replay PASS
-  (lowest 5.8 s, longest 11.9 s at 1.5x charge). TIME_V6 is judged ONLY by the desktop
-  v9-clocktest + v9-120s (five-switch sed, queued after v85-120s-b); the four-switch
-  build has its own v9core-clocktest + v9core-120s (renamed 18:45 from duplicate names
-  that would never have run). Ship paths: 132-v9core PROMOTE + v9core-clocktest PASS
-  ships v9 without TIME_V6; the TIME_V6 pair passing adds it to v9.1.
+- v9 SHIPPED 5 Sep 19:55 (this iteration): 132-v9core PROMOTE +23 at checkpoint 200
+  (+70 =73 -57, 53.2%), v9core-clocktest-l PASS (0/6, lowest 11.3 s, longest 13.2 s).
+  Four switches flipped in the tree (QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX +
+  KILLER_CLEAR); exact 70/70 PASS after the flip. Zip from the tested challenger
+  132-v9core: C:/Users/tobyc/Downloads/aichessathon-v9.zip + submission-v9.zip
+  (27.9 MB unpacked, cold import 33.6 s under load). CANDIDATE.md written, notify
+  sent 19:54. TIME_V6: laptop clocktest v9-clocktest-l PASS (lowest 5.7 s); its
+  remaining gate is the 120 s runs -- v9-120s-l on the laptop (started before the
+  tree flip, so it measures v9+TIME_V6 vs v8.5) and desktop v9-clocktest + v9-120s
+  (their seds now only flip TIME_V6, i.e. champion+TIME_V6 vs v9 champion -- exactly
+  the right test). TIME_V6 joins v9.1 only if those pass.
+- QUEUE HYGIENE after the tree flip (19:55): v85-120s-b, v9core-clocktest and
+  v9core-120s removed from the desktop queue -- their seds now no-op against the v9
+  tree, so they would have been champion-vs-champion noise. 111-singular (running,
+  desktop) is VOID for the same reason if its challenger was built after the 17:40
+  v8.5 flip (SINGULAR already True in the tree -> sed no-op); its -4.3 +/- 29 at 404
+  looks exactly like self-play noise. Do NOT fold its verdict as attribution.
 - CONT_HIST (V10_PLAN #2) BUILT 5 Sep 18:45, off in the tree: 1-ply continuation
   history (C_CONT_HIST=38, conthist1 as the one new kernel arg) in ordering, the LMR
   history term (continuous hist//6000 clamped +/-2) and the prune2 test, gravity
@@ -90,14 +94,11 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   gauntlet: it ships inside v9.1 (INIT GUARD rule: CONT_HIST pairs with INIT_FOLD). At v9.1
   zip time flip INIT_FOLD True in the tested challenger, re-check bench nodes + import.
   Scratch build kept in overnight/challengers/initfold.
-- 132-v9core PROMOTED at checkpoint 200: +23 Elo, trending positive (5 Sep 19:30; the
-  worker's .txt was still being written). v9 ship now waits only on the mandatory
-  four-switch clocktest: v9core-clocktest-l INSERTED at the front of the laptop queue
-  (19:30) so it runs hours before the desktop copy; ship v9 when it PASSES.
-- 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
-  SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
-
 ## Champion
+- v9 (candidate emailed 5 Sep 19:54, awaiting the human's upload) = v8.5 +
+  QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR, all True in the tree
+  since 5 Sep 19:49. Evidence: 8 s SPRT PROMOTE +23 at 200 games (53.2%), clocktest
+  PASS 0/6 (lowest 11.3 s), cold import 33.6 s. Every challenger is judged vs v9 now.
 - v8.5 (uploaded by the human 5 Sep ~17:30, 18:00 slot) = v8 + LMR_AGGRESSIVE + LAZY_ACC +
   TIME_V5 + PRUNE_V2 + SINGULAR, all True in the tree since 5 Sep 17:40. Evidence: 8 s
   SPRT PROMOTE +36 over 477 games (55.2%), clocktest PASS 0/6; the 40 games at 120 s
@@ -156,24 +157,20 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 19:30)
-- laptop worker: 132-v9core PROMOTED (+23 at checkpoint 200); queue now
-  v9core-clocktest-l (gates shipping v9), then v9-clocktest-l + v9-120s-l (TIME_V6's
-  gate, five-switch), then 133-conthist (600 games at 8 s).
-- desktop worker: 111-singular (attribution, -6 +/- 36 at 272, heartbeat 18:21), then
-  v85-120s-b (40 games at 120 s of the live v8.5 build), then v9-clocktest + v9-120s
-  (five-switch sed WITH TIME_V6 -- these judge TIME_V6), then v9core-clocktest +
-  v9core-120s (four-switch sed, the mandatory clocktest for shipping v9core).
+## Running now (5 Sep 19:55)
+- laptop worker: v9-120s-l running (40 games at 120 s; challenger built pre-flip, so
+  v9+TIME_V6 vs v8.5 -- part of TIME_V6's gate), then 133-conthist (600 games at 8 s
+  of CONT_HIST vs the v9 tree -- the v9.1 anchor test).
+- desktop worker: 111-singular (VOID, see above; let it finish, do not fold), then
+  v9-clocktest + v9-120s (sed now flips only TIME_V6 -> champion+TIME_V6 vs v9;
+  the rest of TIME_V6's gate).
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
-0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
-   is v85-120s-b on the desktop (the first run hit 6/24 init timeouts under leftover
-   load, not an engine fault). When v85-120s-b passes: flip the five v8.5 switches in
-   the tree (that is v8.5 = the new champion), note it, and submission-v85.zip is
-   already built from the tested challenger for the human.
-1. TIME_V6: REVIVED 18:29 with final constants (71b7b50) after a local clock replay
-   PASS; judged only by the desktop v9-clocktest + v9-120s. If that clocktest fails
-   again, TIME_V6 is closed for good (third strike).
+0. Fold verdicts as they land: v9-120s-l (laptop), v9-clocktest + v9-120s (desktop)
+   -- together TIME_V6's gate -- and 133-conthist (the v9.1 anchor).
+1. TIME_V6: laptop clocktest PASS (v9-clocktest-l, lowest 5.7 s). Remaining gate:
+   the desktop v9-clocktest + the two 120 s runs. If the desktop clocktest fails,
+   TIME_V6 is closed for good (third strike).
 2. CONT_HIST (V10_PLAN #2): BUILT, queued as 133-conthist (see bundle notes above).
 3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (132-v9core).
 4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets (+ the
@@ -189,18 +186,13 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: (0) 132-v9core PROMOTED -- when v9core-clocktest-l (laptop, running
-next) PASSES, ship v9: flip QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
-in the tree, exactness check, zip from the TESTED challenger dir, CANDIDATE.md, notify.
-(1) fold the other verdicts as they land: 132-v9core's .txt,
-111-singular, v85-120s-b, v9-clocktest/v9-120s (TIME_V6's gate), v9core-clocktest/
-v9core-120s, 133-conthist. If 132-v9core PROMOTES and v9core-clocktest PASSES: ship
-v9 (flip the four switches in the tree, re-run the exactness check, zip from the
-TESTED challenger dir, CANDIDATE.md, notify). If the TIME_V6 pair passes, TIME_V6
-joins the v9.1 bundle; if the clocktest fails, close it for good. (2) If 133-conthist
-lands: a PROMOTE or positive-inconclusive + node win makes it the anchor of v9.1
-(with TIME_V6 if passed); consider CONT_HIST2 (2-ply, lane-2 exts writes) only after
-1-ply passes. (3) If a machine is idle after 22:00, start the NET_V10 prerequisite
-(v8.5 endgame-suite baseline) and the NET_V10 architecture work (mirrored king
-buckets, rebalanced output buckets, 16-out head) -- 104-kz16r proved more same-style
-data is worthless, do NOT restart month-data chains.
+v9 SHIPPED (19:55) -- iteration next: (1) fold verdicts as they land: v9-120s-l,
+v9-clocktest/v9-120s (TIME_V6's gate; desktop clocktest fail = closed for good),
+133-conthist. Do NOT fold 111-singular (VOID, sed no-op). (2) If 133-conthist lands:
+a PROMOTE or positive-inconclusive + node win makes CONT_HIST the anchor of v9.1
+(+ INIT_FOLD, which is built and exact; + TIME_V6 if its gate passed); build the
+v9.1 bundle challenger and queue its 8 s SPRT + clocktest. Consider CONT_HIST2
+(2-ply) only after 1-ply passes. (3) If a machine is idle after 22:00, start the
+NET_V10 prerequisite (v9 endgame-suite baseline) and the NET_V10 architecture work
+(mirrored king buckets, rebalanced output buckets, 16-out head) -- 104-kz16r proved
+more same-style data is worthless, do NOT restart month-data chains.

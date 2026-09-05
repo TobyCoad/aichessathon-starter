@@ -877,3 +877,18 @@ PASS. Meanwhile 132-v9core hit its 200-game checkpoint at +23 Elo -> PROMOTE ear
 now waits only on the mandatory four-switch clocktest, so v9core-clocktest-l was inserted
 at the front of the laptop queue (the desktop copy is hours back behind 111-singular at
 352 games and v85-120s-b). Next iteration ships v9 if that clocktest passes.
+
+**5 Sep 2026, ~19:55 (iteration: ship v9).** 132-v9core PROMOTED at checkpoint 200
+(+23 Elo, +70 =73 -57, 53.2%) and v9core-clocktest-l PASSED (0/6, lowest 11.3 s), so
+v9 shipped: QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR flipped True in
+the tree, ruff/mypy/exact 70/70 PASS, zip built from the tested challenger
+(overnight/challengers/132-v9core) -> Downloads/aichessathon-v9.zip (27.9 MB unpacked,
+cold import 33.6 s under gauntlet load), CANDIDATE.md written, notify emailed. Bonus:
+v9-clocktest-l (with TIME_V6) also PASSED (lowest 5.7 s) -- TIME_V6's fate now rests on
+v9-120s-l (laptop, running: v9+TIME_V6 vs v8.5) and the desktop v9-clocktest/v9-120s
+pair (their seds now flip only TIME_V6 against the v9 tree, which is exactly the right
+test). Queue hygiene after the flip: v85-120s-b, v9core-clocktest and v9core-120s
+removed from the desktop queue (seds no-op against the v9 tree -> self-play noise), and
+111-singular declared VOID for the same reason (its -4.3 +/- 29 at 404 games is
+consistent with champion-vs-champion; do not fold it as SINGULAR attribution). Next:
+133-conthist decides the v9.1 anchor; INIT_FOLD rides along; NET_V10 work after 22:00.
