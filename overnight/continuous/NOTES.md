@@ -48,13 +48,14 @@ pondering (platform freezes the process), endgame fine-tune of the old net,
 QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
 091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject).
 
-## Running now (5 Sep 12:20)
-- desktop: gen-001 DONE (281,853 positions / 3000 games / 48.9 min ->
-  results/data/gen-001.parquet); gen-002 running; then 092-qscap14, 093-safe,
-  095-asp15, 096-clocktest-v71, 097-seemain.
-- laptop CPU: 100-v8all gauntlet (167 games, llr +1.01, +34 +/- 43 -- trending
-  PASS but undecided). Worker queue after it: 101-lmraggr, 073-kz16w,
-  098-rootorder, 099-ttbuckets.
+## Running now (5 Sep 12:50)
+- desktop: gen-002 running (12:38 heartbeat: worker 5 at 300/500 games); then
+  v8-clocktest, v8-120s, 092-qscap14, 093-safe, 095-asp15, 096-clocktest-v71,
+  097-seemain.
+- laptop CPU: 100-v8all gauntlet (314 games, llr -0.00, +10 +/- 31 -- the early
+  +1.01 has washed out; heading inconclusive). Worker queue after it:
+  101-lmraggr, 073-kz16w, 098-rootorder, 099-ttbuckets, 102-timev5-clock,
+  102-timev5-120s.
 - laptop GPU: net_w512-b1-kz16 training (if still up -- not re-verified this iter).
 - download: fetch 2025_04 idling ("nothing new to analyse").
 
@@ -66,21 +67,23 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
    a proper bundle from the single-switch passes only.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
    (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
-3. Time: expected-moves floor 26 -> 18 and shrink when stable (120 s only).
-4. Lazy accumulator update (defer make_full's NNUE update until evaluate).
-5. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
-6. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
-7. Anything from overnight/eval/V7_PLAN.md not listed as closed.
+3. Lazy accumulator update (defer make_full's NNUE update until evaluate).
+4. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
+5. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
+6. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 4: check results (desktop_status.sh + laptop results/ for 100-v8all,
-which was llr +1.01 at 167 games; desktop for gen-002 and then 092/093/095).
-Fold any verdicts (see the 100-v8all caveat in backlog 1). Otherwise take
-backlog item 3 (time: expected-moves floor 26 -> 18, 120 s only -- needs the
-clocktest and 40 games at 120 s per the rules, not just the 8 s SPRT).
-Verdict context: 098-rootorder measured +3.5% nodes (weakly negative, REJECT
-likely); 099-ttbuckets exactly node-neutral at depth 8 (only long searches can
-show a gain); 101-lmraggr measured 0.92x nodes to depth 8 / 0.95x at depth 10
-(modest, not the hoped <0.6x -- the steeper table only adds ~1 ply of reduction
-at bench depths; PVS re-search costs eat part of it back). All three are SPRT's
-call now.
+Iteration 5: check results (laptop for 100-v8all, which was llr -0.00 at 314
+games and may close either way; desktop for gen-002 and then v8-clocktest /
+v8-120s / 092 / 093 / 095). Fold any verdicts (100-v8all is a bundle probe --
+see the caveat in backlog 1). Otherwise take backlog item 3 (lazy accumulator
+update: defer make_full's NNUE update until evaluate -- an exact change, so
+the exactness check must still pass with the flag OFF and the flag-on path is
+judged on node-rate/bench, then SPRT).
+Verdict context for the queued challengers: 098-rootorder +3.5% nodes (REJECT
+likely); 099-ttbuckets node-neutral at depth 8 (only long searches can show a
+gain); 101-lmraggr 0.92x nodes at depth 8 (modest); 102-timev5 (floor 18 +
+stable refund) is 120 s only -- judged by its clocktest + the 40-game 120 s
+match, NOT an 8 s SPRT (below LOW_CLOCK the floor never binds, 8 s play is
+byte-identical), and the fixed-movetime endgame suite cannot see a budget
+change so it is waived for this one.

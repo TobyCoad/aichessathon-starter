@@ -852,6 +852,14 @@ TIME_V3: Final = True
 # alongside this and measured 46% at 120 s: it stops iterations a warm table
 # would have finished. Dropped.)
 TIME_V4: Final = True
+# TIME_V5: the 26-move floor on the horizon still banks time at move 70 that the
+# game will never use; lower it to 18 so the mid and late game spend more. Paired
+# with a refund so calm positions hand the extra back: after two consecutive
+# completed iterations that kept the same best move with no score drop, the next
+# iteration is allowed 1.0 soft budgets instead of 1.5. Only the 120 s control
+# can see it -- below LOW_CLOCK the budget is remaining/30 and the floor never
+# binds, so 8 s games are unchanged; judged by clocktest + 40 games at 120 s.
+TIME_V5: Final = False
 # CORRECTION: correction history. The static evaluation is wrong in ways that
 # repeat. In the platform's round-8 loss it said +400 to +1010 in a rook-and-knight
 # ending that the search itself scored between -37 and -164, and reverse futility
@@ -1912,6 +1920,7 @@ class FastEngine:
         previous_best = 0
         previous_score = -INFINITY
         unstable = False
+        stable_streak = 0
         prev_scores: dict[int, int] = {}
         for depth in range(1, 64):
             iteration_started = time.monotonic()
@@ -2004,6 +2013,7 @@ class FastEngine:
                 unstable = depth >= 3 and (
                     best != previous_best or score < previous_score - 50
                 )
+                stable_streak = stable_streak + 1 if depth >= 3 and not unstable else 0
                 previous_best, previous_score = best, score
             now = time.monotonic()
             if TIME_V2:
@@ -2011,6 +2021,10 @@ class FastEngine:
                 budget = soft_limit - started
                 predicted = (now - iteration_started) * 2.5
                 allowance = 2.5 if unstable else 1.5
+                # TIME_V5 refund: two settled iterations in a row and the next
+                # one must fit inside one soft budget, not one and a half.
+                if TIME_V5 and stable_streak >= 2:
+                    allowance = 1.0
                 if elapsed + predicted > allowance * budget:
                     break
             elif now > soft_limit:
@@ -2261,7 +2275,7 @@ def _budget_v2(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
 
     if TIME_V3:
-        expected = max(26.0, 46.0 - board.fullmove_number * 0.4)
+        expected = max(18.0 if TIME_V5 else 26.0, 46.0 - board.fullmove_number * 0.4)
     else:
         expected = max(20.0, 40.0 - board.fullmove_number * 0.5)
     # Below LOW_CLOCK, live on the increment. Crediting half of it while the clock

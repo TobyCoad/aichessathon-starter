@@ -682,3 +682,20 @@ the worker reaches 101-lmraggr. Verdicts recorded: 091-ttkeep INCONCLUSIVE
 leaning reject (stopped at 108 games, -32 +/- 52) moved to the closed list;
 gen-001 done on the desktop (281,853 positions), gen-002 running; 100-v8all at
 167 games llr +1.01 (+34 +/- 43), trending pass but undecided.
+
+5 Sep 12:55 (loop iter 4) TIME_V5 implemented (was backlog 3): expected-moves
+floor 26 -> 18 in _budget_v2, paired with a refund in the iteration stop rule --
+after two consecutive completed iterations that kept the same best move with no
+score drop, the next iteration is allowed 1.0 soft budgets instead of 1.5. Off
+in the tree; ruff, mypy, check_fastsearch 70/70 exact all PASS (the kernel is
+untouched). Offline schedule model at 120 s + 0.5 s inc: the floor alone only
+binds after move 50 (worst case near-identical to the champion), the refund is
+the real effect -- with 60% of moves stable the clock holds 35.6 s at move 60
+vs 25.6 s today and move 80 gets 1.06 s vs 0.84 s; no variant dips below the
+~15 s LOW_CLOCK equilibrium. 8 s play is byte-identical (the floor never binds
+below LOW_CLOCK), so the gate is 102-timev5-clock (clocktest, 1.5x charge) +
+102-timev5-120s (40 games at 120 s, platform openings), both appended to the
+laptop queue (4 pending there vs 7 on the desktop); the fixed-movetime endgame
+suite cannot see a budget change and is waived. No verdicts landed: desktop on
+gen-002 (300/500 at the 12:38 heartbeat), laptop on 100-v8all, now 314 games at
+llr -0.00 (+10 +/- 31) -- the early +1.01 has washed out, heading inconclusive.

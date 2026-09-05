@@ -20,5 +20,20 @@
  {
   "name": "099-ttbuckets",
   "sed": "s/^TT_BUCKETS: Final = False$/TT_BUCKETS: Final = True/"
+ },
+ {
+  "name": "102-timev5-clock",
+  "kind": "clocktest",
+  "sed": "s/^TIME_V5: Final = False$/TIME_V5: Final = True/"
+ },
+ {
+  "name": "102-timev5-120s",
+  "sed": "s/^TIME_V5: Final = False$/TIME_V5: Final = True/",
+  "games": 40,
+  "workers": 6,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
  }
 ]
