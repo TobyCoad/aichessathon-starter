@@ -945,6 +945,12 @@ QS_EVAL_CACHE: Final = False
 # SEE_MAIN: in the main search skip captures losing more than 20*depth^2 on the
 # exchange at depth <= 5 (never the first move).
 SEE_MAIN: Final = False
+# ROOT_ORDER: from the second iteration order the root moves by the scores the
+# previous iteration gave them (stable: moves the aspiration pass never reached
+# keep their old order at the tail) instead of re-running the static ordering.
+# The book/hash move still leads. Fail-low values are only upper bounds, but
+# the relative order they induce is what most engines sort the root by.
+ROOT_ORDER: Final = False
 # CHECK_EXT_CAP: at most this many check extensions on one line (0 = unlimited).
 CHECK_EXT_CAP: Final = 0
 BOOK_VERIFY_MARGIN: Final = 25
@@ -1892,10 +1898,12 @@ class FastEngine:
         previous_best = 0
         previous_score = -INFINITY
         unstable = False
+        prev_scores: dict[int, int] = {}
         for depth in range(1, 64):
             iteration_started = time.monotonic()
             first_done = False
             iteration_best = best
+            pass_scores: dict[int, int] = {}
             # ASPIRATION: a window around the last score, or the full window.
             window = 0
             if ASPIRATION and depth >= 4 and abs(previous_score) < MATE_THRESHOLD:
@@ -1908,9 +1916,18 @@ class FastEngine:
                     score = -INFINITY
                     alpha = lo
                     failed_high = False
-                    _fb.order_moves(
-                        moves, n, pos.sq, hint if hint else best, 0, 0, self.butterfly, self.scores
-                    )
+                    front = hint if hint else best
+                    if ROOT_ORDER and prev_scores:
+                        ranked = [
+                            (int(moves[i]) != front, -prev_scores.get(int(moves[i]), -INFINITY), i)
+                            for i in range(n)
+                        ]
+                        ranked.sort()
+                        moves[:n] = moves[:n][[r[2] for r in ranked]]
+                    else:
+                        _fb.order_moves(
+                            moves, n, pos.sq, front, 0, 0, self.butterfly, self.scores
+                        )
                     iteration_best = int(moves[0])
                     first_done = False
                     for i in range(n):
@@ -1925,6 +1942,8 @@ class FastEngine:
                                 value = -self.root_search(depth - 1, -hi, -alpha, 1)
                         finally:
                             self._unmake()
+                        if ROOT_ORDER:
+                            pass_scores[move] = value
                         if i == 0:
                             # A first move that fell out of the window proves nothing
                             # about the others; with the full window this is always true.
@@ -1953,6 +1972,8 @@ class FastEngine:
                     else:
                         break
                 best = iteration_best
+                if ROOT_ORDER:
+                    prev_scores = pass_scores
             except Timeout:
                 # The first root move is the previous best, searched with a full
                 # window; a later move that came back above alpha at this depth has

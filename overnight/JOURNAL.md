@@ -634,3 +634,14 @@ Desktop worker live (E:/dev/aichessathon-starter): 091/092/093 vs v7.1.
 6-11k ponder nodes for every gap up to 9.6 s -> the process is frozen while the
 opponent thinks. Init with the ponder engine + 16-zone net was 50.1 s of 90 on their
 box (v6: 36-39 s). Upload for 12:00 = v7.1 clean (16-zone net, all switches as v6).
+
+5 Sep 11:00 (loop iter 1) ROOT_ORDER implemented (backlog 3): from depth 2 the root
+moves are sorted by the previous iteration's scores (stable; unreached moves keep
+their tail order; book/hash move still leads) instead of re-running order_moves each
+depth. Off in the tree; ruff, mypy, check_fastsearch 70/70 exact all PASS. Measured
+through the real choose() loop with a depth cap: nodes to depth 8 over 20 bench
+middlegame/tactics positions +3.5% overall (per position 0.63x-3.06x, same best move
+20/20) -- weakly negative on nodes, SPRT will judge. Queued as 098-rootorder in
+overnight/laptop/tasks.json (laptop queue was empty; desktop holds six). Laptop
+worker confirmed up; it waits for the 090-history2 rerun gauntlet to clear. No new
+verdicts this iteration: desktop mid-run on 091-ttkeep (46 games at 10:30 heartbeat).

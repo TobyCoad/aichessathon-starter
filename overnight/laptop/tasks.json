@@ -1,1 +1,6 @@
-[]
+[
+ {
+  "name": "098-rootorder",
+  "sed": "s/^ROOT_ORDER: Final = False$/ROOT_ORDER: Final = True/"
+ }
+]
