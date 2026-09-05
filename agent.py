@@ -940,6 +940,13 @@ SAFE_BITS: Final = False
 # best is not better by more than BOOK_VERIFY_MARGIN centipawns. Closes the book
 # lines measured at -68 and -165 cp on the platform's own start positions.
 BOOK_VERIFY: Final = False
+# QS_EVAL_CACHE: memoise quiescence static evaluations by position key (exact).
+QS_EVAL_CACHE: Final = False
+# SEE_MAIN: in the main search skip captures losing more than 20*depth^2 on the
+# exchange at depth <= 5 (never the first move).
+SEE_MAIN: Final = False
+# CHECK_EXT_CAP: at most this many check extensions on one line (0 = unlimited).
+CHECK_EXT_CAP: Final = 0
 BOOK_VERIFY_MARGIN: Final = 25
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
@@ -1433,6 +1440,9 @@ class FastEngine:
         "ctrl",
         "deadline",
         "draw_root",
+        "ec_key",
+        "ec_val",
+        "exts",
         "first_score",
         "hint",
         "history",
@@ -1462,6 +1472,9 @@ class FastEngine:
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
         self.butterfly = np.zeros(8192, dtype=np.int32)
         self.counter = np.zeros(4096, dtype=np.int32)
+        self.exts = np.zeros(_fb.MAX_PLY, dtype=np.int64)
+        self.ec_key = np.zeros(1, dtype=np.uint64)
+        self.ec_val = np.zeros(1, dtype=np.int32)
         self.quiets = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
         self.corr = np.zeros((2, 1 << CORRECTION_BITS), dtype=np.int64)
         # One move buffer per ply, sliced once: a fresh view per node is not free.
@@ -1473,13 +1486,14 @@ class FastEngine:
         self.killers2 = np.zeros((_fb.MAX_PLY, 2), dtype=np.int32)
         self.scores2 = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int64)
         self.scratch = np.zeros(2 * ACC_SIZE, dtype=np.float32)
-        self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 24, dtype=np.int64)
+        self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 32, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
         self.hint = 0  # a book move to search first and verify
         self.first_score = -INFINITY
         if COMPILED_SEARCH:
             self.tt = _fs.new_table()
+            self.ec_key, self.ec_val = _fs.new_eval_cache()
         self.scores = np.zeros(_fb.MOVE_CAP, dtype=np.int64)
         self.white = B1.copy()
         self.black = B1.copy()
@@ -1791,7 +1805,7 @@ class FastEngine:
             _W2T, B2, W3, B3, *self.tt,
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
-            self.counter, self.quiets,
+            self.counter, self.quiets, self.ec_key, self.ec_val, self.exts,
         )
         self.nodes = int(ctrl[_fs.C_NODES])
         if ctrl[_fs.C_ABORT]:
@@ -1847,6 +1861,9 @@ class FastEngine:
             ctrl[_fs.C_TT_KEEP] = 1 if TT_KEEP else 0
             ctrl[_fs.C_QS_CAP] = QS_CAP
             ctrl[_fs.C_SAFE] = 1 if SAFE_BITS else 0
+            ctrl[_fs.C_QS_CACHE] = 1 if QS_EVAL_CACHE else 0
+            ctrl[_fs.C_SEE_MAIN] = 1 if SEE_MAIN else 0
+            ctrl[_fs.C_CHECK_CAP] = CHECK_EXT_CAP
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 

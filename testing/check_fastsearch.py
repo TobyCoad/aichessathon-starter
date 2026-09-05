@@ -99,6 +99,8 @@ class Kernel:
         self.rep = np.zeros(0, np.uint64)
         self.scratch = np.zeros(2 * acc, np.float32)
         self.counter = np.zeros(4096, np.int32)
+        self.ec_key, self.ec_val = fs.new_eval_cache()
+        self.exts = np.zeros(fb.MAX_PLY, np.int64)
         self.quiets = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), np.int32)
         self.ctrl = np.zeros(fs.CTRL_SIZE, np.int64)
         self.ctrl[fs.C_TT_OFF] = 0 if table_on else 1
@@ -119,7 +121,7 @@ class Kernel:
                 agent._W2T, agent.B2, agent.W3, agent.B3, *self.table,
                 self.killers, self.butterfly, self.moves, self.scores, self.rep,
                 self.ctrl, time.monotonic() + 3600, d, -agent.INFINITY, agent.INFINITY, 0,
-                self.scratch, self.counter, self.quiets,
+                self.scratch, self.counter, self.quiets, self.ec_key, self.ec_val, self.exts,
             )
         seconds = time.perf_counter() - started
         slot = int(pos.keys[0] & fs.TT_MASK)

@@ -79,7 +79,15 @@ HISTORY_MAX = 16384
 # (8 in the reference). C_SAFE: mate-distance pruning and null-move reduction
 # growing with depth.
 C_TT_KEEP, C_QS_CAP, C_SAFE = 21, 22, 23
-CTRL_SIZE = 24
+# C_QS_CACHE: quiescence static evaluations memoised by full key (exact: the same
+# position always has the same static score). C_SEE_MAIN: in the main search skip
+# captures that lose material on the exchange at depth <= 5. C_CHECK_CAP: at most
+# this many check extensions along one line (0 = unlimited, the reference).
+C_QS_CACHE, C_SEE_MAIN, C_CHECK_CAP = 24, 25, 26
+EVAL_CACHE_BITS = 20
+EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
+EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
+CTRL_SIZE = 32
 
 
 @njit(cache=False)
@@ -105,6 +113,11 @@ for _d in range(1, 64):
 # LMP: at depth d, once this many moves have been searched, remaining quiet
 # moves are skipped when not in check and not near a mate.
 LMP_LIMIT = np.array([0, 5, 8, 13], dtype=np.int64)
+
+
+def new_eval_cache() -> tuple[Any, ...]:
+    """(key, value) arrays for the quiescence static-eval memo."""
+    return (np.zeros(EVAL_CACHE_SIZE, dtype=np.uint64), np.zeros(EVAL_CACHE_SIZE, dtype=np.int32))
 
 
 def new_table() -> tuple[Any, ...]:
@@ -264,13 +277,24 @@ def quiesce(
     w2t: Any, b2: Any, w3: Any, b3: Any,
     butterfly: Any, moves: Any, scores: Any, ctrl: Any, deadline: Any,
     alpha: Any, beta: Any, depth: Any, ply: Any, scratch: Any,
+    ec_key: Any, ec_val: Any, exts: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
         ctrl[C_ABORT] = 1
         return 0
 
-    standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+    if ctrl[C_QS_CACHE] != 0:
+        qkey = keys[meta[fb.PLY]]
+        qslot = np.int64(qkey & EVAL_CACHE_MASK)
+        if ec_key[qslot] == qkey:
+            standing = np.int64(ec_val[qslot])
+        else:
+            standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+            ec_key[qslot] = qkey
+            ec_val[qslot] = standing
+    else:
+        standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if standing >= beta:
         return standing
     if standing + BIG_DELTA < alpha:
@@ -299,7 +323,7 @@ def quiesce(
         score = -quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline,
-            -beta, -alpha, depth + 1, ply + 1, scratch,
+            -beta, -alpha, depth + 1, ply + 1, scratch, ec_key, ec_val, exts,
         )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
@@ -320,6 +344,7 @@ def search(
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
     depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any, counter: Any, quiets: Any,
+    ec_key: Any, ec_val: Any, exts: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
@@ -382,13 +407,19 @@ def search(
 
     in_check = fb.in_check(bb, meta)
     if in_check and ply < MAX_PLY - 8:
-        depth += 1
+        if ctrl[C_CHECK_CAP] == 0 or (ply > 0 and exts[ply - 1] < ctrl[C_CHECK_CAP]):
+            depth += 1
+            exts[ply] = (exts[ply - 1] if ply > 0 else 0) + 1
+        else:
+            exts[ply] = exts[ply - 1] if ply > 0 else 0
+    else:
+        exts[ply] = exts[ply - 1] if ply > 0 else 0
 
     if depth <= 0:
         return quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline, alpha, beta, 0, ply,
-            scratch,
+            scratch, ec_key, ec_val, exts,
         )
 
     standing = -INFINITY
@@ -440,7 +471,7 @@ def search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
+            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
         )
         fb.unmake_null(meta, undo)
         if ctrl[C_ABORT]:
@@ -477,6 +508,16 @@ def search(
         plain = quiet and (move >> 12) == 0
         if futile and plain:
             continue
+        if (
+            ctrl[C_SEE_MAIN] != 0
+            and not quiet
+            and (move >> 12) == 0
+            and depth <= 5
+            and searched > 0
+            and abs(alpha) < DISTANCE_THRESHOLD
+            and fb.see(bb, sq, meta, move) < -20 * depth * depth
+        ):
+            continue
         if lmp and plain and searched >= LMP_LIMIT[depth]:
             continue
         reduction = 0
@@ -503,6 +544,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 reduced, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
+                ec_key, ec_val, exts,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
@@ -514,6 +556,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
+                        ec_key, ec_val, exts,
                     )
                 else:
                     score = -search(
@@ -521,6 +564,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                        ec_key, ec_val, exts,
                     )
         elif pvs and searched > 0:
             score = -search(
@@ -528,13 +572,14 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
+                ec_key, ec_val, exts,
             )
         else:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
             )
         narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
@@ -543,7 +588,7 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
             )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
@@ -631,6 +676,8 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     scores = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int64)
     scratch = np.zeros(2 * acc, dtype=np.float32)
     rep_keys = np.zeros(0, dtype=np.uint64)
+    ec_key, ec_val = new_eval_cache()
+    exts = np.zeros(fb.MAX_PLY, dtype=np.int64)
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1
     ctrl[C_FUTILITY] = 1
@@ -639,4 +686,5 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
         ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch, counter, quiets,
+        ec_key, ec_val, exts,
     )
