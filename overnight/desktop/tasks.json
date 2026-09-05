@@ -1,5 +1,23 @@
 [
-  {"name": "091-ttkeep", "sed": "s/^TT_KEEP: Final = False$/TT_KEEP: Final = True/"},
-  {"name": "092-qscap14", "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"},
-  {"name": "093-safe", "sed": "s/^SAFE_BITS: Final = False$/SAFE_BITS: Final = True/"}
+ {
+  "name": "091-ttkeep",
+  "sed": "s/^TT_KEEP: Final = False$/TT_KEEP: Final = True/"
+ },
+ {
+  "name": "092-qscap14",
+  "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"
+ },
+ {
+  "name": "093-safe",
+  "sed": "s/^SAFE_BITS: Final = False$/SAFE_BITS: Final = True/"
+ },
+ {
+  "name": "095-asp15",
+  "sed": "s/^ASPIRATION_WINDOW: Final = 30$/ASPIRATION_WINDOW: Final = 15/"
+ },
+ {
+  "name": "096-clocktest-v71",
+  "kind": "clocktest",
+  "sed": ""
+ }
 ]
