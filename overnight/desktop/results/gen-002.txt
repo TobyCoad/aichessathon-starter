@@ -1,0 +1,4 @@
+name gen-002
+kind generate
+host DESKTOP-B9VDHIJ
+flags wrote overnight\desktop\results\data\gen-002.parquet: 287,103 positions from 3000 games in 49.8 min (4.3 MB)
