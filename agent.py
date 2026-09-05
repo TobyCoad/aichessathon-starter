@@ -1056,6 +1056,17 @@ KILLER_CLEAR: Final = True
 # history test; butterfly-style gravity update on a cutoff, halved under
 # HYGIENE, no read or update after a null move.
 CONT_HIST: Final = False
+# IMPROVING (v10 search.md 3.3): static_eval(ply) > static_eval(ply - 2), the
+# stack in exts[MAX_PLY + ply] (sentinel -INFINITY in check, ply < 2 defaults
+# to improving). When NOT improving prune harder: RFP margin depth - improving,
+# prune2 futility FUTILITY_MARGIN2[depth - improving], LMR reduction += 1.
+# Costs one static eval at the <1% of non-check nodes deeper than RFP reaches.
+IMPROVING: Final = False
+# CUTNODE (same source): expected-fail-high flag passed down the tree (the one
+# new kernel parameter): the null-move child is always a cut node, a null-window
+# child is a cut node iff its parent was not, a full-window child of a PV node
+# is a PV node. Use: LMR reduction += 1 at cut nodes.
+CUTNODE: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -1086,7 +1097,7 @@ LOW_CLOCK: Final = 15.0
 # to 1.6 s with 19 s moves under the 1.5x clocktest charge; these are the tamed
 # values. Absorbs TIME_V5's
 # 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
-TIME_V6: Final = False
+TIME_V6: Final = True
 RESERVE_FRACTION_V6: Final = 0.06
 LOW_CLOCK_V6: Final = 12.0
 _STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
@@ -1923,6 +1934,7 @@ class FastEngine:
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
             self.counter, self.quiets, self.ec_key, self.ec_val, self.exts, self.conthist1,
+            0,  # the root is a PV node, never an expected cut node
         )
         self.nodes = int(ctrl[_fs.C_NODES])
         if ctrl[_fs.C_ABORT]:
@@ -1990,6 +2002,8 @@ class FastEngine:
             ctrl[_fs.C_HIST2_FIX] = 1 if HISTORY2_FIX else 0
             ctrl[_fs.C_KILLER_CLEAR] = 1 if KILLER_CLEAR else 0
             ctrl[_fs.C_CONT_HIST] = 1 if CONT_HIST else 0
+            ctrl[_fs.C_IMPROVING] = 1 if IMPROVING else 0
+            ctrl[_fs.C_CUTNODE] = 1 if CUTNODE else 0
             if INIT_FOLD:
                 for fold_slot, fold_value in _fs.FOLDED.items():
                     if bool(ctrl[fold_slot]) != fold_value:

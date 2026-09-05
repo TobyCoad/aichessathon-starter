@@ -892,3 +892,12 @@ removed from the desktop queue (seds no-op against the v9 tree -> self-play nois
 111-singular declared VOID for the same reason (its -4.3 +/- 29 at 404 games is
 consistent with champion-vs-champion; do not fold it as SINGULAR attribution). Next:
 133-conthist decides the v9.1 anchor; INIT_FOLD rides along; NET_V10 work after 22:00.
+
+5 Sep 21:55 v9.1 SHIPPED (email sent): v9 + TIME_V6, zip from the tested challenger
+v9-120s-l (55.0%/40 at 120 s vs v9, clocktest PASS 5.8 s floor), TIME_V6 flipped on in the
+tree, exact 70/70. 133-conthist REJECT -> CONT_HIST closed. Stockfish training data:
+training/binpack_decode.py written and validated (435k sample entries exact; scale 0.45
+cp/unit vs SF 17.1 depth 12, r=0.90; VALUE_NONE 32002 filtered; int16 wrap fixed; null /
+marker moves 0xFFFF end a chain), decoding data/sf/test80-2024-02 (6.9 GB zst) to 580M
+RECORD positions for a warm-started retrain tonight. Loop paused 21:20-22:20 on the usage
+limit; desktop is off, all gates on the laptop.

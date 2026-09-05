@@ -116,7 +116,9 @@ class BitReader:
         return self.offset - self.start + (1 if self.bits_left != 8 else 0)
 
 
-def board_from_entry(data: memoryview, at: int) -> tuple[chess.Board, chess.Move, int, int, int]:
+def board_from_entry(
+    data: memoryview, at: int
+) -> tuple[chess.Board, chess.Move | None, int, int, int]:
     """Decode one 32-byte entry: board, move, side-to-move score, ply, result."""
     occ = int.from_bytes(data[at : at + 8], "big")
     board = chess.Board(None)
@@ -163,12 +165,15 @@ def board_from_entry(data: memoryview, at: int) -> tuple[chess.Board, chess.Move
     return board, move, score, ply, result
 
 
-def decompress_move(packed: int, board: chess.Board) -> chess.Move:
-    if packed == 0:
-        return chess.Move.null()
+def decompress_move(packed: int, board: chess.Board) -> chess.Move | None:
+    """None for a null / marker move (packed 0 or 0xFFFF, or from == to)."""
+    if packed == 0 or packed == 0xFFFF:
+        return None
     mtype = packed >> 14
     frm = (packed >> 8) & 63
     to = (packed >> 2) & 63
+    if frm == to:
+        return None
     if mtype == 1:  # promotion
         return chess.Move(frm, to, promotion=chess.KNIGHT + (packed & 3))
     if mtype == 2:  # castle: king square -> rook square in this library
@@ -233,7 +238,7 @@ def next_move_score(
     return move, score
 
 
-def iter_chunk(chunk: bytes) -> Iterator[tuple[chess.Board, chess.Move, int, int, int]]:
+def iter_chunk(chunk: bytes) -> Iterator[tuple[chess.Board, chess.Move | None, int, int, int]]:
     """Every (board, best move, stm score, ply, result) in one chunk, in order."""
     data = memoryview(chunk)
     n = len(chunk)
@@ -245,6 +250,8 @@ def iter_chunk(chunk: bytes) -> Iterator[tuple[chess.Board, chess.Move, int, int
         at += 2
         yield board, move, score, ply, result
         if plies:
+            if move is None or not board.is_pseudo_legal(move):
+                raise ValueError("continuation after a null or illegal move")
             reader = BitReader(data, at)
             last_score = -score
             for _ in range(plies):
@@ -264,11 +271,18 @@ def decode_chunk(job: tuple[bytes, float, int]) -> tuple[np.ndarray, int, int]:
     out = np.zeros(len(chunk) // 4 + 64, dtype=RECORD)
     kept = 0
     seen = 0
-    for board, move, score, ply, _result in iter_chunk(chunk):
+    entries = iter_chunk(chunk)
+    while True:
+        try:
+            board, move, score, ply, _result = next(entries)
+        except StopIteration:
+            break
+        except (ValueError, AssertionError, IndexError, KeyError):
+            break  # a malformed or unsupported chain: keep what this chunk gave so far
         seen += 1
         if ply < min_ply or board.is_check() or abs(score) >= VALUE_NONE:
             continue
-        if move and board.is_capture(move):
+        if move is not None and board.is_capture(move):
             continue
         idx = white_indices(board)
         if not idx or len(idx) > MAX_PIECES:
@@ -313,7 +327,7 @@ def sample(path: Path, limit: int) -> None:
     printed = 0
     for chunk in chunks(path):
         for board, move, score, ply, result in iter_chunk(chunk):
-            print(f"{board.fen()}\t{score}\t{move.uci()}\t{ply}\t{result}")
+            print(f"{board.fen()}\t{score}\t{(move.uci() if move is not None else '0000')}\t{ply}\t{result}")
             printed += 1
             if printed >= limit:
                 return
@@ -329,7 +343,9 @@ def main() -> None:
         "--val", type=int, default=500_000, help="validation positions (last shard)"
     )
     parser.add_argument("--workers", type=int, default=max(1, (mp.cpu_count() or 4) - 2))
-    parser.add_argument("--scale", type=float, default=0.45, help="internal score -> cp (median vs SF17.1)")
+    parser.add_argument(
+        "--scale", type=float, default=0.45, help="internal score -> cp (median vs SF17.1)"
+    )
     parser.add_argument("--min-ply", type=int, default=16)
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
     parser.add_argument("--sample", type=int, default=0, help="print N FENs + raw scores and exit")
@@ -356,9 +372,15 @@ def main() -> None:
     pending: list[np.ndarray] = []
     pending_rows = 0
     with mp.Pool(arguments.workers) as pool:
-        for records, seen, kept in pool.imap(decode_chunk, jobs(), chunksize=1):
+        for task, (records, seen, kept) in enumerate(pool.imap(decode_chunk, jobs(), chunksize=1)):
             seen_total += seen
             kept_total += kept
+            if task % 100 == 0:
+                rate = seen_total / max(time.time() - started, 1)
+                print(
+                    f"  task {task}: {seen_total:,} seen, {kept_total:,} kept, {rate:,.0f} pos/s",
+                    flush=True,
+                )
             pending.append(records)
             pending_rows += kept
             if pending_rows >= arguments.shard or kept_total >= arguments.target:

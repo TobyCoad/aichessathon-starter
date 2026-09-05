@@ -141,6 +141,11 @@ training count as load -- do not start them while a gauntlet is within 30 games 
 checkpoint; keep the exactness check green at every commit; never edit results files.
 
 ## Champion
+- v9.1 (5 Sep 21:55, uploaded by the human when he reads the email) = v9 + TIME_V6, all True
+  in the tree (exact 70/70). Evidence: 40 games at 120 s vs v9 55.0% (+11 =22 -7), clocktest
+  PASS (floor 5.8 s by design). v9 (19:53) = v8.5 + QS_EVAL_CACHE + ADJUDICATION +
+  HISTORY2_FIX + KILLER_CLEAR (+23 at the 200-game checkpoint). CONT_HIST REJECTED at 8 s
+  (133-conthist) -- closed. IMPROVING + CUTNODE built (off, by the loop) -- the v9.2 bundle.
 - v9 (candidate emailed 5 Sep 19:54, awaiting the human's upload) = v8.5 +
   QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR, all True in the tree
   since 5 Sep 19:49. Evidence: 8 s SPRT PROMOTE +23 at 200 games (53.2%), clocktest
