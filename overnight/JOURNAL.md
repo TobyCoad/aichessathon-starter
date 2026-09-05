@@ -717,3 +717,22 @@ evaluate (TT cutoffs, repetitions, null-move prunes), so it grows with depth.
 Queued as 103-lazyacc on the desktop (shorter queue). Verdicts recorded:
 gen-002 done (287,103 positions; the pilot pair now totals ~570k), v8-clocktest
 PASS (0/6, lowest clock 10.0 s); 100-v8all still open at 453 games, llr -0.45.
+
+5 Sep 14:15 (loop iter 7) Verdicts folded: v8-120s scored 67.5% (+18 =18 -4)
+over 40 games at 120 s on platform openings -- formally INCONCLUSIVE (40 games
+cannot close SPRT[-50,50]) but strong evidence the v8 switch group is positive
+at long TC; b1-kz16 closed as a reject on val loss (0.004977 vs the champion
+b8-kz16's 0.004659, GPU freed 11:44). Bad news: the 100-v8all gauntlet died
+silently at ~453 games (llr -0.45); the worker saw no verdict line, discarded
+the log and restarted the task at 13:49 -- the rerun is healthy at ~50 games
+but the evidence is lost. A process check confirmed only one worker chain is
+alive (the second worker.sh in the list is its own subshell); the 11:43 rm/cp
+errors came from run_task rebuilding the challenger dir before its busy-CPU
+wait during overlapping restarts. Backlog 3 started as overnight/month5.sh
+(detached, idempotent): discovered fishnet-evals ends at 2025_03, so the fifth
+month is 2024_11 (6.49 GB downloading) -> pack on 4 workers (the gauntlet
+keeps its cores) -> retrain kz16r on five 145M shards at lr 1e-4 from the
+b8-kz16 checkpoint -> export float16 + check_nnue + endgame suite into
+challengers/104-kz16r. Gauntlet queueing is left to the iteration that reads
+the suite. Self-play parquets deliberately excluded from this retrain (equal
+shard rotation would overweight 570k positions ~250x).

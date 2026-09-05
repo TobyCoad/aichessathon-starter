@@ -46,19 +46,36 @@ REJECT/closed: PVS (x2), LMP, RFP_PHASE (suite), correction history (x2), TT_EVA
 book-off (inconclusive), book-verify (-94), IIR (inconclusive), NMP_GUARD (flat),
 pondering (platform freezes the process), endgame fine-tune of the old net,
 QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
-091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject).
+091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject),
+b1-kz16 net (1 output bucket: val 0.004977 vs the champion b8-kz16's 0.004659,
+clearly worse, closed on val loss without a challenger).
+Bundle evidence: v8-120s (the 7-switch probe at 120 s, platform openings) scored
+67.5% (+18 =18 -4) over 40 games -- labelled INCONCLUSIVE only because 40 games
+cannot close an SPRT. Together with v8-clocktest PASS this says the v8 switches
+as a group are strongly positive at long TC; single-switch verdicts still decide
+what enters a bundle.
 
-## Running now (5 Sep 13:45)
-- desktop: gen-002 DONE (287,103 positions / 3000 games -> results/data/), and
-  v8-clocktest PASS (0/6 errors, lowest clock 10.0 s, longest move 12.8 s) --
-  the v8 bundle keeps time. Now on v8-120s; then 092-qscap14, 093-safe,
-  095-asp15, 096-clocktest-v71, 097-seemain, 103-lazyacc (queued this iter).
-- laptop CPU: 100-v8all gauntlet at 453 games, llr -0.45, +6 +/- 26 --
-  inconclusive-leaning; the 600-game cap should close it soon. Worker queue
-  after it: 101-lmraggr, 073-kz16w, 098-rootorder, 099-ttbuckets,
+## Running now (5 Sep 14:10)
+- desktop: on 092-qscap14; then 093-safe, 095-asp15, 096-clocktest-v71,
+  097-seemain, 103-lazyacc. v8-120s verdict recorded above.
+- laptop CPU: 100-v8all RESTARTED -- the 11:43 gauntlet died silently at ~453
+  games (llr -0.45); the worker found no verdict line, discarded the result and
+  re-ran the task at 13:49, now ~50 games. That evidence is lost; the rerun
+  starts from zero. Only ONE worker chain is alive (PID check: the second
+  worker.sh in the process list is a subshell of the first). Known race in
+  run_task: the challenger dir is rebuilt BEFORE the busy-CPU wait, so
+  overlapping worker restarts clobber files (the 11:43 rm/cp errors). Queue
+  after 100-v8all: 101-lmraggr, 073-kz16w, 098-rootorder, 099-ttbuckets,
   102-timev5-clock, 102-timev5-120s.
-- laptop GPU: net_w512-b1-kz16 training (if still up -- not re-verified this iter).
-- download: fetch 2025_04 idling ("nothing new to analyse").
+- laptop background: overnight/month5.sh (detached, idempotent, logs to
+  night3.log with "month5" lines): fetch 2024_11 (6.49 GB, running) -> pack on
+  4 workers -> train kz16r (GPU, 5 shards, lr 1e-4, resumes from b8-kz16) ->
+  export + check_nnue + suite into challengers/104-kz16r. It does NOT queue the
+  gauntlet; a later iteration does that after reading the suite. NOTE: the
+  fishnet-evals dataset ENDS at 2025_03 (2025_04/05 are 404), so the fifth
+  month is 2024_11.
+- laptop GPU: idle until the month5 train step (b1-kz16 finished 11:44,
+  verdict recorded above).
 
 ## Backlog (ranked; take the top item that is not running)
 1. Fold every landed verdict: promote passes into the tree (switch -> True, or
@@ -68,20 +85,24 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
    a proper bundle from the single-switch passes only.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
    (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
-3. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
-   The two desktop self-play parquets (gen-001/002, ~570k positions) can join
-   the training mix when a retrain happens.
+3. RUNNING as overnight/month5.sh (see above). When suite-104-kz16r.log lands,
+   queue 104-kz16r as a net task ({"name": "104-kz16r", "net":
+   "overnight/challengers/104-kz16r/weights/net.npz", "sed": ""}) on the
+   shorter queue. The self-play parquets (gen-001/002, ~570k positions) were
+   deliberately left OUT of this retrain (a sixth rotating shard would get
+   ~250x per-position weight); a self-play mix is a separate future experiment.
 4. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
 5. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 6: check results (laptop for 100-v8all, 453 games at llr -0.45 and
-capped at 600, closing soon; desktop for v8-120s, then 092 / 093 / 095). Fold
-any verdicts (100-v8all is a BUNDLE probe -- see the caveat in backlog 1).
-Otherwise take backlog item 3 (pack the fifth month + retrain), but first
-check whether the GPU training run (net_w512-b1-kz16) is still occupying the
-GPU -- if it finished, record its checkpoint and suite numbers before starting
-a new train.
+Iteration 8: check results (desktop for 092-qscap14 / 093 / 095; laptop for the
+100-v8all rerun -- if it dies again near 450 games with no verdict, read the
+tail of overnight/laptop/results/100-v8all.gauntlet.log BEFORE the worker
+truncates it, and consider capping games at 400 so it can finish). Check the
+month5 chain: grep "month5" overnight/eval/night3.log -- on FETCH/PACK/TRAIN
+FAILED, fix and relaunch `nohup bash overnight/month5.sh &` (idempotent). If
+suite-104-kz16r.log exists, record its numbers and queue the 104-kz16r net
+task per backlog 3. Otherwise take backlog 4 (book rebuild).
 Verdict context for the queued challengers: 098-rootorder +3.5% nodes (REJECT
 likely); 099-ttbuckets node-neutral at depth 8 (only long searches can show a
 gain); 101-lmraggr 0.92x nodes at depth 8 (modest); 102-timev5 (floor 18 +
