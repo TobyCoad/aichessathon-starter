@@ -29,5 +29,10 @@
   "name": "133-conthist",
   "sed": "s/^CONT_HIST: Final = False$/CONT_HIST: Final = True/",
   "games": 600
+ },
+ {
+  "name": "140-v92prune",
+  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
+  "games": 600
  }
 ]
