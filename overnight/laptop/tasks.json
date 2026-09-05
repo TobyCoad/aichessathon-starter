@@ -5,6 +5,11 @@
   "games": 600
  },
  {
+  "name": "073-kz16w",
+  "net": "overnight/challengers/073-kz16w/weights/net.npz",
+  "sed": ""
+ },
+ {
   "name": "098-rootorder",
   "sed": "s/^ROOT_ORDER: Final = False$/ROOT_ORDER: Final = True/"
  },
