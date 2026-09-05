@@ -979,6 +979,20 @@ CHECK_EXT_CAP: Final = 0
 # pays the two 512-float row updates or the astack save/restore, which profiled
 # at 15.4% of search time. Needs COMPILED_SEARCH.
 LAZY_ACC: Final = False
+# PRUNE_V2: prune plain quiet moves harder at depth <= 4, after the first move
+# at a node, when not in check and not near a mate: futility with a margin of
+# 150 cp per ply of depth, and a history cut for quiets whose butterfly score
+# is below -3000 per ply of depth. Removes whole subtrees rather than
+# shortening them, which is what a depth gain needs. Needs COMPILED_SEARCH and
+# HISTORY2 (the history cut reads the side-to-move band).
+PRUNE_V2: Final = False
+# SINGULAR: singular extensions. At depth >= 7 with a hash move whose stored
+# bound is exact or a lower bound at depth >= depth - 3, the node is searched
+# again without that move at half depth with a window two pawns per ply below
+# the stored score; if nothing else reaches it the hash move is the only move
+# and is searched a ply deeper. Capped at six check-or-singular extensions on
+# a line. Needs COMPILED_SEARCH.
+SINGULAR: Final = False
 BOOK_VERIFY_MARGIN: Final = 25
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
@@ -1902,6 +1916,9 @@ class FastEngine:
             ctrl[_fs.C_TT_BUCKETS] = 1 if TT_BUCKETS else 0
             ctrl[_fs.C_LMR_AGGR] = 1 if LMR_AGGRESSIVE else 0
             ctrl[_fs.C_LAZY_ACC] = 1 if LAZY_ACC else 0
+            ctrl[_fs.C_PRUNE2] = 1 if PRUNE_V2 else 0
+            ctrl[_fs.C_SINGULAR] = 1 if SINGULAR else 0
+            ctrl[_fs.C_EXCL_PLY] = -1
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 

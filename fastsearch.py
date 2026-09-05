@@ -103,10 +103,29 @@ C_LMR_AGGR = 28
 # contains a zone change. agent.FastEngine.root_search resets C_ACC_PLY to the
 # board's ply before every kernel call; the root makes stay eager.
 C_LAZY_ACC, C_ACC_PLY = 29, 30
+# C_PRUNE2: prune plain quiet moves harder at low depth, on top of C_FUTILITY.
+# After the first move at a node, when not in check and not near a mate:
+# (a) futility to depth 4 -- skip when the static eval plus FUTILITY_MARGIN2
+# cannot reach alpha; (b) skip a quiet whose butterfly history (the
+# C_HISTORY2 side-to-move band) is below -HIST_PRUNE_SLOPE * depth.
+C_PRUNE2 = 31
+FUTILITY_MARGIN2 = np.array([0, 150, 300, 450, 600], dtype=np.int64)
+HIST_PRUNE_SLOPE = 3000
+# C_SINGULAR: singular extensions. At depth >= SINGULAR_MIN_DEPTH with a hash
+# move whose stored bound is exact or a lower bound at depth >= depth - 3, the
+# node is searched again without that move at (depth - 1) // 2 with the window
+# (s - 1, s), s = stored - 2 * depth. If nothing else reaches s the hash move
+# is singular and is searched one ply deeper. The excluded move travels in
+# C_EXCL_MOVE / C_EXCL_PLY (read once at node entry); the excluded search
+# neither probes nor stores the table at that node and skips the null move.
+# SINGULAR_EXT_CAP bounds check + singular extensions along one line.
+C_SINGULAR, C_EXCL_MOVE, C_EXCL_PLY = 32, 33, 34
+SINGULAR_MIN_DEPTH = 7
+SINGULAR_EXT_CAP = 6
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 32
+CTRL_SIZE = 40
 
 
 @njit(cache=False)
@@ -513,7 +532,13 @@ def search(
     hash_move = 0
     slot = np.int64(0)
     cached_eval = NO_EVAL
-    if ctrl[C_TT_OFF] == 0:
+    excluded = 0
+    if ctrl[C_SINGULAR] != 0 and ctrl[C_EXCL_PLY] == ply:
+        excluded = ctrl[C_EXCL_MOVE]
+    tt_depth = -1
+    tt_flag = 2
+    tt_score = 0
+    if ctrl[C_TT_OFF] == 0 and excluded == 0:
         slot = np.int64(key & TT_MASK)
         if ctrl[C_TT_BUCKETS] != 0:
             slot = slot & -2
@@ -526,6 +551,9 @@ def search(
             hash_move = unpack_move(data)
             cached_eval = unpack_eval(data)
             stored_score = from_table(unpack_score(data), ply)
+            tt_depth = stored_depth
+            tt_flag = flag
+            tt_score = stored_score
             if stored_depth >= depth and ply > 0:
                 if flag == 0:
                     return stored_score
@@ -536,7 +564,13 @@ def search(
                 if alpha >= beta:
                     return stored_score
 
-    if ctrl[C_IIR] != 0 and depth >= 4 and hash_move == 0 and ctrl[C_TT_OFF] == 0:
+    if (
+        ctrl[C_IIR] != 0
+        and depth >= 4
+        and hash_move == 0
+        and ctrl[C_TT_OFF] == 0
+        and excluded == 0
+    ):
         depth -= 1
 
     in_check = fb.in_check(bb, meta)
@@ -600,6 +634,7 @@ def search(
         and abs(beta) < DISTANCE_THRESHOLD
         and fb.non_pawn_material(bb, meta[fb.SIDE])
         and (ctrl[C_NMP_GUARD] == 0 or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
+        and excluded == 0
     ):
         null_depth = depth - 1 - NMP_REDUCTION
         if ctrl[C_SAFE] != 0:
@@ -622,6 +657,34 @@ def search(
             return 0
         if score >= beta:
             return beta
+
+    extend_hash = 0
+    if (
+        ctrl[C_SINGULAR] != 0
+        and excluded == 0
+        and ply > 0
+        and depth >= SINGULAR_MIN_DEPTH
+        and hash_move != 0
+        and tt_flag != 2
+        and tt_depth >= depth - 3
+        and abs(tt_score) < DISTANCE_THRESHOLD
+        and exts[ply] < SINGULAR_EXT_CAP
+    ):
+        sbeta = tt_score - 2 * depth
+        ctrl[C_EXCL_MOVE] = hash_move
+        ctrl[C_EXCL_PLY] = ply
+        value = search(
+            bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+            w2t, b2, w3, b3, tt_key, tt_data,
+            killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+            (depth - 1) // 2, sbeta - 1, sbeta, ply, scratch, counter, quiets,
+            ec_key, ec_val, exts,
+        )
+        ctrl[C_EXCL_PLY] = -1
+        if ctrl[C_ABORT]:
+            return 0
+        if value < sbeta:
+            extend_hash = 1
 
     mv = moves[ply]
     n = fb.gen_legal(bb, sq, meta, mv, False)
@@ -647,12 +710,27 @@ def search(
     lmr = ctrl[C_LMR] != 0 and depth >= 3 and not in_check
     aggr = ctrl[C_LMR_AGGR] != 0
     lmp = ctrl[C_LMP] != 0 and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
+    prune2 = (
+        ctrl[C_PRUNE2] != 0
+        and depth <= 4
+        and not in_check
+        and abs(alpha) < DISTANCE_THRESHOLD
+        and standing != -INFINITY
+    )
     for i in range(n):
         move = fb.pick_move(mv, sc, i, n)
+        if move == excluded:
+            continue
         quiet = sq[(move >> 6) & 63] < 0
         plain = quiet and (move >> 12) == 0
         if futile and plain:
             continue
+        if prune2 and plain and searched > 0:
+            if standing + FUTILITY_MARGIN2[depth] <= alpha:
+                continue
+            hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
+            if hist < -HIST_PRUNE_SLOPE * depth:
+                continue
         if (
             ctrl[C_SEE_MAIN] != 0
             and not quiet
@@ -730,12 +808,19 @@ def search(
                 ec_key, ec_val, exts,
             )
         else:
+            ext = 0
+            if extend_hash != 0 and move == hash_move:
+                ext = 1
+                exts[ply] += 1  # the child reads exts[ply] as its line's count
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
+                depth - 1 + ext, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                ec_key, ec_val, exts,
             )
+            if ext != 0:
+                exts[ply] -= 1
         narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
             # The null window said this move beats alpha: find out by how much.
@@ -780,11 +865,14 @@ def search(
                     break
 
     if searched == 0:
+        if excluded != 0:
+            # The excluded move was the only one: nothing else reaches the window.
+            return alpha
         # Every move was futility-pruned: the position is at least as bad as the
         # static score says, which is below alpha.
         return standing
 
-    if ctrl[C_TT_OFF] == 0:
+    if ctrl[C_TT_OFF] == 0 and excluded == 0:
         if best_score <= original_alpha:
             flag = 2
         elif best_score >= beta:
