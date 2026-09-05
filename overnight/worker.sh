@@ -41,7 +41,7 @@ reap_orphans() {  # python pool workers whose parent died (a Ctrl-C'd gauntlet) 
 }
 busy_gauntlets() {  # other gauntlets or clock tests running on this machine
     # python processes only: the query's own PowerShell command line would match itself
-    powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.Name -match 'python' -and \$_.CommandLine -match 'testing.gauntlet|testing.clocktest' } | Measure-Object).Count" 2>/dev/null | tr -d '\r' | tail -n 1
+    powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.Name -match 'python' -and \$_.CommandLine -match 'testing.gauntlet|testing.clocktest|binpack_decode|endgame_suite' } | Measure-Object).Count" 2>/dev/null | tr -d '\r' | tail -n 1
 }
 heartbeat() {  # task, log, pid: notice the end within 30 s, commit progress every 10 min
     local waited=0
