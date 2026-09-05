@@ -662,3 +662,8 @@ the gain; the second probe costs ~5% knps (197 -> 187, part noise). Queued as
 landed: desktop mid-run on 091-ttkeep (108 games at the 11:01 heartbeat, llr
 -1.21, trending REJECT -- consistent with ttkeep and ttbuckets attacking the
 same replacement question from opposite ends); laptop still on the 090 rerun.
+
+5 Sep 11:35 090-history2 rerun stopped at ~330 games (+12 +/- 31, inconclusive) so the
+laptop can run 100-v8all next: v7.1 + HISTORY2 + ROOT_ORDER + TT_BUCKETS + QS_CAP 14 +
+SAFE_BITS + ASPIRATION_WINDOW 15 + SEE_MAIN, one SPRT vs v7.1 to see the overall
+effect before the single-switch verdicts finish.
