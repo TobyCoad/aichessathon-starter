@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-05 20:00
+time 2026-09-05 20:10
 task v9-120s-l
-progress       8 games  .... llr +0.00 [-2.94, 2.94] after 4 pairs, elo -0.0 +/- 296.6
+progress      16 games  .... llr +0.58 [-2.94, 2.94] after 8 pairs, elo +21.7 +/- 127.9
