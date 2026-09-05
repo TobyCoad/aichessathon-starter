@@ -894,7 +894,7 @@ SEE: Final = True
 # around the previous iteration's score, widening on a fail and falling back to
 # the full window after three fails. Narrow windows cut off sooner.
 ASPIRATION: Final = True
-ASPIRATION_WINDOW: Final = 30
+ASPIRATION_WINDOW: Final = 15
 # REPETITION_TWOFOLD: the referee calls board.outcome(claim_draw=True) after every
 # move, and python-chess lets the side to move claim as soon as ONE legal move
 # would make a third occurrence. Round 11 on the platform was drawn with a mate
@@ -933,7 +933,7 @@ BOOK_ENABLED: Final = True
 # (bounded at +/-16384, so it can never outrank a capture or a killer) and a
 # malus for the quiet moves searched before a cutoff; a counter-move table keyed
 # on the opponent's last move, ranked just below the killers. Needs COMPILED_SEARCH.
-HISTORY2: Final = False
+HISTORY2: Final = True
 # TT_KEEP: table entries from the previous search are not evicted freely; a new
 # entry replaces an aged one only if it is at most 4 plies shallower. The warm
 # table is what makes the early iterations of the next move free.
@@ -941,13 +941,13 @@ TT_KEEP: Final = False
 # TT_BUCKETS: the transposition table as pairs of slots. The even slot keeps the
 # deeper entry, the odd slot always takes the store, and a probe checks both, so
 # a deep entry survives the key traffic that evicts it from a single slot.
-TT_BUCKETS: Final = False
+TT_BUCKETS: Final = True
 # QS_CAP: quiescence depth cap. 8 truncates long exchanges; with SEE pruning the
 # capture tree is small enough to follow to 14.
-QS_CAP: Final = 8
+QS_CAP: Final = 14
 # SAFE_BITS: mate-distance pruning, null-move reduction growing with depth, and
 # a forced move played without searching.
-SAFE_BITS: Final = False
+SAFE_BITS: Final = True
 # BOOK_VERIFY: a book move is searched first and played only if the search's own
 # best is not better by more than BOOK_VERIFY_MARGIN centipawns. Closes the book
 # lines measured at -68 and -165 cp on the platform's own start positions.
@@ -956,13 +956,13 @@ BOOK_VERIFY: Final = False
 QS_EVAL_CACHE: Final = False
 # SEE_MAIN: in the main search skip captures losing more than 20*depth^2 on the
 # exchange at depth <= 5 (never the first move).
-SEE_MAIN: Final = False
+SEE_MAIN: Final = True
 # ROOT_ORDER: from the second iteration order the root moves by the scores the
 # previous iteration gave them (stable: moves the aspiration pass never reached
 # keep their old order at the tail) instead of re-running the static ordering.
 # The book/hash move still leads. Fail-low values are only upper bounds, but
 # the relative order they induce is what most engines sort the root by.
-ROOT_ORDER: Final = False
+ROOT_ORDER: Final = True
 # LMR_AGGRESSIVE: depth is the main lever. Reduce quiet moves from the second
 # one searched with the steeper log(d)*log(m)/1.8 + 0.5 table, adjusted by
 # butterfly history (one ply less above +8000, one more below -8000, never

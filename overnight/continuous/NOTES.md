@@ -35,6 +35,15 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   `.`), games, openings (default|platform), workers, elo0, elo1, base_ms.
 
 ## Champion
+- v8 (5 Sep 14:55) = v7.1 + HISTORY2 + ROOT_ORDER + TT_BUCKETS + QS_CAP 14 + SAFE_BITS
+  + ASPIRATION_WINDOW 15 + SEE_MAIN, all now True in the tree. Evidence: 40 games at
+  120 s on platform openings 67.5% (+18 =18 -4); 8 s SPRT flat (+3.5 +/- 25 at 502,
+  rerun +30 +/- 38 at 210, stopped by hand so 101-lmraggr could start vs v8).
+  Uploaded by the human for the 15:00 slot. Every challenger is judged vs v8 now.
+  Single-switch tasks for the bundle parts (093/095/097/098/099) removed as moot;
+  092-qscap14 on the desktop began vs v7.1 and its verdict is VOID (champion changed
+  under it) -- record it as void, do not fold it. Next target: v9 = v8 + LMR_AGGRESSIVE
+  (101-lmraggr, laptop, running next).
 - v7.1 = compiled search + LMR + ASPIRATION + SEE + REPETITION_TWOFOLD + 16-zone net
   (weights/net.npz, float16 W1). Uploaded 5 Sep 12:00 slot. Ladder ~14th.
 - Measured stack (8 s self-play): compiled +67, LMR +47, aspiration +41, SEE +25,

@@ -755,3 +755,13 @@ overnight/book_coverage.py and took the champion baseline on the 80-FEN
 platform pool: 610,028 entries, coverage 28/80, 2.6 moves per covered
 position, mean 1.25 in-book plies from a pool start. Next iteration commits
 the built book (the desktop task waits on it) and records its coverage.
+
+5 Sep 14:55 v8 PROMOTED in the tree (seven switches flipped: HISTORY2, ROOT_ORDER,
+TT_BUCKETS, QS_CAP 14, SAFE_BITS, ASPIRATION_WINDOW 15, SEE_MAIN) on the desktop's
+120 s evidence (67.5% over 40 platform-opening games, clocktest PASS 0/6) with the
+8 s SPRT flat; ruff/mypy/check_fastsearch 70/70 PASS with the flags on. The 100-v8all
+rerun was stopped by hand at the human's request (INCONCLUSIVE line appended to its log
+so the worker records it instead of retrying) so 101-lmraggr runs next vs v8 -- v9 =
+v8 + LMR_AGGRESSIVE is the next target. Moot single-switch tasks removed from both
+queues; 092-qscap14 (desktop, started vs v7.1) is void once the desktop pulls this.
+submission-v8.zip built from the tested challenger (21.6 MB, 27.9 MB unpacked, import 31 s).

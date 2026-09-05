@@ -38,21 +38,9 @@
   "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"
  },
  {
-  "name": "093-safe",
-  "sed": "s/^SAFE_BITS: Final = False$/SAFE_BITS: Final = True/"
- },
- {
-  "name": "095-asp15",
-  "sed": "s/^ASPIRATION_WINDOW: Final = 30$/ASPIRATION_WINDOW: Final = 15/"
- },
- {
   "name": "096-clocktest-v71",
   "kind": "clocktest",
   "sed": ""
- },
- {
-  "name": "097-seemain",
-  "sed": "s/^SEE_MAIN: Final = False$/SEE_MAIN: Final = True/"
  },
  {
   "name": "103-lazyacc",
