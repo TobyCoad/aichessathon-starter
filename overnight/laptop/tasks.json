@@ -1,10 +1,5 @@
 [
  {
-  "name": "100-v8all",
-  "sed": "s/^HISTORY2: Final = False$/HISTORY2: Final = True/; s/^ROOT_ORDER: Final = False$/ROOT_ORDER: Final = True/; s/^TT_BUCKETS: Final = False$/TT_BUCKETS: Final = True/; s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/; s/^SAFE_BITS: Final = False$/SAFE_BITS: Final = True/; s/^ASPIRATION_WINDOW: Final = 30$/ASPIRATION_WINDOW: Final = 15/; s/^SEE_MAIN: Final = False$/SEE_MAIN: Final = True/",
-  "games": 600
- },
- {
   "name": "101-lmraggr",
   "sed": "s/^LMR_AGGRESSIVE: Final = False$/LMR_AGGRESSIVE: Final = True/"
  },
