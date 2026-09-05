@@ -51,6 +51,12 @@
   "games": 600
  },
  {
+  "name": "150-sfnet",
+  "net": "overnight/challengers/150-sfnet/weights/net.npz",
+  "sed": "",
+  "games": 600
+ },
+ {
   "name": "nmp-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^NMP_V2: Final = False$/NMP_V2: Final = True/"
@@ -84,11 +90,5 @@
   "name": "cutnode-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
- },
- {
-  "name": "150-sfnet",
-  "net": "overnight/challengers/150-sfnet/weights/net.npz",
-  "sed": "",
-  "games": 600
  }
 ]

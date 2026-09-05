@@ -943,3 +943,8 @@ ASP_WIDE node-identical to the champion (no aspiration fails on the bench suite 
 CTRL_SIZE 44; re-verify before it rides in the v9.2 zip. Queue: 143-nmp, 144-caporder,
 145-v93fill, 146-cutnode, each with its clocktest; v9.2 ships from the union of passes.
 Interactive session's SF chain is at check_nnue on 150-sfnet; GPU untouched by the loop.
+
+6 Sep 00:50 Stockfish-data net (150-sfnet): best epoch 15, SF-val 0.003917 vs champion 0.006891;
+Lichess-val 0.011299 vs 0.004633 (forgot the human distribution); suite 10.8 = champion 10.8
+(better at 9-12 pieces, worse at 13-16). Gauntlet queued next. Mixed-data net 151-mixnet
+training (SF + Lichess shards interleaved, warm start from the champion).

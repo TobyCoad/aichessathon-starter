@@ -105,6 +105,13 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   Decoder training/binpack_decode.py (validated: 435k sample entries, 0 invalid boards /
   illegal moves; scores are side-to-move internal units, int16-wrapped, VALUE_NONE 32002
   dropped; scale 0.45 cp per unit = median vs SF 17.1 depth 12, corr 0.90).
+- SF NET RESULT 6 Sep 00:45 (150-sfnet, warm start from b8-kz16 on 581M SF positions, best
+  epoch 15/24): SF-val 0.003917 (champion 0.006891, -43%) but Lichess-val 0.011299 (champion
+  0.004633, +144%: it forgot the human distribution). Endgame suite 10.8 cp = champion's 10.8
+  (5-8: 16.7 vs 17.0, 9-12: 8.4 vs 12.0 BETTER, 13-16: 8.4 vs 5.0 WORSE). check_nnue PASS.
+  Gauntlet 150-sfnet queued next on the laptop -- the games decide. A MIXED-DATA net
+  (SF shards interleaved with the Lichess shards, warm start from the champion) is training
+  now as 151-mixnet (overnight/sf_train_mix.sh) to keep both distributions; GPU still reserved.
 - MISMATCH MEASURED 23:30: the champion net (b8-kz16, Lichess-trained) scores validation
   loss 0.006879 on the Stockfish self-play validation set vs 0.00465 on Lichess data --
   48% worse overall, and the endgame strata are 2-3x worse (x1e-3: 9-12 pieces 11.39,
