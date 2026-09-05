@@ -902,7 +902,7 @@ REPETITION_TWOFOLD: Final = True
 # move plus the reply the table predicts -- until the next request arrives,
 # which stops it within a millisecond. The main search then starts on a warm
 # table. Needs COMPILED_SEARCH; the kernels release the GIL.
-PONDER: Final = True
+PONDER: Final = False
 # NMP_GUARD: no null move directly after a null move. Found by review on 4 Sep:
 # two nulls restore the Zobrist key, the stack repetition check fires and the
 # grandchild scores as a draw, so null-move pruning never cut at depth >= 6.
