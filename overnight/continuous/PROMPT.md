@@ -9,6 +9,8 @@ Read first, in this order:
 2. `bash overnight/desktop_status.sh`; `ls overnight/laptop/results overnight/desktop/results`;
    `tail -n 3 overnight/laptop/results/*.gauntlet.log overnight/desktop/results/*.gauntlet.log`
 3. The tail of overnight/JOURNAL.md (last 60 lines) and overnight/eval/V10_PLAN.md (the ranked idea list)
+4. overnight/eval/ARCHITECTURE.md when you build or brief a research agent (what exists, how it
+   is measured, what is closed) -- every research brief must tell the agent to read it first.
 
 ## The pipeline (one cycle = one version)
 A. RESEARCH / PICK: take the top 2-4 items from the backlog that are not built. Small
