@@ -925,3 +925,21 @@ SF validation set is 0.006879 vs 0.00465 on Lichess (endgame strata 2-3x worse) 
 distribution mismatch is real and large. Warm-started retrain on the SF shards running
 (overnight/sf_train.sh); baseline suite under v9.1 search 10.8 cp. 141-v92prune failed its
 gate 19/24 on init timeouts under the decode; worker now waits for decode/suite; 142 queued.
+
+6 Sep 00:55 (loop iter 10) v9.2 pruning pair rejected and split; NMP_V2 tests alone;
+QS_TT + ASP_WIDE finished. 142-v92prune REJECT at 00:13 (40.0%, +33 =46 -61 over 140,
+llr -2.18) -- so the queued trio 143-v92nmp (NMP_V2 stacked on that same pair) was dead
+on arrival; killed it ~20 min in, requeued as 143-nmp (NMP_V2 alone, 600 games at 8 s +
+clocktest) and the worker picked it up at 00:30 (challenger verified champion+NMP_V2
+only). Split-by-bench of the rejected pair (champion 1,445,087 nodes d8): IMPROVING
+alone 731,904 nodes (0.506x) with large eval swings -- it over-prunes and is closed as
+the -50 Elo culprit without spending a gauntlet; CUTNODE alone 1,438,246 (0.995x,
+benign) takes the one allowed requeue as 146-cutnode at the queue tail. The previous
+iteration's half-done QS_TT + ASP_WIDE build was finished and committed (1472326):
+ruff/mypy PASS, exact 70/70 flags-off + 40/40 table-on (the quiesce signature grew
+tt_key/tt_data, so the flags-off identity mattered); bench d8 QS_TT 1,435,882 (0.994x),
+ASP_WIDE node-identical to the champion (no aspiration fails on the bench suite at d8)
+-- 145-v93fill decides them. Caveat recorded in NOTES: INIT_FOLD's FOLDED map predates
+CTRL_SIZE 44; re-verify before it rides in the v9.2 zip. Queue: 143-nmp, 144-caporder,
+145-v93fill, 146-cutnode, each with its clocktest; v9.2 ships from the union of passes.
+Interactive session's SF chain is at check_nnue on 150-sfnet; GPU untouched by the loop.

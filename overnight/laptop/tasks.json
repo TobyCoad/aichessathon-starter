@@ -74,5 +74,15 @@
   "name": "v93fill-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/"
+ },
+ {
+  "name": "146-cutnode",
+  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "cutnode-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
  }
 ]

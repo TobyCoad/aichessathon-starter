@@ -208,6 +208,10 @@ vs the champion book's 28/80 and 1.38; the challenger would play book-less in
 ~91% of platform games, so SPRT[0,20] over 600 games cannot resolve it. Task
 removed from the desktop queue; the book stays uncommitted in overnight/books/.
 092-qscap14 VOID (started vs v7.1; champion changed under it)).
+142-v92prune (IMPROVING + CUTNODE) REJECT at 8 s: 40.0% (+33 =46 -61) over 140
+games, llr -2.18 -- the pair is out. Split by bench: IMPROVING alone halves the
+d8 tree (0.506x nodes, big eval swings) -- over-pruning, CLOSED as the culprit;
+CUTNODE alone is benign (0.995x) and gets the one allowed requeue (146-cutnode).
 INFRA, not engine verdicts: 140-v92prune (1/24 init fail) and 141-v92prune (19/24
 init fail) both died to init timeouts under the 8-worker binpack decode; the worker
 now waits while a decode or endgame suite runs, and the pair re-queued as
@@ -227,32 +231,42 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 23:45)
-- Decode DONE (581M positions, 23:07). Interactive session now runs the v9.1
-  endgame-suite baseline (overnight/eval/suite-v91-champion.log, 300/400 at
-  23:34, ~5 min left) -- the NET_V10 prereq. GPU stays reserved for the SF
-  retrain (NOT the loop's job).
-- laptop worker: picked 142-v92prune at 22:42 and WAITS in the load-check loop
-  until the suite exits (the fix after 140/141 died to init timeouts under the
-  decode -- infra rejects, not engine verdicts). Queue after it:
-  v92prune-clocktest-l, 143-v92nmp (IMPROVING + CUTNODE + NMP_V2), 
-  v92nmp-clocktest-l, then 144-caporder + caporder-clocktest-l (new, this
-  iteration). NMP_V2's build (previous iteration) was left uncommitted; this
-  iteration's commit carries it together with CAPTURE_ORDER (exact check ran
-  on the combined tree). training/binpack_decode.py left uncommitted -- it
-  belongs to the interactive session's chain.
+## Running now (6 Sep 00:45)
+- 142-v92prune REJECTED 00:13 (40.0%, +33 =46 -61 over 140 games, llr -2.18):
+  the IMPROVING+CUTNODE pair is out. Its clocktest passed (5.6 s) but is moot.
+  Per the split rule the trio 143-v92nmp (which stacked NMP_V2 on the failed
+  pair) was killed ~20 min in and requeued as 143-nmp (NMP_V2 ALONE, 600
+  games) + nmp-clocktest-l -- the worker picked it up 00:30 and it runs now.
+  Split re-queue of the pair (benched 00:50, champion baseline 1,445,087 nodes
+  d8): IMPROVING alone is 731,904 nodes (0.506x!) with big eval swings -- it
+  over-prunes and is the -50 Elo culprit; CLOSED without its own gauntlet.
+  CUTNODE alone is 1,438,246 (0.995x, benign) -> requeued as 146-cutnode +
+  cutnode-clocktest-l at the queue tail (the one allowed requeue; if it fails,
+  both are closed for good). New-switch benches d8: QS_TT 1,435,882 (0.994x,
+  229 knps under load); ASP_WIDE 1,445,087 -- node-identical to the champion
+  on the bench suite (no aspiration fails at d8), judged by the SPRT only.
+- QS_TT + ASP_WIDE (the previous iteration's half-done build) FINISHED and
+  committed 00:35 (1472326): ruff/mypy PASS, exact 70/70 + table-on 40/40.
+  Their bundle task 145-v93fill + v93fill-clocktest-l was already queued.
+- Interactive session's SF-net chain is at check_nnue on 150-sfnet (GPU/net
+  work stays theirs; the loop only folds results).
+- laptop queue order now: 143-nmp (running), nmp-clocktest-l, 144-caporder,
+  caporder-clocktest-l, 145-v93fill, v93fill-clocktest-l, 146-cutnode,
+  cutnode-clocktest-l.
 - desktop: OFF. Queue nothing there.
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
-0. Fold 142-v92prune and 143-v92nmp when they land; ship v9.2 from whichever bundle
-   shape passed (pair or trio; clocktest for each is queued). INIT_FOLD (built,
-   exact, -4.8 s import) rides in the v9.2 zip: flip it True in the tested
-   challenger at zip time, re-check bench nodes + clean-unzip import < 45 s.
-1. NMP_V2 (V10_PLAN #6): BUILT 5 Sep 23:00, off in the tree (C_NMP_V2=41, fills
-   CTRL_SIZE 42's last slot). Dynamic R = 3 + depth//4 + min((standing-beta)//200, 3),
+0. Fold 143-nmp, 144-caporder, 145-v93fill as they land; ship v9.2 from the union of
+   passing switches (each has a queued clocktest). INIT_FOLD (built, exact, -4.8 s
+   import) rides in the v9.2 zip: flip it True in the tested challenger at zip time,
+   re-check bench nodes + clean-unzip import < 45 s. NOTE: INIT_FOLD's FOLDED map
+   predates C_QS_TT/CTRL_SIZE 44 -- re-verify prepare()'s fold check + bench before
+   the zip.
+1. NMP_V2 (V10_PLAN #6): BUILT 5 Sep 23:00, off in the tree (C_NMP_V2=41).
+   Dynamic R = 3 + depth//4 + min((standing-beta)//200, 3),
    null tried only when standing >= beta, skipped on a TT upper bound < beta
    (tt_depth >= 0 guards the no-hit default tt_flag=2/tt_score=0). Verification
-   search deferred to NMP_V2B. Queued in 143-v92nmp.
+   search deferred to NMP_V2B. Testing alone in 143-nmp (running).
 2. CAPTURE_ORDER (V10_PLAN #7): BUILT 5 Sep 23:40, off in the tree
    (C_CAPTURE_ORDER=42, CTRL_SIZE 43). Rescore pass after score_moves: SEE < 0
    captures below every quiet (band -(1<<21) + see*16), SEE >= 0 keep the
@@ -275,12 +289,13 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) Fold 142-v92prune when it lands (the worker starts it as soon as the
-endgame suite exits; SPRT to checkpoint 200 ~1 h + the clocktest behind it). A
-pass makes IMPROVING+CUTNODE the v9.2 anchor; 143-v92nmp then tests the trio
-with NMP_V2. Ship v9.2 from the best passing shape, with INIT_FOLD flipped in
-the zip (item 0 above -- re-check import < 45 s). (2) 144-caporder (queued this
-iteration) decides CAPTURE_ORDER for the v9.3 bundle. (3) While waiting: next
-build item is QS transposition table (V10_PLAN #9) or aspiration widening 1.5x
-(#12) as filler switches for v9.3. (4) Do NOT start GPU work; the SF retrain
-belongs to the interactive session.
+(1) Fold 143-nmp when it lands (~1 h to checkpoint 200); a pass makes NMP_V2
+the v9.2 anchor. Then 144-caporder and 145-v93fill in turn; ship v9.2 from the
+union of passing switches with INIT_FOLD flipped in the zip (re-verify the
+FOLDED map against CTRL_SIZE 44 first). (2) Fold the 146 split requeue when it
+lands; whatever the verdict, IMPROVING and CUTNODE are then closed. (3) While
+waiting: next build items from V10_PLAN are the remaining speed leftovers
+(eager fastboard signatures) or SEE pruning in the main search; keep the
+exactness check green. (4) Do NOT start GPU work; the SF retrain and 150-sfnet
+belong to the interactive session -- fold its suite/gauntlet results when they
+appear in overnight/laptop/results/.
