@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 10:10
+time 2026-09-05 10:20
 task 091-ttkeep
-progress       9 games  .... llr +1.27 [-2.94, 2.94] after 4 pairs, elo +137.0 +/- 114.9
+progress      26 games  .... llr -0.21 [-2.94, 2.94] after 13 pairs, elo -40.3 +/- 137.0
