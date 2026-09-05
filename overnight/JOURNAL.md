@@ -835,3 +835,26 @@ Consequence written into the backlog: more same-style data is exhausted; NET_V10
 change architecture (mirrored king buckets, rebalanced output buckets, 16-out head).
 Laptop now: worker (131-v9all) only. CONT_HIST build not started this iteration (the
 worker rescue ate the time); it is next-step #2.
+
+5 Sep 18:50 (loop) CONT_HIST built -- the biggest open search item (V10_PLAN #2),
+one iteration after the exts groundwork. A 768x768 int32 table (2.3 MB) indexed by
+(previous move's piece*64+to, this quiet's piece*64+to): added to quiet ordering
+scores after fb.score_moves (a post-pass in fastsearch, so fastboard is untouched
+and the killer/counter bands stay above it), folded into the LMR history term as a
+continuous hist//6000 clamped +/-2 (replacing the +/-8000 one-ply step) and into
+the prune2 history test, gravity-updated on cutoffs with the butterfly formula
+(skipped in the singular excluded-move search), halved under HYGIENE, inert after
+a null move. One new kernel argument (conthist1), C_CONT_HIST=38; the quiets[]
+bookkeeping now also runs when only CONT_HIST is on. Bench vs champion: depth 8
+0.890x nodes (1,327,419 vs 1,491,095) at -3.5% knps, depth 10 0.900x at -4.6% --
+both inside the spec's <=0.90x target, so the ordering is genuinely working.
+ruff/mypy/check_fastsearch 70/70 exact PASS. Queued 133-conthist (600 games at 8 s)
+behind 132-v9core. Context folded in: the parallel session split the v9 gate at
+18:28 (132-v9core = four core switches at 8 s; 131-v9all stopped at 98 games +28)
+and revived TIME_V6 with final constants and a local clock replay PASS (5.8 s
+lowest at 1.5x) -- its desktop v9-clocktest + v9-120s decide it, third strike
+closes it for good. Renamed the desktop's duplicate trailing v9-clocktest/v9-120s
+tasks to v9core-clocktest/v9core-120s (same-name tasks are skipped once a result
+file exists, so the four-switch clocktest -- mandatory for shipping v9core --
+would never have run). Desktop otherwise untouched: 111-singular at 272 games
+(-6 +/- 36), then v85-120s-b.

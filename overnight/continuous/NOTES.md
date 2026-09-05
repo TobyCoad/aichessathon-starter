@@ -56,18 +56,27 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   binaries); (c) int8/int16 inference is 1.9x SLOWER than float32 (closed for good);
   (d) the only big node-rate lever left is a 32->16 output head (+15% knps, needs a
   retrain) -> fold into NET_V10.
-- Bundle in flight for v9 -- FOUR switches (off in the tree), 8 s SPRT queued as
-  131-v9all on the laptop (500 games vs v8.5): QS_EVAL_CACHE (exact, +4.2% knps) +
-  ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR (593053f; bench vs champion 1.00x / 1.02x /
-  0.97x nodes, smoke test of the adjudication arming passed, exact 70/70). TIME_V6 was
-  PULLED from the bundle 5 Sep 18:00: the TAMED clocktest (f8286b8) also FAILED --
-  flags 0/6 but lowest clock 2.0 s (need >= 5), overnight/eval/clocktest-timev6c.log;
-  the untamed cut drained to 1.6 s. Two fails = closed; TIME_V5 stays the shipped time
-  manager. Any future time-management change must pass a solo clocktest BEFORE entering
-  a bundle. Desktop v9-clocktest + v9-120s queued behind v85-120s-b. CONT_HIST
-  (V10_PLAN #2, the biggest search item) is the multi-iteration build for v9.1; follow
-  search.md 3.1 exactly (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as
-  new kernel args).
+- Bundle in flight for v9 -- gate SPLIT 18:28 (the parallel TIME_V6 session, ec3b65e):
+  132-v9core on the laptop (600 games at 8 s vs v8.5) tests the FOUR core switches:
+  QS_EVAL_CACHE (exact, +4.2% knps) + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR
+  (593053f; bench vs champion 1.00x / 1.02x / 0.97x nodes, adjudication smoke test
+  passed, exact 70/70). Its predecessor 131-v9all was stopped at 98 games (+28 +/- 57,
+  llr +0.46) for the re-queue. TIME_V6 was REVIVED 18:29 (71b7b50, after two earlier
+  cuts failed the clocktest): final constants = low clock rem/18 exact stop, horizon
+  56-0.4m floor 30, hard min(10%, 2.5x soft), factor cap 1.5; local clock replay PASS
+  (lowest 5.8 s, longest 11.9 s at 1.5x charge). TIME_V6 is judged ONLY by the desktop
+  v9-clocktest + v9-120s (five-switch sed, queued after v85-120s-b); the four-switch
+  build has its own v9core-clocktest + v9core-120s (renamed 18:45 from duplicate names
+  that would never have run). Ship paths: 132-v9core PROMOTE + v9core-clocktest PASS
+  ships v9 without TIME_V6; the TIME_V6 pair passing adds it to v9.1.
+- CONT_HIST (V10_PLAN #2) BUILT 5 Sep 18:45, off in the tree: 1-ply continuation
+  history (C_CONT_HIST=38, conthist1 as the one new kernel arg) in ordering, the LMR
+  history term (continuous hist//6000 clamped +/-2) and the prune2 test, gravity
+  update on cutoffs, halved under HYGIENE. Bench vs champion: depth 8 0.890x nodes
+  (1,327,419 vs 1,491,095) at 249 vs 258 knps; depth 10 0.900x nodes at 250 vs 262
+  knps -- hits the spec's <= 0.90x target. ruff/mypy/exact 70/70 PASS. Queued as
+  133-conthist on the laptop (600 games at 8 s) behind 132-v9core; SPRT verdict
+  decides whether it anchors the v9.1 bundle. CONT_HIST2 (2-ply) only if 1-ply passes.
 - 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
   SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
 
@@ -130,15 +139,13 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 18:05)
-- laptop worker: RESTARTED 18:00 (the old worker had grabbed the stale, already-pulled
-  120-timev6 task at 17:44 and launched its gauntlet when the clocktest freed the slot;
-  killed both, reaped 7 orphaned pool workers left by 073-kz16w). Queue: 131-v9all
-  (8 s SPRT of the four-switch v9 bundle vs v8.5, 500 games). month5.sh chain COMPLETED
-  16:47 (see night3.log) -- verdict folded below, no follow-up task needed.
-- desktop worker: 111-singular (attribution, +3 +/- 39 at 222, heartbeat 17:50), then
+## Running now (5 Sep 18:50)
+- laptop worker: 132-v9core (crash gate started 18:29, then 600 games at 8 s vs v8.5),
+  then 133-conthist (600 games at 8 s). month5.sh chain COMPLETED 16:47 -- folded.
+- desktop worker: 111-singular (attribution, -6 +/- 36 at 272, heartbeat 18:21), then
   v85-120s-b (40 games at 120 s of the live v8.5 build), then v9-clocktest + v9-120s
-  (queued 18:05, four-switch sed).
+  (five-switch sed WITH TIME_V6 -- these judge TIME_V6), then v9core-clocktest +
+  v9core-120s (four-switch sed, the mandatory clocktest for shipping v9core).
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
@@ -146,11 +153,11 @@ what enters a bundle.
    load, not an engine fault). When v85-120s-b passes: flip the five v8.5 switches in
    the tree (that is v8.5 = the new champion), note it, and submission-v85.zip is
    already built from the tested challenger for the human.
-1. TIME_V6: CLOSED (two clocktest fails; see verdicts). A future TIME_V7 must be
-   conservative (higher reserve/floor) and pass a solo clocktest before any bundle.
-2. CONT_HIST (V10_PLAN #2): continuation history alone -- HISTORY2_FIX and KILLER_CLEAR
-   are built and in the v9 bundle (130-v9all). 8 s SPRT on the laptop.
-3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (130-v9all).
+1. TIME_V6: REVIVED 18:29 with final constants (71b7b50) after a local clock replay
+   PASS; judged only by the desktop v9-clocktest + v9-120s. If that clocktest fails
+   again, TIME_V6 is closed for good (third strike).
+2. CONT_HIST (V10_PLAN #2): BUILT, queued as 133-conthist (see bundle notes above).
+3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (132-v9core).
 4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets (+ the
    16-out head from speed.md, +15% knps). 104-kz16r showed more same-style data adds
    NOTHING (val flat at 0.0046589): only an architecture change can move the net now.
@@ -163,16 +170,15 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: (1) fold verdicts: 131-v9all (laptop, four-switch v9 bundle),
-111-singular, v85-120s-b, v9-clocktest, v9-120s as they land. If 131-v9all PROMOTES
-and v9-clocktest PASSES: ship v9 (flip the four switches, zip from the tested
-challenger, CANDIDATE.md, notify). (2) Continue the CONT_HIST build (V10_PLAN
-#2, multi-iteration, switch OFF; search.md 3.1). STEP 1 DONE (c5390ca): `exts`
-widened to 4*MAX_PLY at all three sites, exact 70/70. Next: C_CONT_HIST ctrl slot +
-CONT_HIST switch, conthist1 array as the one new kernel arg, write lane 2
-(piece*64+to) before each recursive call, then ordering/LMR/prune reads + the
-cutoff update (skip when excluded != 0; halve in HYGIENE) -- HISTORY2_FIX and KILLER_CLEAR are already
-in the v9 bundle, so CONT_HIST is the only piece left. (3) If a machine is idle after
-22:00, start the NET_V10 prerequisite (v8.5 endgame-suite baseline) and the NET_V10
-architecture work (mirrored king buckets, rebalanced output buckets, 16-out head) --
-104-kz16r proved more same-style data is worthless, do NOT restart month-data chains.
+Iteration next: (1) fold verdicts as they land: 132-v9core (laptop),
+111-singular, v85-120s-b, v9-clocktest/v9-120s (TIME_V6's gate), v9core-clocktest/
+v9core-120s, 133-conthist. If 132-v9core PROMOTES and v9core-clocktest PASSES: ship
+v9 (flip the four switches in the tree, re-run the exactness check, zip from the
+TESTED challenger dir, CANDIDATE.md, notify). If the TIME_V6 pair passes, TIME_V6
+joins the v9.1 bundle; if the clocktest fails, close it for good. (2) If 133-conthist
+lands: a PROMOTE or positive-inconclusive + node win makes it the anchor of v9.1
+(with TIME_V6 if passed); consider CONT_HIST2 (2-ply, lane-2 exts writes) only after
+1-ply passes. (3) If a machine is idle after 22:00, start the NET_V10 prerequisite
+(v8.5 endgame-suite baseline) and the NET_V10 architecture work (mirrored king
+buckets, rebalanced output buckets, 16-out head) -- 104-kz16r proved more same-style
+data is worthless, do NOT restart month-data chains.

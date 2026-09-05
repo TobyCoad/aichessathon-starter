@@ -132,6 +132,16 @@ SINGULAR_EXT_CAP = 6
 # C_KILLER_CLEAR: clear killers[ply + 2] on node entry (grandchild killers are
 # stale once this node's subtree is done).
 C_HMC_DRAW, C_HIST2_FIX, C_KILLER_CLEAR = 35, 36, 37
+# C_CONT_HIST: 1-ply continuation history. conthist1[(prev_piece*64 + prev_to)*768
+# + piece*64 + to] scores a quiet by how it fared after the previous move: added
+# to the quiet ordering score (stays below killers/counter), folded into the LMR
+# history term (continuous hist // CONT_LMR_DIV, clamped +/-2, replacing the
+# +/-8000 step) and into the prune2 history test; updated with the butterfly
+# gravity formula on a cutoff (skipped in the SINGULAR excluded-move search).
+# The previous move's piece is sq[prev_to] at node entry; a null move (prev == 0)
+# reads and updates nothing.
+C_CONT_HIST = 38
+CONT_LMR_DIV = 6000
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
@@ -501,7 +511,7 @@ def search(
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
     depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any, counter: Any, quiets: Any,
-    ec_key: Any, ec_val: Any, exts: Any,
+    ec_key: Any, ec_val: Any, exts: Any, conthist1: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
@@ -660,7 +670,8 @@ def search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
+            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
+            ec_key, ec_val, exts, conthist1,
         )
         fb.unmake_null(meta, undo)
         if ctrl[C_LAZY_ACC] != 0 and ctrl[C_ACC_PLY] > meta[fb.PLY]:
@@ -694,7 +705,7 @@ def search(
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
             (depth - 1) // 2, sbeta - 1, sbeta, ply, scratch, counter, quiets,
-            ec_key, ec_val, exts,
+            ec_key, ec_val, exts, conthist1,
         )
         ctrl[C_EXCL_PLY] = -1
         if ctrl[C_ABORT]:
@@ -718,6 +729,30 @@ def search(
     fb.score_moves(
         mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc, counter_move, base
     )
+    conthist_on = ctrl[C_CONT_HIST] != 0
+    ch_base = -1
+    if conthist_on:
+        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
+        if prev != 0:
+            prev_to = (prev >> 6) & 63
+            prev_piece = sq[prev_to]  # the mover is still on its target square
+            if prev_piece >= 0:
+                ch_base = (prev_piece * 64 + prev_to) * 768
+        if ch_base >= 0:
+            # Quiet ordering: butterfly + conthist1. Quiet scores stay within
+            # +/-2*HISTORY_MAX, far below the killer/counter/capture bands.
+            for j in range(n):
+                m = mv[j]
+                to2 = (m >> 6) & 63
+                if (
+                    (m >> 12) == 0
+                    and sq[to2] < 0
+                    and m != hash_move
+                    and m != killers[ply, 0]
+                    and m != killers[ply, 1]
+                    and m != counter_move
+                ):
+                    sc[j] += conthist1[ch_base + sq[m & 63] * 64 + to2]
 
     best_score = -INFINITY
     best_move = 0
@@ -745,6 +780,8 @@ def search(
             if standing + FUTILITY_MARGIN2[depth] <= alpha:
                 continue
             hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
+            if ch_base >= 0:
+                hist += conthist1[ch_base + sq[move & 63] * 64 + ((move >> 6) & 63)]
             if hist < -HIST_PRUNE_SLOPE * depth:
                 continue
         if (
@@ -771,7 +808,16 @@ def search(
             if aggr:
                 reduction = LMR_TABLE_AGGR[min(depth, 63), min(searched, 63)]
                 hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
-                if hist > 8000:
+                if conthist_on:
+                    if ch_base >= 0:
+                        hist += conthist1[ch_base + sq[move & 63] * 64 + ((move >> 6) & 63)]
+                    adj = hist // CONT_LMR_DIV
+                    if adj > 2:
+                        adj = 2
+                    elif adj < -2:
+                        adj = -2
+                    reduction -= adj
+                elif hist > 8000:
                     reduction -= 1
                 elif hist < -8000:
                     reduction += 1
@@ -782,9 +828,9 @@ def search(
         make_move(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones, ctrl
         )
-        if history2 and plain:
+        if (history2 or conthist_on) and plain:
             quiets[ply, searched] = move  # every quiet tried at this node, for the malus
-        elif history2 and ctrl[C_HIST2_FIX] != 0:
+        elif (history2 or conthist_on) and ctrl[C_HIST2_FIX] != 0:
             quiets[ply, searched] = 0  # else the malus reads a stale move from a prior node
         if reduction > 0:
             reduced = depth - 1 - reduction
@@ -795,7 +841,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 reduced, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts,
+                ec_key, ec_val, exts, conthist1,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
@@ -807,7 +853,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                        ec_key, ec_val, exts,
+                        ec_key, ec_val, exts, conthist1,
                     )
                 else:
                     score = -search(
@@ -815,7 +861,7 @@ def search(
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                         depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
-                        ec_key, ec_val, exts,
+                        ec_key, ec_val, exts, conthist1,
                     )
         elif pvs and searched > 0:
             score = -search(
@@ -823,7 +869,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts,
+                ec_key, ec_val, exts, conthist1,
             )
         else:
             ext = 0
@@ -835,7 +881,7 @@ def search(
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1 + ext, -beta, -alpha, ply + 1, scratch, counter, quiets,
-                ec_key, ec_val, exts,
+                ec_key, ec_val, exts, conthist1,
             )
             if ext != 0:
                 exts[ply] -= 1
@@ -846,7 +892,8 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
+                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                ec_key, ec_val, exts, conthist1,
             )
         unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
         if ctrl[C_ABORT]:
@@ -880,6 +927,24 @@ def search(
                                 counter[(prev & 63) * 64 + ((prev >> 6) & 63)] = move
                         else:
                             butterfly[(move & 63) * 64 + ((move >> 6) & 63)] += depth * depth
+                        if conthist_on and ch_base >= 0 and excluded == 0 and plain:
+                            # Same gravity as butterfly. The board is restored, so
+                            # sq[from] is each quiet's mover again. Skipped in the
+                            # excluded-move search: it re-enters this node's ply.
+                            bonus2 = depth * depth
+                            if bonus2 > 1200:
+                                bonus2 = 1200
+                            cdx = ch_base + sq[move & 63] * 64 + ((move >> 6) & 63)
+                            conthist1[cdx] += bonus2 - conthist1[cdx] * bonus2 // HISTORY_MAX
+                            for q2 in range(searched):
+                                other = quiets[ply, q2]
+                                if other != move and other != 0:
+                                    op = sq[other & 63]
+                                    if op >= 0:
+                                        odx = ch_base + op * 64 + ((other >> 6) & 63)
+                                        conthist1[odx] -= (
+                                            bonus2 + conthist1[odx] * bonus2 // HISTORY_MAX
+                                        )
                     break
 
     if searched == 0:
@@ -952,6 +1017,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     rep_keys = np.zeros(0, dtype=np.uint64)
     ec_key, ec_val = new_eval_cache()
     exts = np.zeros(4 * fb.MAX_PLY, dtype=np.int64)  # 4 lanes, see agent.FastEngine
+    conthist1 = np.zeros(768 * 768, dtype=np.int32)
     ctrl = np.zeros(CTRL_SIZE, dtype=np.int64)
     ctrl[C_HYGIENE] = 1
     ctrl[C_FUTILITY] = 1
@@ -960,5 +1026,5 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
         ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch, counter, quiets,
-        ec_key, ec_val, exts,
+        ec_key, ec_val, exts, conthist1,
     )

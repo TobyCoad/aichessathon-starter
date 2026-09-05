@@ -1049,6 +1049,13 @@ ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
 # subtree or the previous search are noise in move ordering.
 HISTORY2_FIX: Final = False
 KILLER_CLEAR: Final = False
+# CONT_HIST (v10 search.md 3.1): 1-ply continuation history. A 768x768 int32
+# table indexed by (previous move's piece*64+to, this quiet's piece*64+to),
+# added to the quiet ordering score, the LMR history term (continuous
+# hist // 6000 clamped +/-2 instead of the +/-8000 step) and the prune2
+# history test; butterfly-style gravity update on a cutoff, halved under
+# HYGIENE, no read or update after a null move.
+CONT_HIST: Final = False
 # How many earlier occurrences of a position make it a draw inside the search.
 _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
@@ -1529,6 +1536,7 @@ class FastEngine:
         "black",
         "bufs",
         "butterfly",
+        "conthist1",
         "corr",
         "counter",
         "ctrl",
@@ -1566,6 +1574,8 @@ class FastEngine:
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
         self.butterfly = np.zeros(8192, dtype=np.int32)
         self.counter = np.zeros(4096, dtype=np.int32)
+        # CONT_HIST: (prev piece*64+to) x (piece*64+to), 2.3 MB, zeros when off
+        self.conthist1 = np.zeros(768 * 768, dtype=np.int32)
         # 4 lanes of MAX_PLY: [0] extension count, [1] static eval, [2] piece*64+to
         # of the move made at this ply (CONT_HIST), [3] spare; only lane 0 is read yet
         self.exts = np.zeros(4 * _fb.MAX_PLY, dtype=np.int64)
@@ -1904,7 +1914,7 @@ class FastEngine:
             _W2T, B2, W3, B3, *self.tt,
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
-            self.counter, self.quiets, self.ec_key, self.ec_val, self.exts,
+            self.counter, self.quiets, self.ec_key, self.ec_val, self.exts, self.conthist1,
         )
         self.nodes = int(ctrl[_fs.C_NODES])
         if ctrl[_fs.C_ABORT]:
@@ -1971,6 +1981,7 @@ class FastEngine:
             ctrl[_fs.C_EXCL_PLY] = -1
             ctrl[_fs.C_HIST2_FIX] = 1 if HISTORY2_FIX else 0
             ctrl[_fs.C_KILLER_CLEAR] = 1 if KILLER_CLEAR else 0
+            ctrl[_fs.C_CONT_HIST] = 1 if CONT_HIST else 0
             if KILLER_CLEAR:
                 self.killers2[:] = 0  # killers from the previous search are noise
             ctrl[_fs.C_HMC_DRAW] = 100
@@ -2010,6 +2021,8 @@ class FastEngine:
 
         if HYGIENE:
             self.butterfly >>= 1
+            if CONT_HIST:
+                self.conthist1 >>= 1  # same decay, or it saturates within a few moves
 
         started = time.monotonic()
         previous_best = 0
