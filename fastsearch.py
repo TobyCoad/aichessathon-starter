@@ -109,8 +109,8 @@ C_LAZY_ACC, C_ACC_PLY = 29, 30
 # cannot reach alpha; (b) skip a quiet whose butterfly history (the
 # C_HISTORY2 side-to-move band) is below -HIST_PRUNE_SLOPE * depth.
 C_PRUNE2 = 31
-FUTILITY_MARGIN2 = np.array([0, 150, 300, 450, 600], dtype=np.int64)
-HIST_PRUNE_SLOPE = 3000
+FUTILITY_MARGIN2 = np.array([0, 100, 200, 300, 400], dtype=np.int64)
+HIST_PRUNE_SLOPE = 1500
 # C_SINGULAR: singular extensions. At depth >= SINGULAR_MIN_DEPTH with a hash
 # move whose stored bound is exact or a lower bound at depth >= depth - 3, the
 # node is searched again without that move at (depth - 1) // 2 with the window

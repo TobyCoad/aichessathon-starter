@@ -64,6 +64,15 @@ cannot close an SPRT. Together with v8-clocktest PASS this says the v8 switches
 as a group are strongly positive at long TC; single-switch verdicts still decide
 what enters a bundle.
 
+## v8.5 plan (5 Sep 16:10, human's call)
+- v8.5 bundle = v8 + LMR_AGGRESSIVE + LAZY_ACC + TIME_V5 + PRUNE_V2 + SINGULAR, tested as
+  ONE challenger vs v8 like v8 was: 110-v85all (laptop, 8 s SPRT), v85-clocktest + v85-120s
+  (desktop, 40 games at 120 s platform openings), plus 111-singular alone on the desktop
+  for attribution. 101-lmraggr stopped at 42 games (+25 +/- 90, nothing learned) to make
+  room. Bench to depth 8 vs v8: PRUNE_V2 0.93x nodes, SINGULAR 1.55x (extensions cost
+  nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
+  tasks for the bundle parts; fold the bundle verdicts when they land.
+
 ## Running now (5 Sep 14:50)
 - desktop: on 092-qscap14 (62 games, llr -0.68, leaning negative at 14:32);
   then 093-safe, 095-asp15, 096-clocktest-v71, 097-seemain, 103-lazyacc,

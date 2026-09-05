@@ -981,8 +981,8 @@ CHECK_EXT_CAP: Final = 0
 LAZY_ACC: Final = False
 # PRUNE_V2: prune plain quiet moves harder at depth <= 4, after the first move
 # at a node, when not in check and not near a mate: futility with a margin of
-# 150 cp per ply of depth, and a history cut for quiets whose butterfly score
-# is below -3000 per ply of depth. Removes whole subtrees rather than
+# 100 cp per ply of depth, and a history cut for quiets whose butterfly score
+# is below -1500 per ply of depth. Removes whole subtrees rather than
 # shortening them, which is what a depth gain needs. Needs COMPILED_SEARCH and
 # HISTORY2 (the history cut reads the side-to-move band).
 PRUNE_V2: Final = False
