@@ -220,16 +220,20 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 23:05)
-- Interactive session's binpack decode (8 workers): data/sf/feb24_NN.npy shards,
-  ~290M/580M kept at 22:45, roughly 25 min to go. GPU stays reserved for the SF
+## Running now (5 Sep 23:45)
+- Decode DONE (581M positions, 23:07). Interactive session now runs the v9.1
+  endgame-suite baseline (overnight/eval/suite-v91-champion.log, 300/400 at
+  23:34, ~5 min left) -- the NET_V10 prereq. GPU stays reserved for the SF
   retrain (NOT the loop's job).
-- laptop worker: picked 142-v92prune at 22:42 and is WAITING in the new load-check
-  loop until the decode exits (the fix after 141 failed 19/24 on init timeouts
-  under the decode -- an infra reject, not an engine verdict; 140 = same cause,
-  1/24). Queue after it: v92prune-clocktest-l, 143-v92nmp (IMPROVING + CUTNODE +
-  NMP_V2, 600 games at 8 s), v92nmp-clocktest-l -- both v9.2 bundle shapes have
-  their SPRT + mandatory clocktest queued.
+- laptop worker: picked 142-v92prune at 22:42 and WAITS in the load-check loop
+  until the suite exits (the fix after 140/141 died to init timeouts under the
+  decode -- infra rejects, not engine verdicts). Queue after it:
+  v92prune-clocktest-l, 143-v92nmp (IMPROVING + CUTNODE + NMP_V2), 
+  v92nmp-clocktest-l, then 144-caporder + caporder-clocktest-l (new, this
+  iteration). NMP_V2's build (previous iteration) was left uncommitted; this
+  iteration's commit carries it together with CAPTURE_ORDER (exact check ran
+  on the combined tree). training/binpack_decode.py left uncommitted -- it
+  belongs to the interactive session's chain.
 - desktop: OFF. Queue nothing there.
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
@@ -242,8 +246,17 @@ what enters a bundle.
    null tried only when standing >= beta, skipped on a TT upper bound < beta
    (tt_depth >= 0 guards the no-hit default tt_flag=2/tt_score=0). Verification
    search deferred to NMP_V2B. Queued in 143-v92nmp.
-2. CAPTURE_ORDER (V10_PLAN #7): next build item (SEE-ordered captures, losing
-   captures below quiets, capture history).
+2. CAPTURE_ORDER (V10_PLAN #7): BUILT 5 Sep 23:40, off in the tree
+   (C_CAPTURE_ORDER=42, CTRL_SIZE 43). Rescore pass after score_moves: SEE < 0
+   captures below every quiet (band -(1<<21) + see*16), SEE >= 0 keep the
+   MVV-LVA band; capture history (gravity bonus on capture cutoffs, >>=1 decay)
+   in the first 4608 entries of the conthist1 buffer (CONT_HIST is closed;
+   both-on raises at init) so the kernel signature is unchanged. Bench depth 8:
+   1,574,873 vs 1,445,087 nodes (1.090x) at 378 vs 391 knps -- ordering must
+   buy back ~9% nodes at fixed time; the SPRT decides. ruff/mypy/exact 70/70 +
+   40/40 PASS. Queued as 144-caporder (600 games, 8 s) + caporder-clocktest-l
+   at the end of the laptop queue; its sed flips only CAPTURE_ORDER, so it
+   stays champion+CAPTURE_ORDER even if the tree flips to v9.2 under it.
 3. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets + the
    16-out head. The interactive session owns the GPU and the SF-data retrain;
    the loop only folds results. Prereq left: the v9 endgame-suite baseline
@@ -255,11 +268,12 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) Fold 142-v92prune when it lands (the worker starts it as soon as the decode
-exits; SPRT to checkpoint 200 ~1 h + the clocktest behind it). A pass makes
-IMPROVING+CUTNODE the v9.2 anchor; 143-v92nmp then tests the trio with NMP_V2.
-Ship v9.2 from the best passing shape, with INIT_FOLD flipped in the zip (item 0
-above -- re-check import < 45 s). (2) While waiting: build CAPTURE_ORDER
-(V10_PLAN #7) as the next OFF switch, bench it, queue it into the following
-bundle. (3) Do NOT start GPU work or the endgame suite while the decode or a
-gauntlet checkpoint is near; the SF retrain belongs to the interactive session.
+(1) Fold 142-v92prune when it lands (the worker starts it as soon as the
+endgame suite exits; SPRT to checkpoint 200 ~1 h + the clocktest behind it). A
+pass makes IMPROVING+CUTNODE the v9.2 anchor; 143-v92nmp then tests the trio
+with NMP_V2. Ship v9.2 from the best passing shape, with INIT_FOLD flipped in
+the zip (item 0 above -- re-check import < 45 s). (2) 144-caporder (queued this
+iteration) decides CAPTURE_ORDER for the v9.3 bundle. (3) While waiting: next
+build item is QS transposition table (V10_PLAN #9) or aspiration widening 1.5x
+(#12) as filler switches for v9.3. (4) Do NOT start GPU work; the SF retrain
+belongs to the interactive session.

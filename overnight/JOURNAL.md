@@ -901,3 +901,21 @@ cp/unit vs SF 17.1 depth 12, r=0.90; VALUE_NONE 32002 filtered; int16 wrap fixed
 marker moves 0xFFFF end a chain), decoding data/sf/test80-2024-02 (6.9 GB zst) to 580M
 RECORD positions for a warm-started retrain tonight. Loop paused 21:20-22:20 on the usage
 limit; desktop is off, all gates on the laptop.
+
+5 Sep 23:45 (loop iter 9) CAPTURE_ORDER (V10_PLAN #7) built, off in the tree
+(C_CAPTURE_ORDER=42, CTRL_SIZE 43). A rescore pass after score_moves computes SEE once
+per non-promotion capture: SEE-losing captures drop below every quiet (ordering band
+-(1<<21) + see*16, under the quiets' +/-2*HISTORY_MAX), winning/equal captures keep the
+MVV-LVA band, and both get a capture-history tiebreak; the capture history (gravity bonus
+on capture cutoffs, no malus in v1, >>=1 per-move decay under HYGIENE) lives in the first
+4608 entries of the conthist1 buffer, indexed (attacker*64+to)*6 + victim%6 -- CONT_HIST
+is rejected/closed so the buffer is free, agent raises if both switches are on, and the
+kernel signature stays unchanged (no new numba specialisation). ruff/mypy PASS, exactness
+70/70 + table-on 40/40 PASS. Bench depth 8: 1,574,873 vs 1,445,087 nodes (1.090x) at 378
+vs 391 knps -- delayed losing captures cost ~9% nodes at fixed depth, so the 8 s SPRT
+(144-caporder, 600 games, queued with caporder-clocktest-l behind the v9.2 gates; the sed
+flips only CAPTURE_ORDER so a v9.2 tree flip cannot void it) decides whether ordering
+pays it back. Also committed: the previous iteration's uncommitted NMP_V2 build (kernel
++ agent together, per the 22:40 rule; the exact check ran on the combined tree). State:
+decode done (581M), the interactive session's v9.1 endgame-suite baseline at 300/400,
+the worker holding 142-v92prune until it exits; desktop off.

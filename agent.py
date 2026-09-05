@@ -1067,6 +1067,20 @@ IMPROVING: Final = False
 # child is a cut node iff its parent was not, a full-window child of a PV node
 # is a PV node. Use: LMR reduction += 1 at cut nodes.
 CUTNODE: Final = False
+# NMP_V2 (V10_PLAN #6): dynamic null-move reduction R = 3 + depth//4 +
+# min((standing - beta) // 200, 3) replacing the fixed depth - 3 - depth//6,
+# tried only when the static eval stands at or above beta, skipped when the TT
+# holds an upper bound below beta (expected fail-low; the null search is wasted
+# nodes). Verification search at depth >= 10 deferred to NMP_V2B.
+NMP_V2: Final = False
+# CAPTURE_ORDER (V10_PLAN #7): rescore non-promotion captures after score_moves.
+# SEE-losing captures drop below every quiet (band -(1 << 21) + see*16);
+# winning/equal captures keep the MVV-LVA band; both get a capture-history
+# tiebreak. The capture history reuses the first 4608 entries of the conthist1
+# buffer, indexed (attacker_piece*64 + to)*6 + victim%6 -- safe because
+# CONT_HIST is closed/rejected (both on together raises at init). Gravity
+# bonus on a capture cutoff, decayed >>= 1 per move under HYGIENE.
+CAPTURE_ORDER: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2004,6 +2018,10 @@ class FastEngine:
             ctrl[_fs.C_CONT_HIST] = 1 if CONT_HIST else 0
             ctrl[_fs.C_IMPROVING] = 1 if IMPROVING else 0
             ctrl[_fs.C_CUTNODE] = 1 if CUTNODE else 0
+            ctrl[_fs.C_NMP_V2] = 1 if NMP_V2 else 0
+            if CAPTURE_ORDER and CONT_HIST:
+                raise RuntimeError("CAPTURE_ORDER and CONT_HIST share the conthist1 buffer")
+            ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
             if INIT_FOLD:
                 for fold_slot, fold_value in _fs.FOLDED.items():
                     if bool(ctrl[fold_slot]) != fold_value:
@@ -2050,7 +2068,7 @@ class FastEngine:
 
         if HYGIENE:
             self.butterfly >>= 1
-            if CONT_HIST:
+            if CONT_HIST or CAPTURE_ORDER:
                 self.conthist1 >>= 1  # same decay, or it saturates within a few moves
 
         started = time.monotonic()

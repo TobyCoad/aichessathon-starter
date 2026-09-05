@@ -44,5 +44,30 @@
   "name": "142-v92prune",
   "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
   "games": 600
+ },
+ {
+  "name": "v92prune-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
+ },
+ {
+  "name": "143-v92nmp",
+  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^NMP_V2: Final = False$/NMP_V2: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "v92nmp-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^IMPROVING: Final = False$/IMPROVING: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^NMP_V2: Final = False$/NMP_V2: Final = True/"
+ },
+ {
+  "name": "144-caporder",
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "caporder-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/"
  }
 ]

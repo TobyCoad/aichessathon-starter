@@ -156,10 +156,25 @@ CONT_LMR_DIV = 6000
 # null-window child is a cut node iff its parent was not, a full-window child
 # of a PV node is a PV node. Use: LMR reduction += 1 at cut nodes.
 C_IMPROVING, C_CUTNODE = 39, 40
+# C_NMP_V2 (V10_PLAN #6): dynamic null-move reduction R = 3 + depth//4 +
+# min((standing - beta) // 200, 3), tried only when the static eval stands at
+# or above beta, and skipped when the TT already holds an upper bound below
+# beta (the node is expected to fail low, so the null search is wasted nodes).
+# Verification search at depth >= 10 deferred to a follow-up (NMP_V2B).
+C_NMP_V2 = 41
+# C_CAPTURE_ORDER (V10_PLAN #7): rescore non-promotion captures after
+# score_moves. SEE < 0 drops the capture below every quiet (band -(1 << 21) +
+# see*16), SEE >= 0 keeps the MVV-LVA band; both add a capture-history tiebreak.
+# The capture history lives in the FIRST 4608 entries of the conthist1 buffer,
+# indexed (attacker_piece*64 + to)*6 + victim%6 -- CONT_HIST is closed/rejected
+# so the buffer is free (agent.py refuses both switches on together), and
+# reusing it keeps the kernel signature unchanged. Gravity bonus on a capture
+# cutoff, no malus (v1); decayed >>= 1 per move under HYGIENE like butterfly.
+C_CAPTURE_ORDER = 42
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 42
+CTRL_SIZE = 43
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -749,28 +764,50 @@ def search(
              or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
         and excluded == 0
     ):
-        null_depth = depth - 1 - NMP_REDUCTION
-        if (_F_SAFE if _FOLD else ctrl[C_SAFE] != 0):
-            null_depth -= depth // 6  # deeper nodes can afford a bigger reduction
-        fb.make_null(bb, meta, undo, keys)
-        score = -search(
-            bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
-            w2t, b2, w3, b3, tt_key, tt_data,
-            killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
-            ec_key, ec_val, exts, conthist1, 1,
-        )
-        fb.unmake_null(meta, undo)
-        if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0) and ctrl[C_ACC_PLY] > meta[fb.PLY]:
-            # A sync inside the null search labelled the accumulators with the
-            # null ply; the null move left the board unchanged, so they are
-            # equally current here -- relabel, or the next lazy make at this
-            # ply would sit behind C_ACC_PLY and never be replayed.
-            ctrl[C_ACC_PLY] = meta[fb.PLY]
-        if ctrl[C_ABORT]:
-            return 0
-        if score >= beta:
-            return beta
+        nmp2 = ctrl[C_NMP_V2] != 0
+        do_null = True
+        if nmp2:
+            if tt_depth >= 0 and tt_flag == 2 and tt_score < beta:
+                do_null = False  # stored upper bound already puts this node below beta
+            else:
+                if standing == -INFINITY:
+                    if cached_eval != NO_EVAL:
+                        standing = cached_eval
+                    else:
+                        if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
+                            sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
+                        standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+                        cached_eval = standing
+                do_null = standing >= beta
+        if do_null:
+            if nmp2:
+                bonus = (standing - beta) // 200
+                if bonus > 3:
+                    bonus = 3
+                null_depth = depth - 3 - depth // 4 - bonus
+            else:
+                null_depth = depth - 1 - NMP_REDUCTION
+                if (_F_SAFE if _FOLD else ctrl[C_SAFE] != 0):
+                    null_depth -= depth // 6  # deeper nodes can afford a bigger reduction
+            fb.make_null(bb, meta, undo, keys)
+            score = -search(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, tt_key, tt_data,
+                killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
+                ec_key, ec_val, exts, conthist1, 1,
+            )
+            fb.unmake_null(meta, undo)
+            if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0) and ctrl[C_ACC_PLY] > meta[fb.PLY]:
+                # A sync inside the null search labelled the accumulators with the
+                # null ply; the null move left the board unchanged, so they are
+                # equally current here -- relabel, or the next lazy make at this
+                # ply would sit behind C_ACC_PLY and never be replayed.
+                ctrl[C_ACC_PLY] = meta[fb.PLY]
+            if ctrl[C_ABORT]:
+                return 0
+            if score >= beta:
+                return beta
 
     extend_hash = 0
     if (
@@ -840,6 +877,26 @@ def search(
                     and m != counter_move
                 ):
                     sc[j] += conthist1[ch_base + sq[m & 63] * 64 + to2]
+    capture_order = ctrl[C_CAPTURE_ORDER] != 0
+    if capture_order:
+        # Rescore non-promotion captures (EP stays a quiet: sq[to] < 0, same as
+        # score_moves). SEE-losing captures fall below every quiet score
+        # (quiets stay within +/-2*HISTORY_MAX); winning/equal captures keep
+        # the MVV-LVA band with a capture-history tiebreak on top.
+        for j in range(n):
+            m = mv[j]
+            if m == hash_move or (m >> 12) != 0:
+                continue
+            to2 = (m >> 6) & 63
+            victim = sq[to2]
+            if victim < 0:
+                continue
+            chv = conthist1[(sq[m & 63] * 64 + to2) * 6 + victim % 6]
+            sv = fb.see(bb, sq, meta, m)
+            if sv < 0:
+                sc[j] = -(1 << 21) + sv * 16 + chv // 16
+            else:
+                sc[j] = fb.CAPTURE_BONUS + MVV[victim % 6] * 16 - MVV[sq[m & 63] % 6] + chv // 16
 
     best_score = -INFINITY
     best_move = 0
@@ -1045,6 +1102,17 @@ def search(
                                         conthist1[odx] -= (
                                             bonus2 + conthist1[odx] * bonus2 // HISTORY_MAX
                                         )
+                    elif capture_order and (move >> 12) == 0 and excluded == 0:
+                        # Board is restored: sq[from] is the attacker again and
+                        # sq[to] the victim. Gravity bonus for the cutting
+                        # capture (no malus in v1).
+                        victim2 = sq[(move >> 6) & 63]
+                        if victim2 >= 0:
+                            cbonus = depth * depth
+                            if cbonus > 1200:
+                                cbonus = 1200
+                            kdx = (sq[move & 63] * 64 + ((move >> 6) & 63)) * 6 + victim2 % 6
+                            conthist1[kdx] += cbonus - conthist1[kdx] * cbonus // HISTORY_MAX
                     break
 
     if searched == 0:
