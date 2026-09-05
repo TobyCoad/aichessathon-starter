@@ -1,0 +1,16 @@
+v92prune-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+    66 plies  1/2-1/2       lowest clock   10.2s  longest move  10.1s  at ply 30   66.3s  used w   126s b   126s
+compiled board: on
+   172 plies  1-0           lowest clock    5.9s  longest move   9.9s  at ply 30   46.9s  used w   155s b   155s
+compiled board: on
+   196 plies  0-1           lowest clock    5.9s  longest move   8.3s  at ply 30   60.5s  used w   156s b   155s
+compiled board: on
+   300 plies  *             lowest clock    5.6s  longest move  11.0s  at ply 30   65.8s  used w   189s b   187s
+compiled board: on
+    52 plies  1/2-1/2       lowest clock   30.3s  longest move   8.7s  at ply 30   75.1s  used w   102s b    97s
+compiled board: on
+   105 plies  1/2-1/2       lowest clock    6.9s  longest move  10.5s  at ply 30   46.7s  used w   136s b   137s
+
+flags 0/6  errors 0  lowest clock 5.6s  longest move 11.0s
+PASS

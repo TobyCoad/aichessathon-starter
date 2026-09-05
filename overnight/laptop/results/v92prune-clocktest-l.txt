@@ -1,0 +1,5 @@
+name v92prune-clocktest-l
+kind clocktest
+host tobys-laptop
+flags 0/6  errors 0  lowest clock 5.6s  longest move 11.0s
+PASS
