@@ -927,7 +927,7 @@ PONDER_MAX_S: Final = 600.0
 # smoke games, which is the only way to see whether pondering runs there.
 PONDER_DIAG: Final = False
 # PONDER_PROBE: answer "does the platform run us between moves?" through the only
-# channel a rated game gives back, the clock. On our moves 8-12 the search gets a
+# channel a rated game gives back, the clock. On our moves 8-10 the search gets a
 # fixed 1.0 s when the ponder thread searched >= 100k nodes in the gap before the
 # request, and a fixed 3.0 s when it did not. Read the PGN clocks of one game.
 PONDER_PROBE: Final = False
@@ -2263,7 +2263,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
         # hands this move to the python-chess engine instead.
         try:
             soft, hard = _budget(board, time_left_ms)
-            if PONDER_PROBE and 8 <= board.fullmove_number <= 12 and time_left_ms > 30_000:
+            if PONDER_PROBE and 8 <= board.fullmove_number <= 10 and time_left_ms > 30_000:
                 fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
                 soft = hard = time.monotonic() + fixed
             candidate = _FAST.play(board, soft, hard)
