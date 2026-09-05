@@ -62,7 +62,7 @@ def gate(challenger: Path, workers: int) -> tuple[bool, str]:
             if init_only and attempt == 0:
                 note = f"; first pass had {tally.failures} init timeout(s) under load, replayed"
                 print(
-                    f"  {tally.failures}/{tally.games} init timeouts under load; replaying the gate",
+                    f"  {tally.failures}/{tally.games} init timeouts under load; replaying gate",
                     flush=True,
                 )
                 continue
