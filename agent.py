@@ -922,6 +922,10 @@ IIR: Final = False
 # a Greek gift. Off means the search plays from move one.
 BOOK_ENABLED: Final = True
 PONDER_MAX_S: Final = 600.0
+# PONDER_DIAG: print, at each request, the wall time since the ponder thread started
+# and how many nodes it searched. The platform shows stderr in the validation log's
+# smoke games, which is the only way to see whether pondering runs there.
+PONDER_DIAG: Final = False
 
 # CONTEMPT: draw scores from the root side's point of view, in centipawns. Level
 # positions carry a small reluctance to repeat; being ahead carries more, rising
@@ -1929,6 +1933,7 @@ class FastEngine:
 _FAST: FastEngine | None = None
 _PONDER: FastEngine | None = None
 _PONDER_THREAD: threading.Thread | None = None
+_PONDER_STARTED: float = 0.0
 if _FAST_OK:
     try:
         _FAST = FastEngine()
@@ -1984,6 +1989,8 @@ def _start_ponder(board: chess.Board) -> None:
         _PONDER.ctrl[_fs.C_STOP] = 0
         thread = threading.Thread(target=_ponder_target, args=(target,), daemon=True)
         _PONDER_THREAD = thread
+        global _PONDER_STARTED
+        _PONDER_STARTED = time.monotonic()
         thread.start()
     except Exception:
         _PONDER_THREAD = None
@@ -2207,7 +2214,11 @@ def get_move(fen: str, time_left_ms: int) -> str:
         return "0000"
 
     if PONDER:
+        had_thread = _PONDER_THREAD is not None
         _stop_ponder()
+        if PONDER_DIAG and had_thread and _PONDER is not None:
+            gap = time.monotonic() - _PONDER_STARTED
+            print(f"ponder-diag: gap {gap:.2f}s ponder_nodes {int(_PONDER.ctrl[_fs.C_NODES])}")
     if TIME_V2:
         _note_clock(time_left_ms)
 
