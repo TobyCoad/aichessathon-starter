@@ -122,6 +122,16 @@ HIST_PRUNE_SLOPE = 1500
 C_SINGULAR, C_EXCL_MOVE, C_EXCL_PLY = 32, 33, 34
 SINGULAR_MIN_DEPTH = 7
 SINGULAR_EXT_CAP = 6
+# C_HMC_DRAW: the halfmove-clock value at which a line scores as a draw
+# (normally 100 = the fifty-move rule; <= 0 also means 100). agent.ADJUDICATION
+# lowers it at the root when the side to move is losing the referee's ply-300
+# material adjudication and a fifty-move draw is reachable before the cap:
+# any stretch of non-zeroing plies then reads as draw-reaching.
+# C_HIST2_FIX: zero quiets[ply, searched] for non-quiet moves so the history
+# malus never punishes a stale entry from an earlier node at the same ply.
+# C_KILLER_CLEAR: clear killers[ply + 2] on node entry (grandchild killers are
+# stale once this node's subtree is done).
+C_HMC_DRAW, C_HIST2_FIX, C_KILLER_CLEAR = 35, 36, 37
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
@@ -508,7 +518,10 @@ def search(
                     return draw_score(meta, ctrl)
             if fb.repeats(meta, keys):
                 return draw_score(meta, ctrl)
-        if meta[fb.HALFMOVE] >= 100:
+        hmc_draw = ctrl[C_HMC_DRAW]
+        if hmc_draw <= 0:
+            hmc_draw = 100
+        if meta[fb.HALFMOVE] >= hmc_draw:
             n = fb.gen_legal(bb, sq, meta, moves[ply], False)
             if n == 0 and fb.in_check(bb, meta):
                 return -MATE + ply
@@ -517,6 +530,9 @@ def search(
         if ctrl[C_LAZY_ACC] != 0:
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+    if ctrl[C_KILLER_CLEAR] != 0:
+        killers[ply + 2, 0] = 0
+        killers[ply + 2, 1] = 0
 
     if ctrl[C_SAFE] != 0 and ply > 0:
         # Mate-distance pruning: no line from here can beat a mate already found
@@ -768,6 +784,8 @@ def search(
         )
         if history2 and plain:
             quiets[ply, searched] = move  # every quiet tried at this node, for the malus
+        elif history2 and ctrl[C_HIST2_FIX] != 0:
+            quiets[ply, searched] = 0  # else the malus reads a stale move from a prior node
         if reduction > 0:
             reduced = depth - 1 - reduction
             if reduced < 1:

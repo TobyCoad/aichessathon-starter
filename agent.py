@@ -1967,6 +1967,24 @@ class FastEngine:
             ctrl[_fs.C_PRUNE2] = 1 if PRUNE_V2 else 0
             ctrl[_fs.C_SINGULAR] = 1 if SINGULAR else 0
             ctrl[_fs.C_EXCL_PLY] = -1
+            ctrl[_fs.C_HIST2_FIX] = 1 if HISTORY2_FIX else 0
+            ctrl[_fs.C_KILLER_CLEAR] = 1 if KILLER_CLEAR else 0
+            if KILLER_CLEAR:
+                self.killers2[:] = 0  # killers from the previous search are noise
+            ctrl[_fs.C_HMC_DRAW] = 100
+            if ADJUDICATION:
+                match_ply = _match_ply(board)
+                hmc = board.halfmove_clock
+                if (
+                    ADJUDICATION_PLY - match_ply <= ADJ_WINDOW
+                    and match_ply + (100 - hmc) <= ADJUDICATION_PLY
+                    and hmc + ADJ_HORIZON < 100
+                    and _material_balance(board) < 0
+                ):
+                    # Losing the material adjudication with a fifty-move draw
+                    # reachable before the cap: a horizon of non-zeroing plies
+                    # already scores as that draw.
+                    ctrl[_fs.C_HMC_DRAW] = hmc + ADJ_HORIZON
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
@@ -2353,21 +2371,49 @@ def _contempt(board: chess.Board, static: int) -> int:
     Level, a small reluctance to repeat: in a Swiss the opponent is usually the
     weaker side, and playing on is where that shows.
     """
+    material = _material_balance(board)
+    game_ply = _match_ply(board) if ADJUDICATION else (
+        2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
+    )
+    late = min(1.0, max(0.0, (game_ply - 150) / (ADJUDICATION_PLY - 150)))
+    if material >= 100 or static >= 60:
+        return -int(CONTEMPT_AHEAD + (CONTEMPT_AHEAD_LATE - CONTEMPT_AHEAD) * late)
+    if material <= -100 or static <= -60:
+        if ADJUDICATION and material < 0:
+            # Losing the ply-300 material adjudication: a draw approaches a full
+            # half point as the cap nears, so make repetitions decisive, not +20.
+            return -CONTEMPT_BEHIND + int(ADJ_BEHIND_LATE * late)
+        return -CONTEMPT_BEHIND
+    return -CONTEMPT_LEVEL
+
+
+def _material_balance(board: chess.Board) -> int:
+    """Raw material for the side to move, in cp; sign matches the referee's
+    ply-300 adjudication (its 1/3/3/5/9 scale times 100)."""
     material = 0
     for piece, value in _MATERIAL.items():
         material += value * (
             chess.popcount(board.pieces_mask(piece, chess.WHITE))
             - chess.popcount(board.pieces_mask(piece, chess.BLACK))
         )
-    if board.turn == chess.BLACK:
-        material = -material
-    game_ply = 2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
-    late = min(1.0, max(0.0, (game_ply - 150) / (ADJUDICATION_PLY - 150)))
-    if material >= 100 or static >= 60:
-        return -int(CONTEMPT_AHEAD + (CONTEMPT_AHEAD_LATE - CONTEMPT_AHEAD) * late)
-    if material <= -100 or static <= -60:
-        return -CONTEMPT_BEHIND
-    return -CONTEMPT_LEVEL
+    return -material if board.turn == chess.BLACK else material
+
+
+def _match_ply(board: chess.Board) -> int:
+    """The referee's ply count, pinned at our first request of the game.
+
+    The referee counts plies from the curated start FEN; `fullmove_number`
+    counts from the real initial position and can run 13+ ahead. We cannot see
+    whether the opponent moved before our first request, so assume it did (at
+    most one ply conservative). A ply that goes backwards means a new game in
+    the same process: re-pin.
+    """
+    global _MATCH_BASE_PLY, _LAST_GAME_PLY
+    ply = 2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
+    if _MATCH_BASE_PLY < 0 or ply < _LAST_GAME_PLY:
+        _MATCH_BASE_PLY = ply
+    _LAST_GAME_PLY = ply
+    return ply - _MATCH_BASE_PLY + 1
 
 
 def _observed_increment() -> float:
