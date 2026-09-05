@@ -18,7 +18,7 @@ import sys
 import time
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from harness.rules import PLY_CAP
@@ -136,6 +136,23 @@ class Tally:
             self.losses += 1
 
 
+def checkpoint_verdict(
+    verdict: sprt.Verdict, games: int, checkpoint: int, promote_at: float, reject_at: float
+) -> sprt.Verdict:
+    """The every-N-games rule: promote a positive trend, reject a clearly negative one
+    from the second checkpoint on, otherwise play on."""
+    if verdict.elo >= promote_at:
+        print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, trending positive -> PROMOTE early",
+              flush=True)
+        return replace(verdict, decision="accept")
+    if games >= 2 * checkpoint and verdict.elo <= reject_at:
+        print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, negative -> REJECT early",
+              flush=True)
+        return replace(verdict, decision="reject")
+    print(f"  checkpoint {games}: {verdict.elo:+.0f} Elo, undecided -> {checkpoint} more", flush=True)
+    return verdict
+
+
 def run(
     agent: Path,
     opponent: Path,
@@ -148,8 +165,17 @@ def run(
     elo1: float,
     quiet: bool = False,
     pgn_dir: str = "",
+    checkpoint: int = 0,
+    promote_at: float = 10.0,
+    reject_at: float = -10.0,
 ) -> tuple[Tally, sprt.Verdict]:
-    """Play until the SPRT concludes or `max_games` is reached."""
+    """Play until the SPRT concludes or `max_games` is reached.
+
+    With `checkpoint` > 0 the run is also judged every `checkpoint` games: an Elo
+    estimate at or above `promote_at` accepts early (many small gains shipped fast
+    beat one certain verdict), one at or below `reject_at` rejects early from the
+    second checkpoint on, and anything in between plays on to the next checkpoint.
+    """
     schedule = openings.pairs(max_games)
     tasks = [
         Task(index // 2, agent, opponent, fen, white, base_ms, increment_ms, ply_cap, pgn_dir)
@@ -160,6 +186,7 @@ def run(
     partial: dict[int, list[float]] = defaultdict(list)
     verdict = sprt.Verdict("continue", 0.0, 0, 0.0, float("inf"))
     queued = 0
+    next_check = checkpoint
     pending: set[Future[GameResult]] = set()
 
     with ProcessPoolExecutor(max_workers=workers, initializer=_initialise) as pool:
@@ -179,6 +206,12 @@ def run(
                         verdict = sprt.evaluate(tally.pair_scores, elo0, elo1)
                         if not quiet:
                             print(f"  {tally.games:>5} games  {verdict.summary}", flush=True)
+                        if checkpoint and tally.games >= next_check:
+                            next_check += checkpoint
+                            if verdict.decision == "continue":
+                                verdict = checkpoint_verdict(
+                                    verdict, tally.games, checkpoint, promote_at, reject_at
+                                )
 
                 if verdict.decision != "continue":
                     for future in pending:

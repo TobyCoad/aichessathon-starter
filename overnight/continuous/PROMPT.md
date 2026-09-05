@@ -32,10 +32,14 @@ C. TEST THE BUNDLE: build one challenger = champion + every new switch flipped o
    Time-management changes are only visible at 120 s: for those the desktop 120 s games and
    the clock test are the gate, plus 200 games at 30 s (`base_ms` 30000) if a slot is free.
    Queue the next bundle's build while this one tests: never leave a machine idle.
-D. VERDICT: PROMOTE, or INCONCLUSIVE with a positive point estimate over >= 300 games AND
-   a non-negative 120 s result AND clocktest PASS, counts as a pass for a bundle. A bundle
-   that fails is split: drop the most suspicious switch (bench it) and re-queue once; do
-   not chase it further -- record it as closed in NOTES.md and move on.
+D. VERDICT (the human's rule): the gauntlet judges itself every 200 games -- at or above
+   +10 Elo it PROMOTES early, at or below -10 from 400 games on it REJECTS, in between it
+   plays 200 more (testing/gauntlet.py --checkpoint, default on). Read the verdict line;
+   PROMOTE, or INCONCLUSIVE with a positive point estimate, is a pass. Clocktest PASS is
+   mandatory; the 40 games at 120 s are the gate only for time-management bundles and
+   informational otherwise (do not wait for them). A bundle that fails is split: drop the
+   most suspicious switch (bench it) and re-queue once; do not chase it further -- record
+   it as closed in NOTES.md and move on. Many small shipped gains beat one certain verdict.
 E. SHIP: when a bundle passes: flip its switches to True in the tree (that is the new
    champion; re-run the exactness check), build the zip from the TESTED challenger dir
    (`python - <<EOF` with zipfile: agent.py, fastboard.py, fastsearch.py from the

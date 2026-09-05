@@ -14,8 +14,11 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
 - Before committing an engine change: `ruff check`, `mypy agent.py fastsearch.py`,
   and `python -m testing.check_fastsearch --depth 4 --random 30` must PASS
   (flags-off kernel identical to the Python reference).
-- One switch per challenger. Judged by SPRT[0,20] at 8 s vs the champion; nets and
-  time changes also on `testing/endgame_suite.py` and 40 games at 120 s.
+- Bundles, not single switches (since 5 Sep). Judged at 8 s vs the champion by the
+  gauntlet's every-200-games rule: >= +10 Elo promotes early, <= -10 from 400 games
+  rejects, in between 200 more (testing/gauntlet.py --checkpoint). Clocktest PASS is
+  mandatory; 40 games at 120 s gate time-management bundles only. Nets also need the
+  endgame suite.
 - A bundle (champion + every passed switch) repeats the full gate before it is a
   candidate: SPRT vs champion, 200-game crash hunt (`--elo0 900 --elo1 950`),
   `testing.clocktest`, 40 games at 120 s. Unpacked zip must stay under 50 MB.

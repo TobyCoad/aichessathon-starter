@@ -67,6 +67,9 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--elo0", type=float, default=0.0)
     parser.add_argument("--elo1", type=float, default=20.0)
+    parser.add_argument("--checkpoint", type=int, default=200, help="judge every N games; 0 = off")
+    parser.add_argument("--promote-at", type=float, default=10.0, help="checkpoint Elo that promotes")
+    parser.add_argument("--reject-at", type=float, default=-10.0, help="2nd+ checkpoint Elo that rejects")
     arguments = parser.parse_args()
 
     workers = arguments.workers or arena.default_workers()
@@ -114,6 +117,9 @@ def run_sprt(
         workers,
         arguments.elo0,
         arguments.elo1,
+        checkpoint=arguments.checkpoint,
+        promote_at=arguments.promote_at,
+        reject_at=arguments.reject_at,
     )
 
 
