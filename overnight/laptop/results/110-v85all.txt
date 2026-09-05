@@ -1,0 +1,7 @@
+name 110-v85all
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  110-v85all  +36 Elo over 477 games
+  +184 =159 -134  score 55.2%  over 477 games
+  terminations: adjudication 7, checkmate 312, fifty_moves 10, insufficient_material 74, stalemate 2, threefold_repetition 72
