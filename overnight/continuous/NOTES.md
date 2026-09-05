@@ -48,14 +48,15 @@ pondering (platform freezes the process), endgame fine-tune of the old net,
 QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
 091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject).
 
-## Running now (5 Sep 12:50)
-- desktop: gen-002 running (12:38 heartbeat: worker 5 at 300/500 games); then
-  v8-clocktest, v8-120s, 092-qscap14, 093-safe, 095-asp15, 096-clocktest-v71,
-  097-seemain.
-- laptop CPU: 100-v8all gauntlet (314 games, llr -0.00, +10 +/- 31 -- the early
-  +1.01 has washed out; heading inconclusive). Worker queue after it:
-  101-lmraggr, 073-kz16w, 098-rootorder, 099-ttbuckets, 102-timev5-clock,
-  102-timev5-120s.
+## Running now (5 Sep 13:45)
+- desktop: gen-002 DONE (287,103 positions / 3000 games -> results/data/), and
+  v8-clocktest PASS (0/6 errors, lowest clock 10.0 s, longest move 12.8 s) --
+  the v8 bundle keeps time. Now on v8-120s; then 092-qscap14, 093-safe,
+  095-asp15, 096-clocktest-v71, 097-seemain, 103-lazyacc (queued this iter).
+- laptop CPU: 100-v8all gauntlet at 453 games, llr -0.45, +6 +/- 26 --
+  inconclusive-leaning; the 600-game cap should close it soon. Worker queue
+  after it: 101-lmraggr, 073-kz16w, 098-rootorder, 099-ttbuckets,
+  102-timev5-clock, 102-timev5-120s.
 - laptop GPU: net_w512-b1-kz16 training (if still up -- not re-verified this iter).
 - download: fetch 2025_04 idling ("nothing new to analyse").
 
@@ -67,23 +68,31 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
    a proper bundle from the single-switch passes only.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
    (see rules), and if green write CANDIDATE.md + submission-candidate.zip.
-3. Lazy accumulator update (defer make_full's NNUE update until evaluate).
-4. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
-5. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
-6. Anything from overnight/eval/V7_PLAN.md not listed as closed.
+3. Pack the fifth month; retrain the 16-zone net on five months (lr 1e-4).
+   The two desktop self-play parquets (gen-001/002, ~570k positions) can join
+   the training mix when a retrain happens.
+4. Book rebuild with `--max-drop 10 --min-count 20`, judged on platform openings.
+5. Anything from overnight/eval/V7_PLAN.md not listed as closed.
 
 ## Next step
-Iteration 5: check results (laptop for 100-v8all, which was llr -0.00 at 314
-games and may close either way; desktop for gen-002 and then v8-clocktest /
-v8-120s / 092 / 093 / 095). Fold any verdicts (100-v8all is a bundle probe --
-see the caveat in backlog 1). Otherwise take backlog item 3 (lazy accumulator
-update: defer make_full's NNUE update until evaluate -- an exact change, so
-the exactness check must still pass with the flag OFF and the flag-on path is
-judged on node-rate/bench, then SPRT).
+Iteration 6: check results (laptop for 100-v8all, 453 games at llr -0.45 and
+capped at 600, closing soon; desktop for v8-120s, then 092 / 093 / 095). Fold
+any verdicts (100-v8all is a BUNDLE probe -- see the caveat in backlog 1).
+Otherwise take backlog item 3 (pack the fifth month + retrain), but first
+check whether the GPU training run (net_w512-b1-kz16) is still occupying the
+GPU -- if it finished, record its checkpoint and suite numbers before starting
+a new train.
 Verdict context for the queued challengers: 098-rootorder +3.5% nodes (REJECT
 likely); 099-ttbuckets node-neutral at depth 8 (only long searches can show a
 gain); 101-lmraggr 0.92x nodes at depth 8 (modest); 102-timev5 (floor 18 +
 stable refund) is 120 s only -- judged by its clocktest + the 40-game 120 s
 match, NOT an 8 s SPRT (below LOW_CLOCK the floor never binds, 8 s play is
 byte-identical), and the fixed-movetime endgame suite cannot see a budget
-change so it is waived for this one.
+change so it is waived for this one. 103-lazyacc is EXACT (same nodes, same
+scores, verified lazy==eager on 40 random positions and identical bench node
+counts): +2% knps at depth 8, +5% at depth 10, and the gain should grow at
+long TC where hash cutoffs are denser -- a small-positive SPRT or even
+inconclusive-positive is fine to promote per the exact-change precedent ONLY
+if it does not slow anything (QS_EVAL_CACHE at +2% was closed as not worth it;
+lazyacc differs in that it also helps every non-evaluating node, judge on the
+SPRT).

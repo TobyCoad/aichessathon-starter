@@ -53,5 +53,9 @@
  {
   "name": "097-seemain",
   "sed": "s/^SEE_MAIN: Final = False$/SEE_MAIN: Final = True/"
+ },
+ {
+  "name": "103-lazyacc",
+  "sed": "s/^LAZY_ACC: Final = False$/LAZY_ACC: Final = True/"
  }
 ]

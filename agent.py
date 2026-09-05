@@ -973,6 +973,12 @@ ROOT_ORDER: Final = False
 LMR_AGGRESSIVE: Final = False
 # CHECK_EXT_CAP: at most this many check extensions on one line (0 = unlimited).
 CHECK_EXT_CAP: Final = 0
+# LAZY_ACC: defer the NNUE accumulator update from make to the first evaluate
+# on the line. Exact -- same nodes, same scores -- but a node cut off by the
+# hash table, a repetition, or the null move before any static evaluation never
+# pays the two 512-float row updates or the astack save/restore, which profiled
+# at 15.4% of search time. Needs COMPILED_SEARCH.
+LAZY_ACC: Final = False
 BOOK_VERIFY_MARGIN: Final = 25
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
@@ -1825,6 +1831,9 @@ class FastEngine:
         if ctrl[_fs.C_STOP] != 0:
             raise Timeout
         ctrl[_fs.C_ABORT] = 0
+        if LAZY_ACC:
+            # The root makes are eager, so the accumulators are current here.
+            ctrl[_fs.C_ACC_PLY] = int(pos.meta[_fb.PLY])
         score = _fs.search(  # type: ignore[call-arg]
             pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
             W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
@@ -1892,6 +1901,7 @@ class FastEngine:
             ctrl[_fs.C_CHECK_CAP] = CHECK_EXT_CAP
             ctrl[_fs.C_TT_BUCKETS] = 1 if TT_BUCKETS else 0
             ctrl[_fs.C_LMR_AGGR] = 1 if LMR_AGGRESSIVE else 0
+            ctrl[_fs.C_LAZY_ACC] = 1 if LAZY_ACC else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 

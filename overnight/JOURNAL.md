@@ -699,3 +699,21 @@ laptop queue (4 pending there vs 7 on the desktop); the fixed-movetime endgame
 suite cannot see a budget change and is waived. No verdicts landed: desktop on
 gen-002 (300/500 at the 12:38 heartbeat), laptop on 100-v8all, now 314 games at
 llr -0.00 (+10 +/- 31) -- the early +1.01 has washed out, heading inconclusive.
+
+5 Sep 13:45 (loop iter 6) LAZY_ACC implemented (was backlog 3): the accumulator
+update moves out of make into the first evaluate on the line. make under the
+switch is make_light plus one undo column (U_MOVER, the moving piece's code);
+sync_acc replays pending moves from the undo stack -- saving each ply's
+snapshot to astack as it goes, so unmake can still restore -- before any
+static eval; king moves that cross a zone boundary stay eager (the rebuild
+needs its own ply's board), so a pending stretch never spans a zone change;
+after unmake_null the acc-ply label is clamped back (the null child shares the
+parent's board). Off in the tree; ruff, mypy, check_fastsearch 70/70 exact all
+PASS, and a scratch harness held lazy==eager to identical score/nodes/best on
+40 random positions (depth 4 no-TT, depth 6 TT). Bench: node counts byte-equal
+(1,605,437 at depth 8; 2,085,202 at depth 10), speed 251->256 knps at depth 8
+(+2%) and 262->275 at depth 10 (+5%) -- the win comes from nodes that never
+evaluate (TT cutoffs, repetitions, null-move prunes), so it grows with depth.
+Queued as 103-lazyacc on the desktop (shorter queue). Verdicts recorded:
+gen-002 done (287,103 positions; the pilot pair now totals ~570k), v8-clocktest
+PASS (0/6, lowest clock 10.0 s); 100-v8all still open at 453 games, llr -0.45.

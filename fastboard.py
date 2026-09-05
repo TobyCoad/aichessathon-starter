@@ -43,6 +43,9 @@ MOVE_CAP = 256
 
 SIDE, CASTLING, EP, HALFMOVE, PLY, PIECES, FULLMOVE = 0, 1, 2, 3, 4, 5, 6
 U_MOVE, U_CAPTURED, U_CASTLING, U_EP, U_HALFMOVE, U_ZONE_W, U_ZONE_B = 0, 1, 2, 3, 4, 5, 6
+# U_MOVER: the moving piece's code, written only on fastsearch's lazy make path
+# (the deferred accumulator update replays the move after sqa has moved on).
+U_MOVER = 7
 
 WK_RIGHT, WQ_RIGHT, BK_RIGHT, BQ_RIGHT = 1, 2, 4, 8
 

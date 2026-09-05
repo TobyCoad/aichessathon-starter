@@ -95,6 +95,14 @@ C_TT_BUCKETS = 27
 # agent.py turns PVS on alongside it -- null-window re-searches are what make
 # the deeper reductions cheap.
 C_LMR_AGGR = 28
+# C_LAZY_ACC: defer the accumulator update from make to the first evaluate on
+# the line (exact: same nodes, same scores). C_ACC_PLY holds the ply the
+# accumulators currently represent; sync_acc replays the pending moves from the
+# undo stack. A king move that crosses a zone boundary still updates eagerly
+# (the rebuild needs the board of its own ply), so a pending stretch never
+# contains a zone change. agent.FastEngine.root_search resets C_ACC_PLY to the
+# board's ply before every kernel call; the root makes stay eager.
+C_LAZY_ACC, C_ACC_PLY = 29, 30
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
@@ -286,6 +294,106 @@ def evaluate(
     return int(float(out) * OUTPUT_SCALE)
 
 
+@njit(cache=False)
+def sync_acc(
+    undo: Any, w1: Any, white: Any, black: Any, astack: Any, zones: Any, ctrl: Any, cur_ply: Any
+) -> Any:
+    """Replay the deferred accumulator updates up to the board's current ply.
+
+    Each pending ply first saves the accumulators to astack (unmake_move restores
+    from there), then applies its move's deltas from the undo stack. Null moves
+    (U_MOVE == 0) change nothing. The zone offsets are constant across a pending
+    stretch: crossing king moves always go the eager road in make_move.
+    """
+    a = ctrl[C_ACC_PLY]
+    off_w = zones[0] * fb.FEATURES
+    off_b = zones[1] * fb.FEATURES
+    width = white.shape[0]
+    while a < cur_ply:
+        for i in range(width):
+            astack[a, 0, i] = white[i]
+            astack[a, 1, i] = black[i]
+        undo[a, fb.U_ZONE_W] = zones[0]
+        undo[a, fb.U_ZONE_B] = zones[1]
+        move = undo[a, fb.U_MOVE]
+        if move != 0:
+            frm = move & 63
+            to = (move >> 6) & 63
+            promo = (move >> 12) & 7
+            code = undo[a, fb.U_MOVER]
+            us = code // 6
+            piece = code - us * 6
+            captured = undo[a, fb.U_CAPTURED]
+            fb._acc_row(w1, white, black, frm, code, off_w, off_b, -1)
+            if captured >= 0:
+                fb._acc_row(w1, white, black, to, captured, off_w, off_b, -1)
+            elif captured == -2:  # en passant: the pawn sat behind the target
+                behind = to - 8 if us == 0 else to + 8
+                fb._acc_row(w1, white, black, behind, (1 - us) * 6, off_w, off_b, -1)
+            landing = code if promo == 0 else us * 6 + promo
+            fb._acc_row(w1, white, black, to, landing, off_w, off_b, 1)
+            if piece == 5 and (to - frm == 2 or frm - to == 2):
+                rook = us * 6 + 3
+                if to > frm:
+                    rfrom, rto = to + 1, to - 1
+                else:
+                    rfrom, rto = to - 2, to + 1
+                fb._acc_row(w1, white, black, rfrom, rook, off_w, off_b, -1)
+                fb._acc_row(w1, white, black, rto, rook, off_w, off_b, 1)
+        a += 1
+    ctrl[C_ACC_PLY] = cur_ply
+
+
+@njit(cache=False)
+def make_move(
+    bb: Any, sq: Any, meta: Any, undo: Any, keys: Any, move: Any,
+    w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
+    ctrl: Any,
+) -> Any:
+    """make_full, or under C_LAZY_ACC make_light with the accumulator deferred."""
+    if ctrl[C_LAZY_ACC] != 0:
+        frm = move & 63
+        code = sq[frm]
+        us = meta[fb.SIDE]
+        crossing = False
+        if code - us * 6 == 5 and king_zones > 1:
+            to = (move >> 6) & 63
+            if fb.zone_of(to if us == 0 else to ^ 56, king_zones) != zones[us]:
+                crossing = True
+        if not crossing:
+            undo[meta[fb.PLY], fb.U_MOVER] = code
+            fb.make_light(bb, sq, meta, undo, keys, move)
+            return
+        sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
+        fb.make_full(
+            bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
+        )
+        ctrl[C_ACC_PLY] = meta[fb.PLY]  # make_full advanced the ply; the acc is current
+        return
+    fb.make_full(bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones)
+
+
+@njit(cache=False)
+def unmake_move(
+    bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
+    white: Any, black: Any, astack: Any, zones: Any, ctrl: Any,
+) -> Any:
+    if ctrl[C_LAZY_ACC] != 0:
+        fb.unmake_light(bb, sq, meta, undo, keys)
+        ply = meta[fb.PLY]
+        if ctrl[C_ACC_PLY] > ply:
+            # The accumulators were synced past this ply: restore the snapshot.
+            width = white.shape[0]
+            for i in range(width):
+                white[i] = astack[ply, 0, i]
+                black[i] = astack[ply, 1, i]
+            zones[0] = undo[ply, fb.U_ZONE_W]
+            zones[1] = undo[ply, fb.U_ZONE_B]
+            ctrl[C_ACC_PLY] = ply
+        return
+    fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
+
+
 @njit(cache=False, nogil=True)
 def quiesce(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
@@ -306,10 +414,14 @@ def quiesce(
         if ec_key[qslot] == qkey:
             standing = np.int64(ec_val[qslot])
         else:
+            if ctrl[C_LAZY_ACC] != 0:
+                sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             ec_key[qslot] = qkey
             ec_val[qslot] = standing
     else:
+        if ctrl[C_LAZY_ACC] != 0:
+            sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
     if standing >= beta:
         return standing
@@ -333,15 +445,15 @@ def quiesce(
         if use_see and (move >> 12) == 0 and fb.see(bb, sq, meta, move) < 0:
             # A capture that loses material on the exchange cannot raise alpha.
             continue
-        fb.make_full(
-            bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
+        make_move(
+            bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones, ctrl
         )
         score = -quiesce(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline,
             -beta, -alpha, depth + 1, ply + 1, scratch, ec_key, ec_val, exts,
         )
-        fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
+        unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
         if ctrl[C_ABORT]:
             return 0
         if score >= beta:
@@ -383,6 +495,8 @@ def search(
                 return -MATE + ply
             return draw_score(meta, ctrl)
     if ply >= fb.MAX_PLY - 8:
+        if ctrl[C_LAZY_ACC] != 0:
+            sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
         return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
 
     if ctrl[C_SAFE] != 0 and ply > 0:
@@ -455,6 +569,8 @@ def search(
         if cached_eval != NO_EVAL:
             standing = cached_eval
         else:
+            if ctrl[C_LAZY_ACC] != 0:
+                sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
             standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
             cached_eval = standing
         if standing - RFP_MARGIN * depth * percent // 100 >= beta:
@@ -472,6 +588,8 @@ def search(
             if cached_eval != NO_EVAL:
                 standing = cached_eval
             else:
+                if ctrl[C_LAZY_ACC] != 0:
+                    sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
                 standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
                 cached_eval = standing
         futile = standing + FUTILITY_MARGIN[depth] * percent // 100 <= alpha
@@ -494,6 +612,12 @@ def search(
             null_depth, -beta, -beta + 1, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
         )
         fb.unmake_null(meta, undo)
+        if ctrl[C_LAZY_ACC] != 0 and ctrl[C_ACC_PLY] > meta[fb.PLY]:
+            # A sync inside the null search labelled the accumulators with the
+            # null ply; the null move left the board unchanged, so they are
+            # equally current here -- relabel, or the next lazy make at this
+            # ply would sit behind C_ACC_PLY and never be replayed.
+            ctrl[C_ACC_PLY] = meta[fb.PLY]
         if ctrl[C_ABORT]:
             return 0
         if score >= beta:
@@ -561,8 +685,8 @@ def search(
                     reduction = 0
             else:
                 reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
-        fb.make_full(
-            bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
+        make_move(
+            bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones, ctrl
         )
         if history2 and plain:
             quiets[ply, searched] = move  # every quiet tried at this node, for the malus
@@ -621,7 +745,7 @@ def search(
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
                 depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets, ec_key, ec_val, exts,
             )
-        fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
+        unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
         if ctrl[C_ABORT]:
             return 0
         searched += 1
