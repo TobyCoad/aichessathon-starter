@@ -881,11 +881,11 @@ LMR: Final = True
 LMP: Final = False
 # SEE: in quiescence, skip captures that lose material on the exchange
 # (fastboard.see). Needs COMPILED_SEARCH.
-SEE: Final = False
+SEE: Final = True
 # ASPIRATION: from depth 4 the root searches a window of +/- ASPIRATION_WINDOW
 # around the previous iteration's score, widening on a fail and falling back to
 # the full window after three fails. Narrow windows cut off sooner.
-ASPIRATION: Final = False
+ASPIRATION: Final = True
 ASPIRATION_WINDOW: Final = 30
 # REPETITION_TWOFOLD: the referee calls board.outcome(claim_draw=True) after every
 # move, and python-chess lets the side to move claim as soon as ONE legal move
