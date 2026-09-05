@@ -939,6 +939,9 @@ def order_moves(
         scores[j + 1] = s
 
 
+COUNTER_MOVE = (1 << 20) - 3
+
+
 @njit(cache=False)
 def score_moves(
     out: Any,
@@ -949,8 +952,12 @@ def score_moves(
     killer2: Any,
     history: Any,
     scores: Any,
+    counter: Any = 0,
+    base: Any = 0,
 ) -> Any:
-    """order_moves' scoring pass alone; pick_move then draws moves best-first."""
+    """order_moves' scoring pass alone; pick_move then draws moves best-first.
+    `counter` (a move, 0 for none) ranks just below the killers; `base` offsets
+    the history table (side * 4096 under HISTORY2, else 0)."""
     for i in range(n):
         m = out[i]
         frm = m & 63
@@ -967,8 +974,10 @@ def score_moves(
                 s = KILLER_FIRST
             elif m == killer2:
                 s = KILLER_SECOND
+            elif m == counter:
+                s = COUNTER_MOVE
             else:
-                s = history[frm * 64 + to]
+                s = history[base + frm * 64 + to]
             if promo:
                 s += PROMOTION_BONUS + promo * 100
         scores[i] = s

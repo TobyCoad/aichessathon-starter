@@ -71,6 +71,9 @@ C_RFP_PHASE, C_IIR = 14, 15
 # Margin scale in percent for the piece bands <= 8, 9-12, 13-16, 17-20 (21+ is
 # always 100); 0 turns the pruning off in that band. Set from agent.RFP_PHASE_PERCENT.
 C_PH_LE8, C_PH_9_12, C_PH_13_16, C_PH_17_20 = 16, 17, 18, 19
+# C_HISTORY2: side-indexed history with gravity and malus, plus counter moves.
+C_HISTORY2 = 20
+HISTORY_MAX = 16384
 CTRL_SIZE = 24
 
 
@@ -311,7 +314,7 @@ def search(
     tt_key: Any, tt_data: Any,
     killers: Any, butterfly: Any, moves: Any, scores: Any, rep_keys: Any,
     ctrl: Any, deadline: Any,
-    depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any,
+    depth: Any, alpha: Any, beta: Any, ply: Any, scratch: Any, counter: Any, quiets: Any,
 ) -> Any:
     ctrl[C_NODES] += 1
     if (ctrl[C_NODES] & POLL_MASK) == 0 and (ctrl[C_STOP] != 0 or timed_out(deadline)):
@@ -419,7 +422,7 @@ def search(
             bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
             w2t, b2, w3, b3, tt_key, tt_data,
             killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-            depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1, scratch,
+            depth - 1 - NMP_REDUCTION, -beta, -beta + 1, ply + 1, scratch, counter, quiets,
         )
         fb.unmake_null(meta, undo)
         if ctrl[C_ABORT]:
@@ -432,7 +435,17 @@ def search(
     if n == 0:
         return -MATE + ply if in_check else 0
     sc = scores[ply]
-    fb.score_moves(mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc)
+    history2 = ctrl[C_HISTORY2] != 0
+    base = 0
+    counter_move = 0
+    if history2:
+        base = meta[fb.SIDE] * 4096
+        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
+        if prev != 0:
+            counter_move = counter[(prev & 63) * 64 + ((prev >> 6) & 63)]
+    fb.score_moves(
+        mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc, counter_move, base
+    )
 
     best_score = -INFINITY
     best_move = 0
@@ -461,6 +474,8 @@ def search(
         fb.make_full(
             bb, sq, meta, undo, keys, move, w1, b1, white, black, astack, zones, king_zones
         )
+        if history2 and plain:
+            quiets[ply, searched] = move  # every quiet tried at this node, for the malus
         if reduction > 0:
             reduced = depth - 1 - reduction
             if reduced < 1:
@@ -469,7 +484,7 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                reduced, -alpha - 1, -alpha, ply + 1, scratch,
+                reduced, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
             )
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
@@ -480,28 +495,28 @@ def search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -alpha - 1, -alpha, ply + 1, scratch,
+                        depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
                     )
                 else:
                     score = -search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -beta, -alpha, ply + 1, scratch,
+                        depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
                     )
         elif pvs and searched > 0:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -alpha - 1, -alpha, ply + 1, scratch,
+                depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
             )
         else:
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch,
+                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
             )
         narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
@@ -510,7 +525,7 @@ def search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
                 killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                depth - 1, -beta, -alpha, ply + 1, scratch,
+                depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
             )
         fb.unmake_full(bb, sq, meta, undo, keys, white, black, astack, zones)
         if ctrl[C_ABORT]:
@@ -526,7 +541,24 @@ def search(
                         if killers[ply, 0] != move:
                             killers[ply, 1] = killers[ply, 0]
                             killers[ply, 0] = move
-                        butterfly[(move & 63) * 64 + ((move >> 6) & 63)] += depth * depth
+                        if history2:
+                            # gravity: pull toward +MAX for the cutoff move, toward
+                            # -MAX for the quiets searched before it at this node
+                            bonus = depth * depth
+                            if bonus > 1200:
+                                bonus = 1200
+                            idx = base + (move & 63) * 64 + ((move >> 6) & 63)
+                            butterfly[idx] += bonus - butterfly[idx] * bonus // HISTORY_MAX
+                            for q in range(searched):
+                                other = quiets[ply, q]
+                                if other != move and other != 0:
+                                    jdx = base + (other & 63) * 64 + ((other >> 6) & 63)
+                                    butterfly[jdx] -= bonus + butterfly[jdx] * bonus // HISTORY_MAX
+                            prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
+                            if prev != 0:
+                                counter[(prev & 63) * 64 + ((prev >> 6) & 63)] = move
+                        else:
+                            butterfly[(move & 63) * 64 + ((move >> 6) & 63)] += depth * depth
                     break
 
     if searched == 0:
@@ -565,7 +597,9 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     fb.refresh(pos.bb, pos.sq, pos.meta, w1, b1, white, black, zones, king_zones)
     table = new_table()
     killers = np.zeros((fb.MAX_PLY, 2), dtype=np.int32)
-    butterfly = np.zeros(4096, dtype=np.int32)
+    butterfly = np.zeros(8192, dtype=np.int32)
+    counter = np.zeros(4096, dtype=np.int32)
+    quiets = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int32)
     moves = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int32)
     scores = np.zeros((fb.MAX_PLY, fb.MOVE_CAP), dtype=np.int64)
     scratch = np.zeros(2 * acc, dtype=np.float32)
@@ -576,5 +610,5 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     search(  # type: ignore[call-arg]
         pos.bb, pos.sq, pos.meta, pos.undo, pos.keys, w1, b1, white, black, astack, zones,
         king_zones, w2t, b2, w3, b3, *table, killers, butterfly, moves, scores, rep_keys,
-        ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch,
+        ctrl, time.monotonic() + 60.0, 2, -INFINITY, INFINITY, 0, scratch, counter, quiets,
     )

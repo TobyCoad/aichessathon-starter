@@ -921,6 +921,11 @@ IIR: Final = False
 # and on the platform games it cost ~20 cp per firing, with one line losing to
 # a Greek gift. Off means the search plays from move one.
 BOOK_ENABLED: Final = True
+# HISTORY2: move ordering. History indexed by side to move with a gravity update
+# (bounded at +/-16384, so it can never outrank a capture or a killer) and a
+# malus for the quiet moves searched before a cutoff; a counter-move table keyed
+# on the opponent's last move, ranked just below the killers. Needs COMPILED_SEARCH.
+HISTORY2: Final = False
 PONDER_MAX_S: Final = 600.0
 # PONDER_DIAG: print, at each request, the wall time since the ponder thread started
 # and how many nodes it searched. The platform shows stderr in the validation log's
@@ -1409,6 +1414,7 @@ class FastEngine:
         "bufs",
         "butterfly",
         "corr",
+        "counter",
         "ctrl",
         "deadline",
         "draw_root",
@@ -1418,6 +1424,7 @@ class FastEngine:
         "movebuf",
         "nodes",
         "pos",
+        "quiets",
         "rep_keys",
         "root_best",
         "root_side",
@@ -1436,7 +1443,9 @@ class FastEngine:
         self.age = 0
         self.history: dict[int, int] = {}
         self.killers: list[list[int]] = [[0, 0] for _ in range(_fb.MAX_PLY)]
-        self.butterfly = np.zeros(4096, dtype=np.int32)
+        self.butterfly = np.zeros(8192, dtype=np.int32)
+        self.counter = np.zeros(4096, dtype=np.int32)
+        self.quiets = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
         self.corr = np.zeros((2, 1 << CORRECTION_BITS), dtype=np.int64)
         # One move buffer per ply, sliced once: a fresh view per node is not free.
         buffer = np.zeros((_fb.MAX_PLY, _fb.MOVE_CAP), dtype=np.int32)
@@ -1763,6 +1772,7 @@ class FastEngine:
             _W2T, B2, W3, B3, *self.tt,
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
+            self.counter, self.quiets,
         )
         self.nodes = int(ctrl[_fs.C_NODES])
         if ctrl[_fs.C_ABORT]:
@@ -1814,6 +1824,7 @@ class FastEngine:
             ctrl[_fs.C_PH_13_16] = RFP_PHASE_PERCENT[2]
             ctrl[_fs.C_PH_17_20] = RFP_PHASE_PERCENT[3]
             ctrl[_fs.C_IIR] = 1 if IIR else 0
+            ctrl[_fs.C_HISTORY2] = 1 if HISTORY2 else 0
             repeated = [k for k, count in self.history.items() if count >= _REPEAT_LIMIT]
             self.rep_keys = np.array(repeated, dtype=np.uint64)
 
