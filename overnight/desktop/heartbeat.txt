@@ -1,4 +1,4 @@
 host DESKTOP-B9VDHIJ
-time 2026-09-05 14:32
+time 2026-09-05 14:42
 task 092-qscap14
-progress      62 games  .... llr -0.68 [-2.94, 2.94] after 31 pairs, elo -28.1 +/- 65.5
+progress      80 games  .... llr -1.21 [-2.94, 2.94] after 40 pairs, elo -43.7 +/- 58.4
