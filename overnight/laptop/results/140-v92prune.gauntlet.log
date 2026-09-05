@@ -1,0 +1,4 @@
+stage 1: crash gate, 140-v92prune vs random
+  failed 1/24 games (init 1)
+
+REJECT  140-v92prune is not safe to ship

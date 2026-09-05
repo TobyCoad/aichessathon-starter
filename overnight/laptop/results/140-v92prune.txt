@@ -1,0 +1,5 @@
+name 140-v92prune
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  140-v92prune is not safe to ship
