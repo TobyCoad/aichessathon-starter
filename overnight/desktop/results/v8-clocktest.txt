@@ -1,0 +1,5 @@
+name v8-clocktest
+kind clocktest
+host DESKTOP-B9VDHIJ
+flags 0/6  errors 0  lowest clock 10.0s  longest move 12.8s
+PASS
