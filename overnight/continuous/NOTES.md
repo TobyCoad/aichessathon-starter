@@ -56,6 +56,14 @@ QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect).
 - download: fetch 2025_04 running -> pack when done.
 
 ## Backlog (ranked; take the top item that is not running)
+0. LMR_AGGRESSIVE (depth is the main lever; current mean depth 12.4 at 4 s/move):
+   a single switch that (a) reduces from the SECOND quiet move (searched >= 1),
+   (b) uses a steeper table log(d)*log(m)/1.8 + 0.5, (c) adjusts the reduction by
+   history: -1 for a quiet with butterfly history above +8000 (or the top of its
+   band), +1 below -8000, (d) never reduces below depth 1, and (e) turns PVS on
+   inside the same switch (null-window re-search makes the reductions cheap;
+   PVS failed alone twice, this pairing is the standard reason it exists).
+   Measure nodes to depth 8 on the bench (expect well under 0.6x) before queueing.
 1. Fold every landed verdict: promote passes into the tree (switch -> True, or
    the net), reject the rest, note it here and in JOURNAL.md.
 2. When >= 2 switches have passed: build the bundle challenger, run its gate
