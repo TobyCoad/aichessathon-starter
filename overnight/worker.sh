@@ -21,7 +21,11 @@ say() { echo "$(date '+%H:%M') [$ROLE] $*"; }
 sync_down() {
     git fetch origin main >/dev/null 2>&1 || { say "fetch failed"; return 1; }
     git stash push -q -m worker-pull >/dev/null 2>&1
-    git pull --rebase origin main >/dev/null 2>&1 || { say "pull --rebase failed; resetting"; git rebase --abort 2>/dev/null; git reset --hard origin/main; }
+    if ! git pull --rebase origin main >/dev/null 2>&1; then
+        git rebase --abort 2>/dev/null
+        if [ "$ROLE" = "desktop" ]; then say "pull --rebase failed; resetting"; git reset --hard origin/main
+        else say "pull --rebase failed; the laptop tree is never reset -- retrying later"; fi
+    fi
     git stash pop -q >/dev/null 2>&1
 }
 push_up() {
