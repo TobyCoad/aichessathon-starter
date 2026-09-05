@@ -56,16 +56,18 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   binaries); (c) int8/int16 inference is 1.9x SLOWER than float32 (closed for good);
   (d) the only big node-rate lever left is a 32->16 output head (+15% knps, needs a
   retrain) -> fold into NET_V10.
-- Bundle in flight for v9 -- ALL FIVE SWITCHES BUILT (off in the tree), the 8 s SPRT of
-  the whole bundle is queued as 130-v9all on the laptop (500 games vs v8.5): TIME_V6
-  (tamed values, f8286b8; its solo clocktest is rerunning in
-  overnight/eval/clocktest-timev6b.log) + QS_EVAL_CACHE (exact, +4.2% knps) +
+- Bundle in flight for v9 -- FOUR switches (off in the tree), 8 s SPRT queued as
+  131-v9all on the laptop (500 games vs v8.5): QS_EVAL_CACHE (exact, +4.2% knps) +
   ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR (593053f; bench vs champion 1.00x / 1.02x /
-  0.97x nodes, smoke test of the adjudication arming passed, exact 70/70). Desktop
-  v9-clocktest + v9-120s to queue once v85-120s-b finishes. If clocktest-timev6b FAILS
-  again, pull 130-v9all and re-queue it without the TIME_V6 flip. CONT_HIST (V10_PLAN #2,
-  the biggest search item) is the multi-iteration build for v9.1; follow search.md 3.1
-  exactly (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as new kernel args).
+  0.97x nodes, smoke test of the adjudication arming passed, exact 70/70). TIME_V6 was
+  PULLED from the bundle 5 Sep 18:00: the TAMED clocktest (f8286b8) also FAILED --
+  flags 0/6 but lowest clock 2.0 s (need >= 5), overnight/eval/clocktest-timev6c.log;
+  the untamed cut drained to 1.6 s. Two fails = closed; TIME_V5 stays the shipped time
+  manager. Any future time-management change must pass a solo clocktest BEFORE entering
+  a bundle. Desktop v9-clocktest + v9-120s queued behind v85-120s-b. CONT_HIST
+  (V10_PLAN #2, the biggest search item) is the multi-iteration build for v9.1; follow
+  search.md 3.1 exactly (widen `exts` to 4*MAX_PLY instead of new arrays; conthist1 as
+  new kernel args).
 - 111-singular (desktop) is attribution only: if it ends REJECT, consider dropping
   SINGULAR from the tree in the next bundle (bench first); the v8.5 bundle passed with it.
 
@@ -96,6 +98,14 @@ book-off (inconclusive), book-verify (-94), IIR (inconclusive), NMP_GUARD (flat)
 pondering (platform freezes the process), endgame fine-tune of the old net,
 QS_EVAL_CACHE (exact, +2% only), CHECK_EXT_CAP (no effect),
 091 TT_KEEP (stopped at 108 games, -32 +/- 52, llr -1.21, leaning reject),
+TIME_V6 (two clocktest FAILs at 120 s x1.5 charge: untamed drained to 1.6 s,
+tamed f8286b8 to 2.0 s vs the 5 s floor -- overnight/eval/clocktest-timev6c.log;
+closed, TIME_V5 stays; time-management ideas must pass a solo clocktest first),
+104-kz16r retrain (month5.sh, 2024_11 data): initial_val == best_val 0.0046589 --
+nine epochs never improved on the champion checkpoint and early-stop restored the
+initial weights, so the exported net IS the champion net; closed WITHOUT a gauntlet
+(it would measure noise). More of the same data is exhausted: NET_V10 must change
+the architecture (mirrored king buckets, rebalanced output buckets, 16-out head),
 b1-kz16 net (1 output bucket: val 0.004977 vs the champion b8-kz16's 0.004659,
 clearly worse, closed on val loss without a challenger),
 105-bookprune (closed on coverage without a gauntlet: book-mc20-md10.bin built
@@ -120,13 +130,15 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (5 Sep 18:20)
-- laptop worker: 130-v9all (8 s SPRT of the five-switch v9 bundle vs v8.5, 500 games;
-  120-timev6 was pulled after the untamed clocktest drained to 1.6 s). Laptop background:
-  month5.sh (pack 2024_11 -> train kz16r -> suite); clocktest of tamed TIME_V6 restarted
-  ~17:50 (overnight/eval/clocktest-timev6b.log).
-- desktop worker: 111-singular (attribution, -18 +/- 42 at 170), then v85-120s-b (40 games at
-  120 s of the live v8.5 build).
+## Running now (5 Sep 18:05)
+- laptop worker: RESTARTED 18:00 (the old worker had grabbed the stale, already-pulled
+  120-timev6 task at 17:44 and launched its gauntlet when the clocktest freed the slot;
+  killed both, reaped 7 orphaned pool workers left by 073-kz16w). Queue: 131-v9all
+  (8 s SPRT of the four-switch v9 bundle vs v8.5, 500 games). month5.sh chain COMPLETED
+  16:47 (see night3.log) -- verdict folded below, no follow-up task needed.
+- desktop worker: 111-singular (attribution, +3 +/- 39 at 222, heartbeat 17:50), then
+  v85-120s-b (40 games at 120 s of the live v8.5 build), then v9-clocktest + v9-120s
+  (queued 18:05, four-switch sed).
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. Fold verdicts. v8.5 (110-v85all) PROMOTED at 8 s (+36 over 477 games); its 120 s gate
@@ -134,14 +146,15 @@ what enters a bundle.
    load, not an engine fault). When v85-120s-b passes: flip the five v8.5 switches in
    the tree (that is v8.5 = the new champion), note it, and submission-v85.zip is
    already built from the tested challenger for the human.
-1. TIME_V6 (V10_PLAN #1): reserve 0.10 -> 0.04, LOW_CLOCK 15 -> 9, node-effort +
-   stability + score-drop factors, no next-iteration prediction; absorbs TIME_V5.
-   Judged by clocktest + 40 games at 120 s on the desktop only.
+1. TIME_V6: CLOSED (two clocktest fails; see verdicts). A future TIME_V7 must be
+   conservative (higher reserve/floor) and pass a solo clocktest before any bundle.
 2. CONT_HIST (V10_PLAN #2): continuation history alone -- HISTORY2_FIX and KILLER_CLEAR
    are built and in the v9 bundle (130-v9all). 8 s SPRT on the laptop.
 3. ADJUDICATION (V10_PLAN #3): BUILT, in the v9 bundle (130-v9all).
-4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets, after the
-   v8 endgame-suite baseline and 104-kz16r. One gauntlet slot.
+4. NET_V10 (V10_PLAN #4): mirrored king buckets + rebalanced output buckets (+ the
+   16-out head from speed.md, +15% knps). 104-kz16r showed more same-style data adds
+   NOTHING (val flat at 0.0046589): only an architecture change can move the net now.
+   Prereq left: the v8/v8.5 endgame-suite baseline for comparison. One gauntlet slot.
 5. IMPROVING + CUTNODE, NMP_V2 (V10_PLAN #5-6) as one bundle.
 6. Exact kernel speed (see allocation, evaluate blocking) and init-time insurance per
    overnight/eval/v10/speed.md when it lands.
@@ -150,12 +163,13 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-Iteration next: (1) fold verdicts: clocktest-timev6b (tamed TIME_V6; if it FAILS pull
-130-v9all from the laptop queue and re-queue it without the TIME_V6 flip), 111-singular,
-v85-120s-b, and 130-v9all when it lands. (2) When v85-120s-b is done, queue v9-clocktest
-+ v9-120s on the desktop (same seds as 130-v9all; see v85-120s-b's task for the 120 s
-format). (3) Start the CONT_HIST build (V10_PLAN #2, multi-iteration, switch OFF;
-search.md 3.1: widen `exts` to 4*MAX_PLY instead of new arrays, conthist1 as new kernel
-args) -- HISTORY2_FIX and KILLER_CLEAR are already built and in the v9 bundle, so
-CONT_HIST is the only piece left of that bundle item. (4) If a machine is idle after
-22:00, start the NET_V10 prerequisites (v8 endgame-suite baseline; 104-kz16r fold).
+Iteration next: (1) fold verdicts: 131-v9all (laptop, four-switch v9 bundle),
+111-singular, v85-120s-b, v9-clocktest, v9-120s as they land. If 131-v9all PROMOTES
+and v9-clocktest PASSES: ship v9 (flip the four switches, zip from the tested
+challenger, CANDIDATE.md, notify). (2) Continue/start the CONT_HIST build (V10_PLAN
+#2, multi-iteration, switch OFF; search.md 3.1: widen `exts` to 4*MAX_PLY instead of
+new arrays, conthist1 as new kernel args) -- HISTORY2_FIX and KILLER_CLEAR are already
+in the v9 bundle, so CONT_HIST is the only piece left. (3) If a machine is idle after
+22:00, start the NET_V10 prerequisite (v8.5 endgame-suite baseline) and the NET_V10
+architecture work (mirrored king buckets, rebalanced output buckets, 16-out head) --
+104-kz16r proved more same-style data is worthless, do NOT restart month-data chains.

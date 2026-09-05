@@ -810,3 +810,28 @@ five-switch v9 bundle (tamed TIME_V6 + QS_EVAL_CACHE + these three), 500 games a
 8 s vs v8.5. A parallel session tamed TIME_V6 (f8286b8) and restarted its
 clocktest; if that fails, the next iteration pulls 130-v9all and re-queues it
 without the TIME_V6 flip. Desktop untouched (111-singular, then v85-120s-b).
+
+5 Sep 18:10 (loop iter 13) TIME_V6 is dead: the TAMED clocktest (f8286b8) also FAILED
+-- flags 0/6 but lowest clock 2.0 s against the 5 s floor over 6 games at 120 s x1.5
+charge (overnight/eval/clocktest-timev6c.log; the untamed cut drained to 1.6 s). Two
+fails = closed per the don't-chase rule; TIME_V5 stays the shipped time manager and
+any future time-management idea must pass a solo clocktest BEFORE entering a bundle.
+Per NOTES' standing instruction the v9 bundle was re-queued without the flip as
+131-v9all (QS_EVAL_CACHE + ADJUDICATION + HISTORY2_FIX + KILLER_CLEAR, 500 games at
+8 s vs v8.5): crash gate already clean 24/24, SPRT running. Messy bit: the old worker
+had grabbed the stale, already-pulled 120-timev6 task at 17:44 (a pre-rewrite
+tasks.json read) and sat waiting on the busy slot, then launched its gauntlet the
+moment the clocktest freed it -- killed the worker and both gauntlet processes,
+reaped 7 orphaned pool workers left over from 073-kz16w (parent 47268 long dead;
+the worker's own reap missed them) plus 3 more after the kills, and restarted the
+worker clean; a third clocktest attempt (timev6d, header only) was also stopped --
+TIME_V6 is closed, no more clock tests for it. Desktop untouched (111-singular
++3 +/- 39 at 222, then v85-120s-b), and v9-clocktest + v9-120s queued behind them
+with the four-switch sed. Also folded: month5.sh COMPLETED 16:47 and the kz16r
+retrain on 2024_11 is a null result -- initial_val == best_val 0.0046589, nine epochs
+never improved on the champion checkpoint, early-stop restored the initial weights,
+so the exported 104-kz16r net IS the champion net and is closed WITHOUT a gauntlet.
+Consequence written into the backlog: more same-style data is exhausted; NET_V10 must
+change architecture (mirrored king buckets, rebalanced output buckets, 16-out head).
+Laptop now: worker (131-v9all) only. CONT_HIST build not started this iteration (the
+worker rescue ate the time); it is next-step #2.
