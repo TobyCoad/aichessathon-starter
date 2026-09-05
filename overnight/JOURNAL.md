@@ -606,3 +606,11 @@ INCONCLUSIVE 51.4%, pvs REJECT, iir INCONCLUSIVE 52.4%, nmpguard stopped at 406 
 (-9 +/- 28). Nets: kz8c val 0.004700, kz8w restored initial (selection on the plain
 loss), kz16 val 0.004659 (best; strata improved in every band) -> 072-kz16 gauntlet
 after night4 as the v7.1 candidate.
+
+5 Sep 07:50 PONDERING CLOSED. v7's validation log: "your process is suspended while
+your opponent moves, so anything you compute between your own moves does not run".
+The rules page's "keeps its core" is not what the platform does. v7 reverted to v6's
+engine (6f6398d, PONDER off; zip byte-identical to 4df72cf's build) and handed back
+for upload. Platform facts from the log: init 35.7-38.6 s of a 90 s budget (their box
+~1.8x slower than ours), slowest smoke move 8.2-8.6 s, "compiled board: on".
+night4 gates abandoned; queue7 (16-zone net vs v6) proceeds as the v7.1 candidate.
