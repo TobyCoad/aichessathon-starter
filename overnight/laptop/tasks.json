@@ -1,7 +1,7 @@
 [
  {
-  "name": "131-v9all",
+  "name": "132-v9core",
   "sed": "s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/",
-  "games": 500
+  "games": 600
  }
 ]
