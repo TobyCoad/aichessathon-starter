@@ -1,0 +1,5 @@
+name v9core-clocktest-l
+kind clocktest
+host tobys-laptop
+flags 0/6  errors 0  lowest clock 11.3s  longest move 13.2s
+PASS
