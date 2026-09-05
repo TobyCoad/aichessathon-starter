@@ -1,0 +1,7 @@
+name v8-120s
+kind switch
+host DESKTOP-B9VDHIJ
+base_ms 120000 openings platform games 40
+INCONCLUSIVE  v8-120s  ran out of games; champion stays
+  +18 =18 -4  score 67.5%  over 40 games
+  terminations: checkmate 22, fifty_moves 2, insufficient_material 5, stalemate 1, threefold_repetition 10
