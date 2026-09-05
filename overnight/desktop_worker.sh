@@ -11,8 +11,14 @@
 # overnight/challengers/ (ignored by git).
 cd "$(dirname "$0")/.." || exit 1
 PY=./.venv/Scripts/python.exe
-[ -x "$PY" ] || PY=python
 RESULTS=overnight/desktop/results
+# Provision the environment if it is missing or incomplete (same pins as the laptop).
+if ! [ -x "$PY" ] || ! "$PY" -c "import chess, numba, numpy" 2>/dev/null; then
+    echo "$(date '+%H:%M') setting up .venv"
+    python -m venv .venv || py -3.12 -m venv .venv || exit 1
+    "$PY" -m pip install -q "numpy==2.5.2" "numba==0.67.0" "chess==1.11.2" || exit 1
+fi
+"$PY" -c "import chess, numba, numpy; print('env ok', numba.__version__)" || exit 1
 mkdir -p "$RESULTS" overnight/challengers overnight/eval
 say() { echo "$(date '+%H:%M') $*"; }
 
@@ -68,6 +74,13 @@ run_task() {  # $1 = task json
             --games "$games" --workers "$workers" --base-ms "$tc" --increment-ms "$inc" > "$log" 2>&1
         { echo "name $name"; echo "kind $kind"; echo "host $(hostname)"; echo "base_ms $tc openings $openings games $games";
           grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$log" | tail -n 1; grep -E "score|terminations" "$log" | tail -n 2; } > "$RESULTS/$name.txt"
+    fi
+    if ! grep -qE "^(PROMOTE|REJECT|INCONCLUSIVE|flags)" "$RESULTS/$name.txt"; then
+        # No verdict: the run failed. Keep the log, drop the result so the task retries later.
+        rm -f "$RESULTS/$name.txt"
+        say "task $name produced no verdict; see $log"; tail -n 5 "$log"
+        sleep 300
+        return 1
     fi
     cat "$RESULTS/$name.txt"
     git add "$RESULTS/$name.txt" "$log"
