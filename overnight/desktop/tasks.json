@@ -1,0 +1,5 @@
+[
+  {"name": "091-ttkeep", "sed": "s/^TT_KEEP: Final = False$/TT_KEEP: Final = True/"},
+  {"name": "092-qscap14", "sed": "s/^QS_CAP: Final = 8$/QS_CAP: Final = 14/"},
+  {"name": "093-safe", "sed": "s/^SAFE_BITS: Final = False$/SAFE_BITS: Final = True/"}
+]
