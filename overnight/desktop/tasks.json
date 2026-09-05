@@ -53,12 +53,5 @@
   "name": "111-singular",
   "sed": "s/^SINGULAR: Final = False$/SINGULAR: Final = True/",
   "games": 600
- },
- {
-  "name": "105-bookprune",
-  "sed": "",
-  "book": "overnight/books/book-mc20-md10.bin",
-  "openings": "platform",
-  "games": 600
  }
 ]

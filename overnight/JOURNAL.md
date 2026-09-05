@@ -765,3 +765,21 @@ so the worker records it instead of retrying) so 101-lmraggr runs next vs v8 -- 
 v8 + LMR_AGGRESSIVE is the next target. Moot single-switch tasks removed from both
 queues; 092-qscap14 (desktop, started vs v7.1) is void once the desktop pulls this.
 submission-v8.zip built from the tested challenger (21.6 MB, 27.9 MB unpacked, import 31 s).
+
+5 Sep 15:15 (loop iter 9) Book line closed. The detached rebuild finished at
+15:06 (7,753,103 distinct pairs over 60/599 row groups of 2025_01; kept 31,200
+moves played >=20 times, pruned 16,089 more than 10 cp below their best
+sibling; 0.50 MB), but the coverage compare killed it: 7/80 platform-pool
+positions covered, 1.4 moves per covered position, 0.26 mean in-book plies,
+against the champion book's 28/80, 2.6 and 1.38. Scanning only 10% of the
+month with min-count 20 starved the counts -- the challenger would open
+book-less in ~91% of platform games, so the queued 600-game SPRT could not
+resolve anything and 105-bookprune was removed from the desktop queue without
+committing the book (closed on coverage, like b1-kz16 was closed on val loss).
+A full-month rescan stays in the backlog at LOW priority; every book
+experiment to date has been flat or worse. No new verdicts otherwise: desktop
+still finishing the void 092-qscap14 (heartbeat 14:53), the laptop's
+110-v85all bundle probe was in its crash gate at 15:08, and the month5 pack
+was healthy at group 270/509 (15:09). Process check: one worker chain, one
+month5 chain -- the laptop is at its ~12-busy budget, so no new CPU work was
+started.
