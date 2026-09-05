@@ -44,7 +44,16 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   `.venv/Scripts/python.exe -m overnight.continuous.notify --candidate` (emails him the
   change list, the measured gain and the platform record). He uploads by hand. Versions:
   v9, v9.1, v9.2, ...
-- Bundle in flight for v9: TIME_V6 (built, off; 120-timev6 8 s SPRT queued on the laptop,
+- Speed report landed (overnight/eval/v10/speed.md): (a) QS_EVAL_CACHE=True is EXACT and
+  +4.2% knps under v8.5 (identical node count) -> put it in the v9 bundle, no gauntlet of
+  its own; (b) init is 31.7 s idle (fastsearch.search alone 23 s): constant-folding the
+  settled switches cuts fs.warm_up 18% and eager signatures in fastboard remove 61
+  redundant specialisations (7 -> ~4 s) -> INIT_FOLD, a v9.1 item, source-only; a shipped
+  numba cache / AOT is REJECTED (segfaults on rebuild, and AGENTS.md forbids native
+  binaries); (c) int8/int16 inference is 1.9x SLOWER than float32 (closed for good);
+  (d) the only big node-rate lever left is a 32->16 output head (+15% knps, needs a
+  retrain) -> fold into NET_V10.
+- Bundle in flight for v9: TIME_V6 + QS_EVAL_CACHE (built, off; 120-timev6 8 s SPRT queued on the laptop,
   clocktest rerunning on the laptop, desktop 120 s games to queue once the clocktest
   passes) + ADJUDICATION (to build, V10_PLAN #3) + HISTORY2_FIX and KILLER_CLEAR (the two
   defects in overnight/eval/v10/search.md 3.7). CONT_HIST (V10_PLAN #2, the biggest

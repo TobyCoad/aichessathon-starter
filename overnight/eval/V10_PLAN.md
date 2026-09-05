@@ -29,9 +29,9 @@ desktop after a load-induced init-timeout run. Freeze target: 10 Sep evening; up
 | 5 | **IMPROVING + CUTNODE** flags gating RFP / futility / LMR / NMP | +8..18 | 3-5 h | 8 s SPRT (bundle with #6) | laptop |
 | 6 | **NMP_V2**: R = 3 + d/4 + eval margin, skip when TT says fail-low, verification search at depth >= 10 | +6..15 | 2-3 h | 8 s SPRT (bundle with #5) | laptop |
 | 7 | **CAPTURE_ORDER**: SEE-ordered captures, losing captures below quiets, capture history | +6..14 | 2-4 h | 8 s SPRT | if a slot frees |
-| 8 | **Kernel speed, exact**: allocation-free `see` (np.zeros(32) per call today), evaluate blocking; target 195 -> 220 knps | +4..10 | 3-6 h | check_fastsearch exact + bench; ship in any bundle | speed.md will refine |
+| 8 | **QS_EVAL_CACHE on** (exact, +4.2% knps under v8.5 per speed.md; `see` allocation and evaluate blocking measured at the noise floor) | +2..4 | 0 h | bench only; in the v9 bundle | done in speed.md |
 | 9 | **QS transposition table** (probe + store in quiescence) | +4..10 | 2-3 h | 8 s SPRT | later |
-| 10 | **Init-time insurance**: numba cache / fewer specialisations; v8.5 imports in ~41 s here (~75 s on the platform, budget 90) | 0 direct, removes a live risk and frees ~30 s of headroom | 2-4 h | measured import in a clean dir | speed.md will decide |
+| 10 | **INIT_FOLD**: constant-fold the settled switches into the kernel (fs.warm_up -18%) + eager signatures in fastboard (61 redundant specialisations, 7 -> ~4 s); numba cache / AOT REJECTED (segfaults, native binaries forbidden) | 0 direct; init 31.7 -> ~24 s idle | 2-3 h | import time in a clean dir + exactness | v9.1 |
 | 11 | ENDGAME_SHRINK: below 17 pieces blend the net toward a material/PSQT baseline, or resample training data by piece bucket | +5..15 | 3 h | endgame suite + 8 s SPRT | risky; only with a v8 suite baseline |
 | 12 | Aspiration widening 1.5x per fail (no jump to +/-INF), root improvements, killer decay | +0..5 each | 0.5 h each | fold into a bundle | filler |
 | 13 | 104-kz16r five-month net (in flight) | +0..5 | running | suite + SPRT | fold when it lands |
@@ -40,7 +40,8 @@ desktop after a load-induced init-timeout run. Freeze target: 10 Sep evening; up
 
 Closed (measured or dominated; do not reopen before 11 Sep): staged movegen, multi-cut,
 IID, more TT replacement, QS checks/evasions, correction history, width 768/1024,
-distillation, int8/int16 inference (slower twice), self-play labelling at scale (costs
+distillation, int8/int16 inference (1.9x slower than float32, measured three times), sparse head,
+shipped numba cache / AOT (segfaults on rebuild; native binaries forbidden), self-play labelling at scale (costs
 the verdict machine), 6-man tablebases, full-month book rescan, HalfKA features.
 
 ## Sequencing
