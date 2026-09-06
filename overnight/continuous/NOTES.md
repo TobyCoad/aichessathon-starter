@@ -723,6 +723,70 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 18:30, iter 38) -- THE QUEUE WAS STALLED FOR 72 MINUTES BY THE NET LANE'S DECODE, AND THE 8 s PROBE IS NOW ON THE MACHINE
+
+**THE MACHINE WAS NOT IDLE, BUT THE GAUNTLET QUEUE WAS DEAD.** The worker announced
+`17:21 [laptop] task v94-vs-sf12-120s` and then sat in its own wait loop until ~18:33.
+Root cause, found and worth keeping: `busy_gauntlets()` in overnight/worker.sh matches
+`binpack_decode` as load, and the interactive session started a full 580 M-position WDL
+decode at **17:15:49**
+(`training.binpack_decode ... --out data/sfw_full/feb24w --target 580000000 --workers 8
+--wdl-lambda 0.75`, log overnight/eval/sf-decode-wdl-full.log, ~55 min). So the decode
+took the box six minutes before the 120 s gauntlet was due to start, and the worker
+correctly refused to run a TIMING-SENSITIVE 120 s match under 8 busy workers.
+- The guard is RIGHT and must not be narrowed: a 120 s gauntlet run under a decode measures
+  the decode, not the build. Nothing was killed. NOTES rule (5) already says "do NOT start
+  GPU work while a gauntlet is queued"; **it applies to decodes and merges too, not only to
+  train.py** -- `busy_gauntlets` lists `binpack_decode|endgame_suite|train.py|merge_mix`.
+- THE COST, stated so it is not repeated: **72 minutes of gauntlet time** on a day when the
+  120 s budget is ~10 sixty-game runs in total before uploads close. A decode that has to
+  run during the day should be launched IMMEDIATELY AFTER a gauntlet verdict lands, not six
+  minutes before one starts; or the queue should be drained first. Whoever owns the net lane
+  please check `overnight/laptop/tasks.json` for an unstarted task before taking the box.
+
+**QUEUED (committed b6603be), the 0-NEW-b item, and it is cheap.** `p8-sf10` and `p8-sf12`
+-- the current champion vs `opponents/sf-skill10` and `opponents/sf-skill12`, **40 games each
+at 8 s**, platform openings, 4 workers. ~6 min each. They sit AFTER the running
+`v94-vs-sf12-120s` and BEFORE `v94-vs-sf14-120s`, because 12 minutes buys the answer to a
+regime question worth 4x our measurement resolution and the 120 s ladder is only a release
+gate that the research pause has frozen anyway.
+- **PRE-REGISTERED DECISION RULE, so the next iteration does not re-argue it:** if either
+  probe lands between 40% and 70%, THAT rung at 8 s becomes the screening regime -- 600 games
+  vs a fixed external opponent fits ~80 min at +/- 20 Elo, which is 4x the resolution of a
+  60-game 120 s run (+/- 90-100) and still is NOT self-play, so it keeps the property the
+  human actually asked for. The 120 s run stays the RELEASE GATE and the regression catcher.
+  If both probes are above 75%, add `opponents/sf-skill16` (it already exists) and re-probe;
+  do not run a 600-game comparison at a rung near the ceiling.
+- **THE PROBE ALSO TESTS A CLAIM ABOUT THE OPPONENT, and this is the interesting part.**
+  `opponents/sf-skill*/engine.json` sets ONLY `Skill Level` -- no depth or nodes cap -- but
+  Stockfish's own Skill implementation weakens by capping search depth and picking from a
+  multipv set, so a low-skill rung should gain very little from 120 s over 8 s while WE gain
+  2-3 plies. PREDICTION TO CHECK AGAINST THE NUMBERS: if the skill rungs are effectively
+  depth-capped, our 8 s score against a rung will be close to our 120 s score against it, and
+  8 s testing is nearly free information. If our 8 s score collapses, they are not, and the
+  8 s rung sits well below the 120 s rung. Either answer is worth 12 minutes; read
+  `p8-sf12` against `v94-vs-sf12-120s` first, since those are the same opponent.
+  CAVEAT for interpretation, not for the decision: a depth-capped opponent is a FIXED WALL,
+  so it is excellent for regression-catching and poor as a model of the ladder, where
+  opponents do use their clock. Do not read a time-management switch's value off it.
+
+**BUILT: `testing/pairdiff.py` (0-NEW-c), zero CPU, ruff + mypy PASS.** Joins two gauntlet
+logs on the `[pair N S]` suffix iter 37 added and differences them pair by pair, so two runs
+at one rung stop being two independent percentages. Prints the paired SE, the unpaired SE
+beside it and the percentage change, i.e. **it reports honestly when pairing does NOT help**
+rather than assuming the -20..-35% iter 37 predicted. Verified two ways: a self-difference is
+exactly 0.0000 +/- 0.0000 over 60 pairs, and two independent random logs (no shared opening
+term by construction) come back at +9%, which is the correct answer for that input. Usage:
+`python -m testing.pairdiff a.gauntlet.log b.gauntlet.log`. NOTE: **no existing log carries
+`[pair ...]`** -- the suffix landed in c97395f at 17:16, so `v94-vs-sf12-120s` is the first
+run that will have it, and the first usable A/B is `p8-sf12` vs a later run at that rung.
+
+**NOT DONE, deliberately:** no engine switch built and no bench or exactness run. The decode
+owned 8 workers until ~18:33 and a 120 s gauntlet owns the box after it; both a bench and
+`check_fastsearch` would have loaded the machine while the only 120 s reading we have was
+being taken. The research pause also stands (no v9.5 candidate, no 40+ game gauntlet beyond
+what was already queued before it).
+
 ## Running now (6 Sep 17:25, iter 37) -- sf-skill8 IS THE WRONG RUNG. THE LADDER IS RE-POINTED AND THE 120 s BUDGET IS COUNTED HONESTLY
 
 **THE BASELINE ANSWERED ITS QUESTION IN 20 GAMES, NOT 60, AND THE ANSWER IS "TOO EASY".**
@@ -1891,6 +1955,23 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 38) **READ `p8-sf10` AND `p8-sf12` FIRST -- they are 6 minutes each and they
+decide the whole testing regime.** Apply the pre-registered rule in the iter 38 section: a
+score of 40-70% makes that rung the 8 s screening regime (600 games, ~80 min, +/- 20 Elo);
+above 75% at both, build nothing and re-probe at sf-skill16. Compare `p8-sf12` with
+`v94-vs-sf12-120s` -- same opponent, two clocks -- to settle whether the skill rungs are
+depth-capped and therefore time-insensitive. If they are, EVERY future A/B moves to 8 s vs
+the rung and the 120 s slot is reserved for release gates only; say so to the human in the
+next candidate email, because it is a change to the regime he set.
+(0-NEW-b, iter 38) **DECODES AND MERGES BLOCK THE GAUNTLET QUEUE EXACTLY LIKE A TRAINER.**
+72 minutes were lost today (iter 38 section). Before taking the box for net work, check
+`overnight/laptop/tasks.json` for an unstarted task; launch heavy CPU jobs straight after a
+verdict lands, not just before one starts.
+(0-NEW-c, iter 38) `testing/pairdiff.py` is built and verified -- use it for the first A/B at
+the settled rung instead of comparing two percentages. Do not trust the -20..-35% SE saving
+until the tool prints it on real logs; it reports the unpaired SE beside the paired one for
+exactly that reason.
+
 (0-NEW, iter 37) **THE RUNG LADDER IS ON THE MACHINE.** Read `conv3b-clocktest-l` first (PASS
 is mandatory before any conversion switch is believed at all), then `v94-vs-sf12-120s` and
 `v94-vs-sf14-120s` (24 games each). Pick the rung whose score sits nearest 50-65% and make it
