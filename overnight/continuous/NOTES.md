@@ -118,6 +118,20 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   challenger dir, per the 150-sfnet bug) -> queues 156-mixnet3 (600 games, 8 s) and
   aborts if the net is byte-identical to the tree's. Judge on the GAMES; per the loop's
   method note the 400-position suite is a gross-regression veto only.
+- SLOPE RULE (measured 6 Sep 08:10, reproduces the recorded numbers, use it for every net
+  from here): the prediction is a LOGIT and the target is cp/400, so slope =
+  sum(pred * target/400) / sum((target/400)^2). Measured: pre-SF champion 1.0026 on Lichess
+  val (2.0192 on SF val); mix2 = the v9.3 net 0.7563 on Lichess (0.9266 on SF), i.e. x1.322
+  to unit -- which is what 155-mixnet2s tests, and it was +69.5 +/- 60 at 76 games.
+  => Judge and correct the slope on LICHESS val, never on SF val: a net trained on the mix
+  comes out calibrated for SF and under-confident on the human positions the platform
+  actually opens with, and every pruning margin reads a quiet eval as agreement. When
+  156-mixnet3 lands, measure its Lichess slope first; if it is off by more than ~5%, queue
+  the output-head rescale as its own net task the way 155 was, before believing its games.
+- v9.3 UPLOAD VERIFIED 6 Sep 08:05 (session): the zip in Downloads unpacks to 27 MB with
+  agent/fastboard/fastsearch + weights, net md5 45f73c3f (the tested mixnet2 net), and its
+  flag block is identical to the tree's apart from the DRAW_BUDGET lines the loop added
+  after the build (all False). INIT_FOLD is False in it, as intended. Safe to upload.
 - NET_V10 (V10_PLAN #4) TRAINING SIDE BUILT 6 Sep 07:50 (session), committed; NO engine
   file touched, so the loop's search work is unaffected. features.py + train.py only:
   mirrored king zones (`--mirror`), the endgame-dense 12-head BUCKET_MAP_12, and a warm
