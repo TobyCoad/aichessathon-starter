@@ -19,14 +19,14 @@ import argparse
 from pathlib import Path
 
 from testing import arena, sprt
-from testing.referee import FAILED_TERMINATIONS
+from testing.referee import FAILED_TERMINATIONS, PLATFORM_PLY_CAP
 
 GATE_GAMES = 24
 GATE_BASE_MS = 4_000
 GATE_INCREMENT_MS = 50
 
 
-def gate(challenger: Path, workers: int) -> tuple[bool, str]:
+def gate(challenger: Path, workers: int, ply_cap: int) -> tuple[bool, str]:
     """Play a short match against the random baseline hunting for failures.
 
     Random play reaches the odd corners -- promotion, en passant, stalemate,
@@ -42,7 +42,7 @@ def gate(challenger: Path, workers: int) -> tuple[bool, str]:
             GATE_GAMES,
             GATE_BASE_MS,
             GATE_INCREMENT_MS,
-            300,
+            ply_cap,
             workers,
             0.0,
             20.0,
@@ -84,6 +84,12 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--elo0", type=float, default=0.0)
     parser.add_argument("--elo1", type=float, default=20.0)
+    parser.add_argument(
+        "--ply-cap",
+        type=int,
+        default=PLATFORM_PLY_CAP,
+        help="the platform draws a game still running at 600 plies; material never decides",
+    )
     parser.add_argument("--checkpoint", type=int, default=200, help="judge every N games; 0 = off")
     parser.add_argument("--promote-at", type=float, default=10.0, help="checkpoint Elo to promote")
     parser.add_argument(
@@ -100,7 +106,7 @@ def main() -> None:
         raise SystemExit(1)
 
     print(f"stage 1: crash gate, {challenger.name} vs random")
-    ok, detail = gate(challenger, workers)
+    ok, detail = gate(challenger, workers, arguments.ply_cap)
     print(f"  {detail}")
     if not ok:
         print(f"\nREJECT  {challenger.name} is not safe to ship")
@@ -132,7 +138,7 @@ def run_sprt(
         arguments.games,
         arguments.base_ms,
         arguments.increment_ms,
-        300,
+        arguments.ply_cap,
         workers,
         arguments.elo0,
         arguments.elo1,

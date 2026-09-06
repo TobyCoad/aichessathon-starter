@@ -21,10 +21,9 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from harness.rules import PLY_CAP
 from harness.sandbox import local
 from testing import openings, sprt
-from testing.referee import FAILED_TERMINATIONS, play_match
+from testing.referee import FAILED_TERMINATIONS, PLATFORM_PLY_CAP, play_match
 
 FAST_BASE_MS = 10_000
 FAST_INCREMENT_MS = 100
@@ -254,7 +253,7 @@ def main() -> None:
     )
     parser.add_argument("--base-ms", type=int, default=FAST_BASE_MS)
     parser.add_argument("--increment-ms", type=int, default=FAST_INCREMENT_MS)
-    parser.add_argument("--ply-cap", type=int, default=PLY_CAP)
+    parser.add_argument("--ply-cap", type=int, default=PLATFORM_PLY_CAP)
     parser.add_argument(
         "--workers", type=int, default=0, help="concurrent games; 0 picks a safe default"
     )

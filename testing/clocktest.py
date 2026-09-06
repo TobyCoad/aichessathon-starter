@@ -126,7 +126,7 @@ def main() -> None:
     parser.add_argument("--factor", type=float, default=1.5, help="charge wall time x this")
     parser.add_argument("--overhead-ms", type=float, default=20.0, help="charged per move")
     parser.add_argument("--min-clock-ms", type=float, default=5_000.0)
-    parser.add_argument("--ply-cap", type=int, default=300)
+    parser.add_argument("--ply-cap", type=int, default=600)
     parser.add_argument("--workers", type=int, default=0)
     arguments = parser.parse_args()
 
