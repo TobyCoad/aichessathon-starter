@@ -120,6 +120,11 @@ class Tally:
     games: int = 0
     terminations: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     pair_scores: list[float] = field(default_factory=list)
+    # The opening schedule is deterministic (openings.pairs), so pair `i` is the
+    # same opening from both colours in every run of the same length. Keeping the
+    # index next to the score is what makes two runs against one fixed external
+    # opponent comparable PAIRWISE instead of only as two separate percentages.
+    pair_index: list[int] = field(default_factory=list)
 
     def record(self, result: GameResult) -> None:
         self.games += 1
@@ -204,10 +209,16 @@ def run(
                     tally.record(result)
                     partial[result.pair].append(result.score)
                     if len(partial[result.pair]) == 2:
-                        tally.pair_scores.append(sum(partial.pop(result.pair)) / 2.0)
+                        pair_score = sum(partial.pop(result.pair)) / 2.0
+                        tally.pair_scores.append(pair_score)
+                        tally.pair_index.append(result.pair)
                         verdict = sprt.evaluate(tally.pair_scores, elo0, elo1)
                         if not quiet:
-                            print(f"  {tally.games:>5} games  {verdict.summary}", flush=True)
+                            print(
+                                f"  {tally.games:>5} games  {verdict.summary}"
+                                f"  [pair {result.pair} {pair_score:g}]",
+                                flush=True,
+                            )
                         if checkpoint and tally.games >= next_check:
                             next_check += checkpoint
                             if verdict.decision == "continue":

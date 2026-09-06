@@ -723,6 +723,80 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 17:25, iter 37) -- sf-skill8 IS THE WRONG RUNG. THE LADDER IS RE-POINTED AND THE 120 s BUDGET IS COUNTED HONESTLY
+
+**THE BASELINE ANSWERED ITS QUESTION IN 20 GAMES, NOT 60, AND THE ANSWER IS "TOO EASY".**
+`v94-vs-sf8-120s` reached **+381.7 Elo at 20 games (~90%, 18/20)** against the pre-registered
+ceiling of 75%. Iter 36 wrote down before the numbers arrived what to do in that case --
+"move the regime to sf-skill10" -- so I did it rather than paying 50 more minutes to
+measure 90% to two decimal places. STOPPED at 17:12 (task removed from tasks.json, gauntlet
+PID killed, 4 orphans reaped; the worker deleted its own verdict-less .txt, which is correct).
+`170-conv-vs-sf8-120s` was DELETED unrun: it would have compared 90% with 90% for 80 minutes.
+A score that near the ceiling compresses Elo differences to nothing -- at 90% a true +50 Elo
+build moves the score to ~93%, which 60 games cannot see.
+
+- **NEW RUNGS BUILT (local only -- `opponents/` is in .gitignore, so they exist on this
+  laptop and would have to be recreated elsewhere):** `opponents/sf-skill12` and
+  `opponents/sf-skill14`, copies of sf-skill8 with `Skill Level` changed. Same exe, same
+  Threads 1 / Hash 16 / increment 200 / safety 150.
+- **QUEUED (committed aa4da8d):** `conv3b-clocktest-l` (running from 17:22 -- iter 36's
+  f-string retry, PASS is still mandatory before any conversion number is believed), then
+  `v94-vs-sf12-120s` and `v94-vs-sf14-120s`, **24 games each (~31 min), not 60.** A rung
+  probe only has to separate 50% from 90%, and 24 games does that (SE ~10%); spending 60
+  games on a rung we may discard is the same mistake again. NEXT ITERATION picks the rung
+  whose score is nearest 50-65% and runs the real comparisons there.
+- Calibration to expect: an OLDER, much weaker build scored 53.3%/58.0% vs sf-skill10 at
+  120 s (2-3 Sep). We are ~+380 over skill8, so skill12 is the first guess and skill14 the
+  backup. If skill14 also comes back above 75%, add sf-skill16 and probe again -- do not
+  run a 60-game comparison at a rung above 75%.
+
+**THE 120 s BUDGET, COUNTED -- READ THIS BEFORE PLANNING ANY MORE 120 s RUNS.**
+A 120 s game costs ~5.2 min of wall time; 4 workers, so 60 games = ~78 min and 24 games =
+~31 min. Uploads close 11 Sep 11:00 -- about 4.5 days, of which the machine is realistically
+free maybe 14 h/day, i.e. **~10 runs of 60 games in total, for everything.** Two separate
+60-game scores against a fixed opponent carry roughly twice the variance of a head-to-head:
+call it +/- 90-100 Elo each. So the regime as currently written **cannot resolve anything
+smaller than about +/- 60-90 Elo**, and every switch we have built this week has a claimed
+ceiling of +0..+30. That is not a criticism of the human's instruction -- self-play was
+hiding shared blind spots and had to go -- it is the arithmetic of what 120 s buys.
+=> **The 120 s vs-rung run is a RELEASE GATE and a REGRESSION CATCHER. It is not a ranker.**
+   Do not queue one to decide between two switches; it cannot.
+=> **PROPOSAL FOR THE NEXT ITERATION, and the thing worth the human's attention: keep the
+   external opponent but drop the clock.** 8 s games cost ~1/15 of a 120 s game, so 600
+   games vs a Stockfish rung fits in ~80 min -- the same slot that today buys 60 games --
+   and lands at +/- 20 Elo. That is 4x the resolution of the current regime AND it is not
+   self-play, so it keeps exactly the property the human asked for. The rung must be
+   re-probed at 8 s (we are weaker there, so it will be lower than the 120 s rung).
+   Cost of finding it: one 24-game 8 s probe, ~6 min. This is the cheapest large improvement
+   available to us and it should be settled before another 120 s run is spent on ranking.
+
+**PAIRED COMPARISON IS NOW AVAILABLE FOR FREE (testing/arena.py, committed).** `openings.pairs`
+is fully deterministic -- pair `i` is always `fens[i % 40]` played from both colours -- so two
+different builds run against the SAME external opponent with the same `--games` play the
+IDENTICAL schedule. The pair scores were being appended in worker-completion order with the
+index thrown away, which destroyed that. `Tally.pair_index` now records it and each progress
+line carries a `[pair N S]` suffix, so two runs at one rung can be differenced pair by pair
+instead of compared as two independent percentages. Removes the opening-difficulty term from
+the comparison (expect roughly -20..-35% on the SE, not a miracle). ruff + mypy PASS; no
+engine file touched; nothing parses those log lines (checked), and the worker's heartbeat
+grep takes the whole line. Verified by import + source inspection rather than a match,
+because `conv3b-clocktest-l` -- a TIMING test -- was running and must not be disturbed.
+- The two probes are against DIFFERENT opponents, so pairing does not apply to them. It
+  applies from the first A/B at a settled rung onwards, which is the main use anyway.
+
+**NOT DONE, deliberately:** no engine switch built and no bench run -- a clocktest and then a
+120 s gauntlet own the CPU until ~18:25, and both measure timing, so loading the box would
+corrupt the very numbers this iteration exists to get right. No v9.5 candidate (the pause
+stands and nothing has lifted it).
+
+**NOTED FOR WHOEVER FOLDS IT:** `overnight/eval/v10/static_vs_ref.json` is untracked and holds
+258 scored platform positions labelled by cause -- search 131, evaluation 51, horizon 38,
+time 33, book 5. I did NOT fold it: its `cause` labels contradict "THE SEARCH AXIS IS CLOSED"
+(which rests on two independent measurements), and I could not find the script that produced
+it anywhere in the tree, so the labelling method is unknown. Find the producer before anyone
+quotes those counts. `overnight/eval/sfshare.{out,err}` are likewise untracked and appear to
+belong to the interactive session.
+
 ## Running now (6 Sep 16:40, iter 36) -- THE CONVERSION BUNDLE IS ON THE MACHINE, AND IT IS THE FIRST NON-SELF-PLAY TEST WE HAVE EVER RUN
 The laptop was IDLE when this iteration started: the queue held only clocktests, all of
 them already answered, and `v94-120s` had been stopped by the pause. Iter 35 and
@@ -1809,6 +1883,22 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 37) **THE RUNG LADDER IS ON THE MACHINE.** Read `conv3b-clocktest-l` first (PASS
+is mandatory before any conversion switch is believed at all), then `v94-vs-sf12-120s` and
+`v94-vs-sf14-120s` (24 games each). Pick the rung whose score sits nearest 50-65% and make it
+THE rung; if skill14 is still above 75%, build `opponents/sf-skill16` (copy sf-skill8's dir,
+change `Skill Level`) and probe again rather than running a 60-game comparison at a rung that
+cannot resolve anything. Do NOT re-queue anything against sf-skill8: 90% at 20 games closed it.
+(0-NEW-b) **THEN SETTLE THE 8 s-VS-EXTERNAL QUESTION BEFORE SPENDING ANOTHER 120 s SLOT ON
+RANKING.** See the budget arithmetic in the iter 37 section: we have ~10 sixty-game 120 s runs
+left before uploads close and they resolve +/- 60-90 Elo, while every switch we own claims
++0..+30. One 24-game 8 s probe (~6 min) finds the 8 s rung; 600 games at 8 s vs that rung then
+fits the same 80-minute slot at +/- 20 Elo and is still not self-play. That is the regime
+change worth proposing to the human, and it is cheap enough to test before proposing it.
+(0-NEW-c) Two runs at ONE rung are now differenceable PAIR BY PAIR (`[pair N S]` on every
+progress line, iter 37). When the first A/B at the settled rung lands, write the ~30-line
+reader that joins the two logs on pair index -- do not compare them as two percentages.
+
 (0a) THE RESEARCH PAUSE IS STILL ON (human, 15:10): do NOT ship v9.5, do NOT start a
 gauntlet of 40+ games. `engine_ceiling.md` had still not landed at 16:25; fold it when it
 does. `opponent_profile.md` and `net_architecture.md` HAVE landed -- read
