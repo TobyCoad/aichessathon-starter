@@ -1123,6 +1123,16 @@ ENDGAME_SHRINK_CAP: Final = 600
 # termination backstop. Cheap re-searches near the score replace one expensive
 # full-width pass when the root swings.
 ASP_WIDE: Final = False
+# ROOT_NODES (V10_PLAN #12, root-move improvements): from the second iteration
+# order the root moves after the front move by how many nodes their subtree cost
+# on the previous iteration (most first), with the previous score as the
+# tiebreak, instead of by the previous score alone. Under a null window every
+# move except the best fails low, so its score is only a loose upper bound and
+# most of them come back equal; the node count is not degenerate -- a move that
+# consumed many nodes nearly raised alpha (it forced the full-window re-search),
+# one that failed low in a handful of nodes is refuted. Pure root ordering in
+# agent.py: no kernel change, so the kernel stays bit-identical.
+ROOT_NODES: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2158,12 +2168,16 @@ class FastEngine:
         stability = 0  # TIME_V6: consecutive iterations that kept the best move
         score_hist: list[int] = []  # TIME_V6: one score per completed iteration
         prev_scores: dict[int, int] = {}
+        last_nodes: dict[int, int] = {}
         for depth in range(1, 64):
             iteration_started = time.monotonic()
             first_done = False
             iteration_best = best
             pass_scores: dict[int, int] = {}
-            root_nodes: dict[int, int] = {}  # TIME_V6: nodes spent under each root move
+            # nodes spent under each root move: TIME_V6's effort factor and
+            # ROOT_NODES' ordering both read it.
+            root_nodes: dict[int, int] = {}
+            prev_nodes = last_nodes
             # ASPIRATION: a window around the last score, or the full window.
             window = 0
             if ASPIRATION and depth >= 4 and abs(previous_score) < MATE_THRESHOLD:
@@ -2178,12 +2192,28 @@ class FastEngine:
                     failed_high = False
                     front = hint if hint else best
                     if ROOT_ORDER and prev_scores:
-                        ranked = [
-                            (int(moves[i]) != front, -prev_scores.get(int(moves[i]), -INFINITY), i)
-                            for i in range(n)
-                        ]
+                        if ROOT_NODES and prev_nodes:
+                            ranked = [
+                                (
+                                    int(moves[i]) != front,
+                                    -prev_nodes.get(int(moves[i]), -1),
+                                    -prev_scores.get(int(moves[i]), -INFINITY),
+                                    i,
+                                )
+                                for i in range(n)
+                            ]
+                        else:
+                            ranked = [
+                                (
+                                    int(moves[i]) != front,
+                                    -prev_scores.get(int(moves[i]), -INFINITY),
+                                    0,
+                                    i,
+                                )
+                                for i in range(n)
+                            ]
                         ranked.sort()
-                        moves[:n] = moves[:n][[r[2] for r in ranked]]
+                        moves[:n] = moves[:n][[r[3] for r in ranked]]
                     else:
                         _fb.order_moves(
                             moves, n, pos.sq, front, 0, 0, self.butterfly, self.scores
@@ -2192,7 +2222,9 @@ class FastEngine:
                     first_done = False
                     for i in range(n):
                         move = int(moves[i])
-                        node_start = int(self.ctrl[_fs.C_NODES]) if TIME_V6 else 0
+                        node_start = (
+                            int(self.ctrl[_fs.C_NODES]) if TIME_V6 or ROOT_NODES else 0
+                        )
                         self._make(move)
                         try:
                             if (PVS or LMR_AGGRESSIVE) and i:
@@ -2203,7 +2235,7 @@ class FastEngine:
                                 value = -self.root_search(depth - 1, -hi, -alpha, 1)
                         finally:
                             self._unmake()
-                            if TIME_V6:
+                            if TIME_V6 or ROOT_NODES:
                                 root_nodes[move] = (
                                     root_nodes.get(move, 0)
                                     + int(self.ctrl[_fs.C_NODES]) - node_start
@@ -2258,6 +2290,8 @@ class FastEngine:
                 best = iteration_best
                 if ROOT_ORDER:
                     prev_scores = pass_scores
+                    if ROOT_NODES:
+                        last_nodes = root_nodes
             except Timeout:
                 # The first root move is the previous best, searched with a full
                 # window; a later move that came back above alpha at this depth has

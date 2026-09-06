@@ -334,7 +334,40 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 07:40, iter 21)
+## Running now (6 Sep 08:00, iter 22)
+- Nothing could be started: the laptop queue is ~10 h deep (155-mixnet2s running at 146
+  games +23.8 +/- 46.1, checkpoint at 200 ~08:20; then 148-v94all -> v94all-clocktest-l ->
+  drawcap-clocktest-l -> 147-seequiet -> seequiet-clocktest-l -> 146-cutnode ->
+  cutnode-clocktest-l), the GPU belongs to the interactive session (156-mixnet3 training,
+  PID 21092) and the desktop is off. So this iteration BUILT the next filler instead, per
+  the "never leave a machine idle" rule.
+- ROOT_NODES (V10_PLAN #12, the root-move half) BUILT 6 Sep 08:00, off in the tree.
+  agent.py ONLY -- no kernel change: from the second iteration the root moves after the
+  front move are ordered by the nodes their subtree cost on the previous iteration (most
+  first) with the previous score as the tiebreak, instead of by the previous score alone.
+  Rationale: after the first root move everything is searched with a null window and fails
+  low, so `prev_scores` is a loose upper bound and most entries come back near-equal --
+  degenerate as a sort key. The node count is not: a move that burned many nodes forced the
+  full-window re-search (nearly raised alpha), one refuted in a handful of nodes is junk.
+  `root_nodes` was already collected for TIME_V6's effort factor, so the only new cost is
+  carrying one dict of <= n ints across iterations.
+  ruff / mypy / check_fastsearch 70/70 + table-on 40/40 PASS.
+  BENCH CAVEAT (worth remembering): `testing.bench` calls `engine.root_search` directly and
+  never runs the iterative-deepening root loop, so ROOT_NODES -- like ROOT_ORDER and
+  ASP_WIDE before it -- is INVISIBLE to the bench by construction. d8 1,511,432 nodes at
+  237 knps, bit-identical to the champion baseline: that confirms the kernel is untouched,
+  not that the switch does nothing. Judged only in games.
+  Flags-off is bit-identical (the OFF branch keeps the same sort order, with a constant
+  third key element). Smoke-tested through `get_move` at 60 s on four positions (opening,
+  R+P endgame, two middlegames): sensible moves, no crash, no time overrun.
+  It is a v9.5 BUNDLE FILLER -- never its own gauntlet slot.
+  Challenger sed: s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/
+  Scratch build in overnight/challengers/rootnodes.
+- v9.5 bundle union so far: DRAW_BUDGET (needs drawcap-clocktest-l) + ROOT_NODES + whatever
+  147-seequiet and 146-cutnode pass. Do not queue it before 148-v94all's verdict lands --
+  the champion moves under it.
+
+## Running before (6 Sep 07:40, iter 21)
 - ENDGAME_SHRINK **CLOSED** (do not reopen). Two measurements killed it:
   (a) the 17-min suite on the OLD net finished 07:02 -- mean 9.2 cp vs baseline 10.8,
   with 5-8 pieces 3.1 vs 17.0 (a huge win) but 9-12 17.1 vs 12.0 and 13-16 6.6 vs 5.0
@@ -537,7 +570,11 @@ what enters a bundle.
    --seconds 2.5`) vs baseline 10.8 / 17.0 / 12.0 / 5.0 when the laptop is quiet
    (kz16w kill criterion: any band worse by >1.5 cp vetoes). Never a solo SPRT slot.
    Challenger sed: s/^ENDGAME_SHRINK: Final = False/ENDGAME_SHRINK: Final = True/
-5. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
+5. ROOT_NODES (V10_PLAN #12, root-move improvements) BUILT 6 Sep 08:00, off in the
+   tree; agent.py only, kernel untouched. Bundle filler for v9.5, never a solo slot.
+   Killer decay (the other half of #12) is the last unbuilt filler; the postmortem
+   peak_eval counter (rounds25-29 P3) is analysis-side.
+6. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
    DONE 6 Sep 02:15 (iter 14, committed in-tree): 14 leaf helpers (lsb/msb/popcount/
    bit/attacks/attackers/occupancy/_add/_add_promotions/feature/_acc_row/...) get
    eager numba signatures -- source-only, exact by construction (bench d8
@@ -564,7 +601,10 @@ three once (the one allowed split), then close CAPTURE_ORDER.
 (3) ENDGAME_SHRINK is CLOSED (see "Running now"); do not spend another suite slot on it.
 Rounds 25-29 postmortems are DONE. Do NOT start GPU work -- the SF/mix net chain and
 155-mixnet2s belong to the interactive session; the loop only folds their results.
-(4) If everything is queued and the laptop is busy, the remaining unbuilt fillers are
-killer decay and root-move improvements (V10_PLAN #12) and the postmortem peak_eval
-counter (rounds25-29 P3); otherwise read the newest platform post-mortems and add any
-new failure mode to the backlog with an Elo estimate.
+(4) ROOT_NODES is now built (iter 22) and joins the v9.5 bundle with DRAW_BUDGET.
+If everything is queued and the laptop is busy again, the last unbuilt filler is killer
+decay (V10_PLAN #12) and the postmortem peak_eval counter (rounds25-29 P3) is
+analysis-side; otherwise read the newest platform post-mortems and add any new failure
+mode to the backlog with an Elo estimate. Remember the bench caveat recorded in
+"Running now": root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move the
+bench number -- do not read an identical node count as "the switch is a no-op".

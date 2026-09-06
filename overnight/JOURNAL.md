@@ -1120,3 +1120,33 @@ the whole +9% is the mixnet2 net changing the search tree, not the capture resco
 v9.4 bundle therefore carries no measured node cost at all. New champion bench baseline
 recorded in NOTES (1,511,432 at d8); any switch benched before the 07:15 net promotion
 needs re-baselining before its ratio is trusted.
+
+6 Sep 08:00 (loop iter 22) Nothing to start, so I built the next filler. The laptop queue
+is roughly ten hours deep -- 155-mixnet2s running at 146 games (+23.8 +/- 46.1, checkpoint
+at 200 around 08:20), then 148-v94all and its clocktest, drawcap-clocktest-l, 147-seequiet,
+146-cutnode and their clocktests -- the GPU is the interactive session's (156-mixnet3
+training) and the desktop is off, so the only useful move was to have the v9.5 bundle's
+parts ready before its slot comes round. Built ROOT_NODES, the root-move half of
+V10_PLAN #12, off in the tree and touching agent.py only: from the second iteration the
+root moves after the front move are ordered by the number of nodes their subtree cost on
+the previous iteration, most first, with the previous score kept as the tiebreak. The
+reason is that the current key is degenerate. After the first root move every move is
+searched with a null window and fails low, so its score is only a loose upper bound and
+most of them come back at nearly the same value; the node count carries the information
+the score threw away, because a move that burned a lot of nodes is one that forced the
+full-window re-search and nearly raised alpha, while a move refuted in a few hundred nodes
+is junk. The counts were already being collected for TIME_V6's effort factor, so the whole
+cost is carrying one dict of at most n ints from one iteration to the next. ruff, mypy and
+check_fastsearch (70/70 exact, 40/40 table-on) all pass, and with the switch off the sort
+order is unchanged, so the tree is bit-identical to the champion.
+
+One caveat is worth more than the switch itself: testing.bench calls engine.root_search
+directly and never runs the iterative-deepening root loop, so ROOT_NODES -- like ROOT_ORDER
+and ASP_WIDE before it -- cannot move the bench number at all. Its d8 bench is 1,511,432
+nodes, exactly the champion baseline. That confirms the kernel is untouched; it is not
+evidence that the switch does nothing, and a future iteration should not read it that way.
+I recorded the caveat in NOTES beside the switch. Since the bench is blind here I smoke
+tested through get_move at 60 s on four positions (opening, a rook-and-pawn endgame, two
+middlegames): sensible moves, no crash, no overrun. ROOT_NODES is a bundle filler for v9.5
+alongside DRAW_BUDGET and never gets a gauntlet slot of its own, and v9.5 cannot be queued
+until 148-v94all's verdict lands, because the champion moves under it.
