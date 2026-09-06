@@ -294,8 +294,12 @@ what enters a bundle.
   145-v93fill / v93fill-clocktest-l / caporder-clocktest-l (folded in / made moot by the
   bundle clocktest). Bundle = CAPTURE_ORDER + QS_TT + ASP_WIDE + NMP_V2B, i.e. every
   switch that has passed or is free but has not shipped. Bench d8 under gauntlet load:
-  1,512,004 nodes at 238 knps -- the 1.09x is CAPTURE_ORDER's known ordering cost and
-  nothing else is pathological. INIT_FOLD + the fastboard eager signatures ride in the
+  1,512,004 nodes at 238 knps against a SAME-NET champion baseline of 1,511,432 at
+  264 knps -- **1.0004x, node-neutral**. NEW CHAMPION BENCH BASELINE for the v9.3 tree:
+  d8 1,511,432 nodes (use this, not 1,385,489, which was the old net). CAPTURE_ORDER's
+  recorded "1.090x nodes" was measured against an old-net baseline and overstated its
+  cost: the whole +9% is the mixnet2 net changing the tree, not the ordering rescore.
+  Re-baseline any switch benched before 07:15 today before trusting its ratio. INIT_FOLD + the fastboard eager signatures ride in the
   v9.4 zip (exact, no gauntlet). If the bundle fails, split by dropping CAPTURE_ORDER
   (the only member with a non-trivial node change) and re-queue once.
 - Laptop queue: 155-mixnet2s (running, interactive session's net, 20 games 07:35) ->

@@ -1111,3 +1111,12 @@ the interactive session's net) -> 148-v94all -> v94all-clocktest-l -> drawcap-cl
 -> 147-seequiet -> seequiet-clocktest-l -> 146-cutnode -> cutnode-clocktest-l. Desktop off;
 GPU with the interactive session. v9.2 and v9.3 are emailed and awaiting the human's
 uploads, so v9.4 is the day's third and last slot and can wait for a clean verdict.
+
+6 Sep 07:55 (loop iter 21, correction) Benched the v9.3 champion on the SAME net to
+baseline the bundle properly: d8 1,511,432 nodes at 264 knps, against the bundle's
+1,512,004 at 238 knps -- 1.0004x, node-neutral. CAPTURE_ORDER's recorded 1.090x node cost
+was an artifact of comparing a new-net challenger against the old-net baseline 1,385,489;
+the whole +9% is the mixnet2 net changing the search tree, not the capture rescore. The
+v9.4 bundle therefore carries no measured node cost at all. New champion bench baseline
+recorded in NOTES (1,511,432 at d8); any switch benched before the 07:15 net promotion
+needs re-baselining before its ratio is trusted.
