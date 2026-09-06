@@ -334,6 +334,30 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
+## NET_V10 ARCHITECTURE: CLOSED before the freeze (6 Sep 10:40, measured not argued)
+The three v10 pilots ran to completion despite being cancelled (the chain survived its kill
+-- see the process lesson below), so this verdict cost nothing. Same start, same shards,
+same budget (6 epochs, --limit 40000000):
+  control  (8 heads, unmirrored)      best val 0.004481
+  heads12  (12 endgame-dense heads)   best val 0.004458   -- 0.5% better
+  mirror   (mirrored king zones)      0.009394 -> 0.006189 by epoch 2 of 6, killed there
+- 12 HEADS: a 0.5% val difference is inside the noise of an instrument we have already shown
+  is a weak proxy for Elo (kz16 beat kz8 on val, won +31, and scored WORSE on the suite). It
+  does not justify the three engine edits (agent._bucket, the fastsearch kernel's bucket line,
+  export) or a gauntlet slot. NOT worth it before the freeze.
+- MIRRORING: starts 58% behind (symmetrising the champion costs that) and was still 38% above
+  control's best when it was killed. The mechanism is real -- the champion scores a position
+  and its mirror 56.2 cp apart although our feature set has no castling-rights features, so
+  reflection is a TRUE symmetry and that gap is learned noise -- but recovering it needs a
+  from-scratch-scale run, not a fine-tune. NO SLOT before 10 Sep. Keep the training-side code
+  (features.py / train.py, `--mirror`, verified bit-identical with the flag off) for later.
+=> The remaining net value is in DATA AND TARGETS (WDL, the Stockfish share), not architecture.
+   The training-side v10 code is committed and inert; do not spend a slot on it.
+- PROCESS LESSON (cost GPU time twice): killing a detached chain by its Start-Process PID
+  kills only the wrapper. The v10 pilot chain kept running for over an hour after I "killed"
+  it and was training on the GPU alongside the WDL run. Kill the whole tree (the bash running
+  the .sh AND the python beneath it) and then VERIFY by command line, not by PID.
+
 ## QUEUE FREEZE UNTIL v9.4 SHIPS (session, 6 Sep 10:20) -- LOOP: QUEUE NO GAUNTLETS
 Do not add ANY task with `games` to overnight/laptop/tasks.json until `149-v94wdl` has run.
 Not a variant, not a renamed one, not a "bounded" one. Iteration 5 re-queued the deferred
