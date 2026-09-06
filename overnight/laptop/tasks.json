@@ -1,15 +1,15 @@
 [
  {
-  "name": "conv3-clocktest-l",
+  "name": "conv3b-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
  },
  {
-  "name": "v94-vs-sf8-120s",
+  "name": "v94-vs-sf12-120s",
   "kind": "switch",
   "sed": "",
-  "champion": "opponents/sf-skill8",
-  "games": 60,
+  "champion": "opponents/sf-skill12",
+  "games": 24,
   "workers": 4,
   "base_ms": 120000,
   "openings": "platform",
@@ -17,16 +17,11 @@
   "elo1": 200
  },
  {
-  "name": "conv3b-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
- },
- {
-  "name": "170-conv-vs-sf8-120s",
+  "name": "v94-vs-sf14-120s",
   "kind": "switch",
-  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/",
-  "champion": "opponents/sf-skill8",
-  "games": 60,
+  "sed": "",
+  "champion": "opponents/sf-skill14",
+  "games": 24,
   "workers": 4,
   "base_ms": 120000,
   "openings": "platform",
