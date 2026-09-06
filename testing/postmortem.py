@@ -87,6 +87,10 @@ class Report:
     counts: dict[str, int] = field(default_factory=dict)
     causes: dict[str, int] = field(default_factory=dict)
     turning: str = ""
+    # "we were +141 and drew": the peak reference eval we held and the ply it
+    # decayed below half. Set only when a peak >= 100 cp did not become a win,
+    # so a failed conversion is visible without reading the trajectory.
+    conversion: str = ""
     moves: list[Ply] = field(default_factory=list)
 
 
@@ -202,6 +206,15 @@ def analyse(agent: ModuleType, sf: chess.engine.SimpleEngine, path: Path, depth:
     clocks = [p.clock_ms for p in ours if p.clock_ms is not None]
     worst = min(ours, key=lambda p: p.delta) if ours else None
     turning = f"move {worst.number} {worst.san} ({worst.delta:+d} cp, {worst.cause})" if worst and worst.kind else "none"
+    conversion = ""
+    peak = max((p.eval_before for p in ours), default=0)
+    if peak >= 100 and score < 1.0:
+        peak_ply = next(p.number for p in ours if p.eval_before == peak)
+        decay = next((p.number for p in ours if p.number > peak_ply and p.eval_before < peak // 2), None)
+        conversion = (
+            f"peak +{peak} at ply {peak_ply}, below half by ply {decay}"
+            if decay is not None else f"peak +{peak} at ply {peak_ply}, held to the end"
+        )
     return Report(
         file=path.name,
         colour="white" if colour == chess.WHITE else "black",
@@ -215,6 +228,7 @@ def analyse(agent: ModuleType, sf: chess.engine.SimpleEngine, path: Path, depth:
         counts=counts,
         causes=causes,
         turning=turning,
+        conversion=conversion,
         moves=plies,
     )
 
@@ -344,11 +358,11 @@ def write_html(report: Report, out: Path) -> None:
 
 
 def write_markdown(reports: list[Report], out: Path) -> None:
-    lines = ["# Post-mortem", "", "| game | we | result | plies | blunders | mistakes | causes | lowest clock | time-trouble moves | turning point |", "|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["# Post-mortem", "", "| game | we | result | plies | blunders | mistakes | causes | lowest clock | time-trouble moves | turning point | failed conversion |", "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in reports:
         lines.append(
             f"| {r.file} | {r.colour} | {r.result} {r.termination} | {r.plies} | {r.counts.get('blunder', 0)} | {r.counts.get('mistake', 0)} | "
-            f"{', '.join(f'{k} {v}' for k, v in sorted(r.causes.items()))} | {r.min_clock_ms / 1000:.1f} s | {r.time_trouble_moves} | {r.turning} |"
+            f"{', '.join(f'{k} {v}' for k, v in sorted(r.causes.items()))} | {r.min_clock_ms / 1000:.1f} s | {r.time_trouble_moves} | {r.turning} | {r.conversion or '-'} |"
         )
     for r in reports:
         bad = [p for p in r.moves if p.ours and p.kind]
