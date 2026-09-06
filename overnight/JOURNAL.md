@@ -2002,3 +2002,52 @@ I left the queue alone on purpose. sf12 at 120 s, then the two 8 s probes, then 
 and a quarter hours; the machine does not idle, and queueing `p8-sf8` or `p8-sf14` now would be
 spending a slot to insure against a prediction I have just committed to in writing. The research
 pause stands: no v9.5 candidate, no email, no new 40-plus-game gauntlet.
+
+## 6 Sep 19:30 -- iteration 40: the net stopped whispering and started shouting, and nobody noticed
+
+`v94-vs-sf12-120s` finished at 19:25: 75.0%, +24 =12 -4, +190.8 +/- 84 Elo over 40 games at the
+platform's own time control. That is a good number and it is also a dead end as a gate, because
+75% is precisely the ceiling threshold our own testing regime wrote down: at that score the Elo
+scale compresses and the test stops being able to tell two builds apart. So sf12 is not the 120 s
+release rung and `v94-vs-sf14-120s`, already last in the queue, is the run that picks one. I also
+sharpened iteration 39's pre-registered prediction with the final number rather than the 16-game
+interim: at +129 Elo for the clock, `p8-sf12` should land near +62 Elo, about 58.8%, band 55-63.
+If it comes back near 75% instead, the clock model under every Elo figure in this repo is wrong.
+The queue was left untouched; `p8-sf10` started at 19:25 and the box has an hour and a half of
+work in front of it.
+
+The iteration's actual find cost no CPU at all, which is the only kind of work available while a
+timing measurement is on the machine. Every flagged move in our 24 post-mortem JSONs carries two
+numbers side by side that nobody had ever regressed against each other: `static`, our own net's
+evaluation, and `eval_before`, the Stockfish reference. Two hundred and sixty-one paired samples.
+Fitted through the origin, the slope of ours on theirs is 0.82 for rounds 4-19, 0.27 for rounds
+20-32, and **1.20 for rounds 33-41 -- 1.34 for the v9.4 era alone**. The sign has flipped. Every
+net we shipped before today was shrunk toward zero: it read a lost position as merely bad, on
+average 250 cp too optimistic in the round 20-32 band. The WDL net that went out in v9.4 this
+lunchtime overstates instead, by about a third.
+
+That matters because of what reads the eval. Our own SLOPE RULE was derived for the mix2 net,
+which whispered at 0.756 on Lichess validation and got a x1.31 correction tested as `155-mixnet2s`
+(flat, -3.0 +/- 29 at 346 games). The WDL net was never slope-checked at all, and a WDL target has
+no reason to preserve the centipawn scale the rule was fitted on. A shouting eval is the
+`152-sfnet` failure verbatim: reverse futility, razoring, futility and the null-move margin all
+compare a static score against a fixed centipawn threshold, so a net that overstates by 34% clears
+those thresholds too easily and prunes the refutation. If the number holds, our margins have been
+mis-scaled since 12:13 today. The caveats are in the notes and they are real -- `static` is only
+recorded on moves we already got wrong, so this is a selected sample, and the v9.4 cell is n=58 --
+but the selection rule is identical across all three generations, so the flip survives even though
+the level does not. The fix, if there is one, is a single forward pass over Lichess validation by
+the net lane and then an output-head rescale, pre-registered downward this time.
+
+The third thing was a negative result worth writing down so it does not get rediscovered. Round 41
+is a 231-ply loss with 53 time-trouble moves, a 9.7 s low clock and fourteen moves the post-mortem
+labels `time`; it reads like a clock catastrophe. It is not one. At 120 s plus a half-second
+increment over 115 moves we had 177 s of budget, spent 163.8 and finished with 10.1 -- the time
+manager never came close to flagging, and all fourteen `time` moves sit after ply 144 in a
+position the reference already scored at -321 or worse. The game was lost between plies 84 and
+122, where our static said +79 and the reference said -158, and the engine shuffled a single
+bishop back and forth for twenty plies while the position slid from -129 to -403. That shuffle is
+the behavioural signature of the same defect the slope measurement quantifies: when the evaluation
+returns nearly the same number for every move, the search has nothing to choose between. No new
+failure mode, no time-management switch -- buying those moves more time would only buy more
+confident wrong moves.

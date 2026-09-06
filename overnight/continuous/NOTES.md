@@ -723,6 +723,96 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 19:30, iter 40) -- sf12 LANDED AT 75% AND OUR STATIC EVAL HAS FLIPPED SIGN BETWEEN NET GENERATIONS
+
+**`v94-vs-sf12-120s` FINAL: +24 =12 -4, score 75.0%, +190.8 +/- 84.0 Elo over 40 games at
+120 s on platform openings** (mean game length 120 plies; checkmate 28, threefold 8, fifty 1,
+stalemate 2, insufficient 1). Two consequences, both mechanical:
+- **75.0% is exactly the "move up" threshold** in the NEW TESTING REGIME section, so
+  **sf-skill12 is NOT the 120 s release rung** -- a score at the ceiling compresses Elo
+  differences and makes the gate insensitive. `v94-vs-sf14-120s` (24 games, already last in
+  the queue) is the run that picks the rung. Do not gate a release on sf12 at 120 s again.
+- **THE PRE-REGISTERED PREDICTION SHARPENS.** Iter 39 wrote it against the 16-game interim
+  (+163). With the final 40-game number the arithmetic is: 8 s -> 120 s is 15x = 3.9
+  doublings, one ply = 2.06x nodes = 1.043 doublings = +33 Elo, so the clock is worth ~+129
+  Elo to us. **`p8-sf12` should therefore land near +190.8 - 129 = +62 Elo, i.e. ~58.8%,
+  band 55-63%.** Falsification, unchanged in spirit: if `p8-sf12` comes back near 75% the
+  ~+129 Elo clock model that underwrites every Elo figure in this repo is wrong, and that is
+  a bigger finding than the rung. `p8-sf10` started 19:25 and runs first; `p8-sf12` is next,
+  then `v94-vs-sf14-120s`. Queue left alone -- ~1 h 30 m of work, machine does not idle.
+
+**NEW MEASUREMENT: OUR STATIC EVAL'S SLOPE AGAINST STOCKFISH HAS FLIPPED BETWEEN NET
+GENERATIONS, AND NOBODY HAS CHECKED THE v9.4 NET.** Zero CPU: it is a re-read of the 24
+`overnight/postmortem/round-*.json` files. Every flagged move of ours carries both `static`
+(our own net's eval) and `eval_before` (the Stockfish reference), in the same reference frame
+-- verified, white-only and black-only subsets both give positive slopes (0.700 / 0.923) and
+73-81% sign agreement, so the two columns are not mixed conventions. Regressing static on the
+reference through the origin, slope = sum(static*ref)/sum(ref^2):
+
+    rounds  4-19   n= 97   slope 0.816   bias mean +101   median  +47
+    rounds 20-32   n= 88   slope 0.266   bias mean +251   median +119
+    rounds 33-41   n= 76   slope 1.203   bias mean  -48   median  -48
+    rounds 37-41   n= 58   slope 1.342   bias mean  -84   median -102   (white 1.42 / black 1.04)
+    all 4-41       n=261   slope 0.766   bias mean +108   median  +46
+
+- **The old nets WHISPERED and the current one SHOUTS.** Through round 32 our static was
+  shrunk toward zero (slope 0.27-0.82: we read a lost position as merely bad, +251 cp too
+  high on average in rounds 20-32). Since the WDL net shipped in v9.4 the sign is reversed:
+  slope 1.34 means we now overstate the magnitude by about a third, and static < reference on
+  64.5% of flagged moves where it was > reference on 62.5% across the whole corpus.
+- **WHY THIS IS NOT A CURIOSITY.** The SLOPE RULE in this file was written for the mix2 net
+  (Lichess-val slope 0.7563, corrected x1.31 as `155-mixnet2s`, which came back **flat**,
+  -3.0 +/- 29 at 346 games). **The v9.4 champion net -- 157-wdlnet -- was never slope-checked
+  at all.** A WDL target does not preserve the cp scale of the eval targets the rule was
+  derived on, and a shouting net is the `152-sfnet` failure mode verbatim: every pruning
+  margin (RFP, razoring, futility, the NMP eval margin) reads a shouted eval as agreement and
+  prunes the refutation. If the 1.34 is real, our margins have been mis-scaled since 12:13
+  today, in the direction that prunes too much.
+- **STATE THE CAVEATS BEFORE ANYONE BUILDS ON IT, because they are real:** (1) `static` is
+  recorded ONLY on flagged moves (blunder/mistake/inaccuracy), so this is the slope on
+  positions where our search already went wrong -- an upward-biased selection, not the
+  population slope; (2) the v9.4-era cell is n=58, driven by n=45 white; (3) the reference is
+  Stockfish, so the slope inherits its scale. The comparison ACROSS generations uses one
+  identical selection rule throughout, so the DIRECTION and the flip survive the selection
+  bias even though the level does not.
+- **THE ACTION IS CHEAP AND IT IS THE NET LANE'S, not the loop's:** measure the v9.4 champion
+  net's slope on **Lichess val** by the SLOPE RULE method (a single forward pass, seconds) and
+  record it here before the next net ships. If it is off by more than ~5%, an output-head
+  rescale is a net task, exactly as `155-mixnet2s` was -- and this time with a pre-registered
+  direction (DOWN, ~x0.75, not up). Do NOT build a search-side eval correction: the same
+  number has to be fixed once, in the head, or it desynchronises the net from every margin.
+  Reproduce with the formula above over the postmortem jsons; it is four lines.
+
+**ROUND 41 IS THE SAME OLD DEFECT, NOT A NEW ONE -- SAYING SO SAVES SOMEBODY AN ITERATION.**
+`round-41-loss-white-vs-lubina` (0-1 checkmate, 231 plies, 4 blunders, 8 mistakes, causes
+evaluation 6 / horizon 4 / search 3 / **time 14**, lowest clock 9.7 s, 53 time-trouble moves)
+looks like a clock catastrophe and is not one:
+- **We never came close to flagging.** 120 s + 0.5 s increment (harness/rules.py) over 115 of
+  our moves = 177 s of budget; we spent 163.8 s and finished with 10.1 s. The time manager did
+  its job. The 14 `time` labels all sit at plies 144-220 where the reference was already -321
+  to -1096 -- they are moves in a dead-lost position, not the cause of anything.
+- **The game was decided at plies 84-122 by evaluation**, at 0.7-1.2 s/move: our static read
+  **+79 while the reference read -158** (ply 88) and **+78 vs -212** (ply 100), and the engine
+  shuffled one bishop -- Bf6, Bh8, Ba1, Bh8, Bf6 -- for twenty plies while the position went
+  from -129 to -403. That is the <= 16-piece evaluation blindness in "WHAT IS ACTUALLY LEFT",
+  with the shuffle as its behavioural signature: when every move evaluates the same, the
+  search has nothing to choose between.
+- Spend profile for the record (our moves): plies 1-20 avg 2.52 s, 21-40 **3.44 s**, 41-60
+  2.53, 61-80 2.07, 81-100 1.60, 101-116 1.51. We front-load the middlegame and reach the
+  endgame on the increment floor. That is defensible policy and NOT worth a time-management
+  switch on this evidence -- the moves it would buy are in the band where our eval is wrong,
+  so more time on them buys more confident wrong moves.
+=> **No new failure mode. Round 41 is a third independent confirmation of the evaluation axis**,
+   and the slope flip above is the first concrete, cheap, falsifiable handle on it we have had.
+
+**NOT DONE, deliberately:** no engine switch, no bench, no `check_fastsearch` -- `p8-sf10`
+started at 19:25 and is a timing measurement; the research pause still stands (no v9.5
+candidate, no email, no new 40+ game gauntlet beyond what was queued). v9.5 (= v9.4 +
+INIT_FOLD + INIT_ASYNC, decided 14:45) is STILL unbuilt and both flags are False in the tree;
+that is correct while the pause holds, and the 12:45 "init may be costing a quarter of our
+games" panic was already corrected by the 15:10 finding that init has never lost a ladder
+game (37 games, zero init losses). Init is an upload-validation risk only. Do not re-panic.
+
 ## Running now (6 Sep 18:55, iter 39) -- `data_sources.md` LANDED AT 17:27 AND WAS NEVER FOLDED. OUR "STOCKFISH DATA" IS NOT STOCKFISH DATA
 
 **THE PREMISE UNDER FOUR DAYS OF NET WORK IS WRONG, AND THE REPORT PROVES IT ON REAL BYTES.**

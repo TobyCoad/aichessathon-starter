@@ -1,0 +1,4 @@
+net_w512-b8-kz16-sf100.pt
+  attacking (>=4 attackers, n=600): signed     +11 cp   |err|    199
+  quiet     (<4 attackers, n=1400): signed      -1 cp   |err|    126
+  weighted overall |err|:    148 cp        (negative signed = the net OVERvalues)
