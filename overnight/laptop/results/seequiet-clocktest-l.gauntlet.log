@@ -1,0 +1,16 @@
+seequiet-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+    79 plies  1-0           lowest clock    9.0s  longest move  10.3s  at ply 30   56.4s  used w   120s b   129s
+compiled board: on
+compiled board: on
+   105 plies  1/2-1/2       lowest clock    6.8s  longest move  10.7s  at ply 30   59.3s  used w   139s b   138s
+   105 plies  1/2-1/2       lowest clock    6.6s  longest move  12.5s  at ply 30   60.3s  used w   139s b   139s
+compiled board: on
+   188 plies  1-0           lowest clock    5.8s  longest move   9.5s  at ply 30   70.5s  used w   156s b   157s
+compiled board: on
+compiled board: on
+   169 plies  0-1           lowest clock    5.8s  longest move  12.6s  at ply 30   35.0s  used w   148s b   149s
+compiled board: on
+   146 plies  1/2-1/2       lowest clock    6.4s  longest move  12.4s  at ply 30   48.6s  used w   146s b   146s
+
+flags 0/6  errors 0  lowest clock 5.8s  longest move 12.6s
+PASS
