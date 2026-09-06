@@ -1188,3 +1188,64 @@ depth-gated switch off a d8 bench. Smoke-tested through get_move at 60 s on four
 (two book, Rd1 in a rook endgame, Bxh7+ in a middlegame): sensible, no crash, no overrun.
 SINGULAR_EXT2 is a v9.5 bundle filler alongside DRAW_BUDGET and ROOT_NODES and never gets
 a gauntlet slot of its own; v9.5 cannot be queued until 148-v94all's verdict lands.
+
+6 Sep 09:25 (loop iter 24) The laptop was saturated again, but this time the thing worth
+fixing was not what to build -- it was the queue itself. The human's standing instruction
+since 08:55 is that v9.4 is the search bundle plus the WDL net in ONE gauntlet and that he
+wants it expedited. The interactive session had already written queue_v94.py to insert
+149-v94wdl at index 0 of the laptop queue so that nothing queued in the meantime could get
+in front of the release. That closes the wrong half of the hole. Inserting at the front
+only wins the race against tasks that have not started; the worker runs one gauntlet at a
+time and will not preempt, so whatever it happens to have picked up when the net lands owns
+the machine until it finishes. Sitting directly in front of 149-v94wdl were 147-seequiet and
+146-cutnode, 600 games each, about three hours each.
+
+So I bounded them rather than removing them, because idling the machine to protect a release
+is its own kind of waste. The pending order is now 147-seequiet, then the two cheap
+clocktests, then 146-cutnode, and 147-seequiet is capped at games: 200. It stops at its
+first checkpoint whatever it reads, so the worst case block on v9.4 is one checkpoint of
+roughly seventy to eighty-five minutes rather than one full SPRT. At 200 games the
+checkpoint rule can PROMOTE at +10 or better and can return INCONCLUSIVE; it cannot REJECT,
+which needs 400. That is enough for what SEE_QUIET actually is here -- a v9.5 bundle filler,
+where INCONCLUSIVE with a positive point estimate is already a pass. If a later iteration
+wants the full 600-game read it can re-queue it once v9.4 has shipped.
+
+The window is real and I measured its shape rather than guessing. wdl_decode.sh started at
+09:03, having waited for the drawcap clocktest, and binpack_decode counts in the worker's
+busy_gauntlets probe, so the worker is parked until the decode ends. Then merge and twelve
+training epochs sharing the GPU with 156-mixnet3, then export, check_nnue and the endgame
+suite, which parks the worker a second time. 149-v94wdl realistically queues around 11:00,
+and the free window is the training stretch in the middle -- which is exactly what a capped
+147-seequiet fills. I put the gauntlet in that stretch rather than the clocktests on purpose:
+clocktests measure time management and are the load-sensitive thing, so they belong after
+the release, not underneath a training run.
+
+Two results to fold. drawcap-clocktest-l came back PASS, flags 0/6, errors 0, lowest clock
+5.7 s, longest move 11.8 s, so DRAW_BUDGET has cleared its gate and needs nothing further
+before it goes into v9.5 alongside ROOT_NODES and SINGULAR_EXT2. And I verified the tree is
+green rather than assuming iter 23 left it that way: ruff clean, mypy clean on agent.py and
+fastsearch.py, check_fastsearch 70/70 exact at depth 4 and 40/40 best-move agreement at
+depth 6 with the table on, node ratio median 1.00.
+
+I deliberately did not build a switch. The three unbuilt search.md items left -- razoring at
+depth <= 3, ProbCut, root PVS/LMR -- are all kernel edits, and the twenty minutes left after
+the queue work is not enough to finish one plus ruff, mypy, the exactness check and a bench.
+NOTES has carried its own rule since 5 Sep 22:40 that the tree must never be left with a
+half-done build at the end of an iteration, and that rule outranks filling the slot. What I
+did instead was spend those minutes scoping RAZOR against the live source so the next
+iteration can write it in one pass: the exact insertion point between the reverse-futility
+return and `futile = False`, the guards, the fact that `standing` may still be -INFINITY
+there so it must reuse the futility block's fill-in ladder rather than adding a third eval
+path, the margin table, C_RAZOR = 51 with CTRL_SIZE going 51 -> 52, and the warning that a
+new in-flight slot must stay out of fastsearch.FOLDED or INIT_FOLD will silently break
+challenger seds. One caveat recorded with it: unlike SINGULAR_EXT2, razoring is not gated
+above depth 3, so a depth-8 bench is a fair read of it and the node count should fall -- if
+it does not move at all, the guards are wrong.
+
+Finally, round 31 landed at 08:21 this morning, a draw as Black against abhi-s-chess-demon
+and the first platform game since v9.2/v9.3 went live. I delegated its post-mortem to an
+opus agent writing overnight/eval/v10/round31.md, with the usual brief: read ARCHITECTURE.md
+first, respect the closed list, quantify where the half point went, check the clock profile
+against the now-live TIME_V6, test whether the errors again cluster below 16 pieces, and say
+plainly if the game shows no new failure mode rather than inventing work. It was still
+running when this iteration ended; the report is on disk for the next one to fold.
