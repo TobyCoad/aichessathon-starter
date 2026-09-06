@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 02:56
+time 2026-09-06 03:06
 task 152-sfnet
-progress      62 games  .... llr -1.21 [-2.94, 2.94] after 31 pairs, elo -68.1 +/- 70.9
+progress     100 games  .... llr -2.58 [-2.94, 2.94] after 50 pairs, elo -74.1 +/- 50.8
