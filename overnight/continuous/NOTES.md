@@ -352,6 +352,21 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   per-band static error (eg_calib) against the v9.3 net's 331.9 / 262.6 / 184.4 cp. If it
   does, the net is dropped and v9.4 goes back to being the search bundle alone -- one
   gauntlet either way.
+- PIPELINE RUNNING (session, detached; the loop must NOT start GPU work or queue net tasks):
+  wdl_decode.sh waits for the clocktest -> decodes 145M positions with --wdl-lambda 0.75
+  (8 workers, 20M shards) -> wdl_net.sh merges 50/50 by POSITION COUNT (training/merge_mix.py)
+  -> fine-tunes the champion 12 epochs -> export/check_nnue/suite/eg_calib ->
+  training/queue_v94.py INSERTS `149-v94wdl` + `v94wdl-clocktest-l` AT THE FRONT of
+  tasks.json. Front, not back: anything queued meanwhile (156-mixnet3 will queue itself when
+  its training chain finishes) would otherwise take the machine for an hour ahead of the
+  release the human is waiting on. If a net task you did not queue is at the front, move
+  149-v94wdl ahead of it.
+  FAILURE IS HANDLED: any failed stage, or a decode that misses a 70 min deadline, queues a
+  SEARCH-ONLY v9.4 instead (`queue_v94.py --no-net`). Either way exactly one v9.4 gauntlet
+  appears and the loop ships on its verdict. Do not queue a second one.
+  The first decode attempt HUNG (4 workers, one 72.5M shard, pool workers vanished after
+  task 0 and nothing is written until a shard fills, so 20 min produced nothing). Hence 20M
+  shards now: progress lands on disk and a stall is visible.
 - 155-mixnet2s STOPPED by the session at 346 games (-3.0 +/- 29.0, llr -1.19): it could not
   promote and was holding the only gauntlet for another ~1.3 h. Removed from tasks.json so
   it will not re-run; no result file was written (workers own those). VERDICT: the x1.31
