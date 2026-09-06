@@ -1,53 +1,31 @@
 [
  {
-  "name": "convert-clocktest-l",
+  "name": "conv3-clocktest-l",
   "kind": "clocktest",
-  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/"
+  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
  },
  {
-  "name": "v94wdl-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
-  "net": "overnight/nets/157-wdlnet.npz"
+  "name": "v94-vs-sf8-120s",
+  "kind": "switch",
+  "sed": "",
+  "champion": "opponents/sf-skill8",
+  "games": 60,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -200,
+  "elo1": 200
  },
  {
-  "name": "v9core-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"
- },
- {
-  "name": "v9-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^TIME_V6: Final = False$/TIME_V6: Final = True/; s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"
- },
- {
-  "name": "nmp-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^NMP_V2: Final = False$/NMP_V2: Final = True/"
- },
- {
-  "name": "drawcap-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
- },
- {
-  "name": "cutnode-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
- },
- {
-  "name": "drawcap2-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
- },
- {
-  "name": "initasync-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^INIT_ASYNC: Final = False$/INIT_ASYNC: Final = True/; s/^INIT_READY_S: Final = 72.0$/INIT_READY_S: Final = 0.0/"
- },
- {
-  "name": "v95-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
+  "name": "170-conv-vs-sf8-120s",
+  "kind": "switch",
+  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/",
+  "champion": "opponents/sf-skill8",
+  "games": 60,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -200,
+  "elo1": 200
  }
 ]
