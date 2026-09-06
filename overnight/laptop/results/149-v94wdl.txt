@@ -1,0 +1,7 @@
+name 149-v94wdl
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  149-v94wdl  +70 Elo over 196 games
+  +92 =51 -53  score 59.9%  over 196 games
+  terminations: checkmate 145, fifty_moves 9, insufficient_material 19, stalemate 1, threefold_repetition 22
