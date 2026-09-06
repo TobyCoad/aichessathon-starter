@@ -642,9 +642,24 @@ risk and which was still only scoped as "someone should look at (a)/(b)/(c)".
 - QUEUE unchanged: `160-v95` -> `initasync-clocktest-l` -> `v95-clocktest-l` -> `165-v96`
   -> `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
 - PENDING FOR THE NEXT ITERATION, both left mid-flight by the clock, neither blocking:
-  (a) `160-v95` was at 356 games / +9.8 at 14:29 and decides at 400 (~14:42). At +8..+10 it
-      is heading for INCONCLUSIVE-with-a-positive-point-estimate, which is a PASS by the
-      human's rule -- but read the actual verdict line, do not assume it.
+  (a) `160-v95`'s 400-GAME CHECKPOINT LANDED 14:41 AND IS UNDECIDED, VERBATIM:
+      `checkpoint 400: +10 Elo, undecided -> 200 more` (400 games, elo +9.6 +/- 29.0,
+      llr -0.04). +9.6 does not clear the +10 promote bar and is nowhere near the -10
+      reject bar, so it plays out to 600 and **v9.5's verdict now lands ~15:40, not
+      14:42** -- then `initasync-clocktest-l` (~10 min) and `v95-clocktest-l` (~10 min),
+      so the ship window is ~16:05. Plan the next iteration around that, and read the
+      real verdict line rather than assuming the +9.6 holds.
+      DECISION (iter 33), so nobody re-opens it: 160-v95 was LEFT TO RUN rather than
+      stopped at 400 and shipped on a positive point estimate. Reasons, in order:
+      (i) NOTES' own power caveat says a marginal checkpoint number is weak evidence and
+      155-mixnet2s went +69 at 76 games to -3 at 346 -- stopping at the moment a
+      borderline estimate is positive is exactly the bias that produces; (ii) 600 games
+      is the only verdict four shipped-or-not switches (ADJ_V2 / ROOT_NODES /
+      SINGULAR_EXT2 / RAZOR) will ever get; (iii) there is no deadline pressure -- the
+      human is away until ~15:00 and three versions have already shipped today (v9.2
+      03:30, v9.3 07:15, v9.4 12:12), which is his stated daily cap, so a 16:05 candidate
+      costs nothing real. If INIT_ASYNC were the ONLY payload the trade would flip, since
+      an init overrun loses a whole game -- but it rides in the same zip either way.
   (b) an opus agent is writing `overnight/eval/v10/rounds32-37.md` (rounds 32, 34, 35 and
       37 -- the four platform games nobody has folded; NONE of them failed at init, checked
       before briefing it: terminations were insufficient_material 295 plies, checkmate 148,
