@@ -1904,3 +1904,43 @@ worker-completion order and discarding the index, which threw that away for free
 keeps the index and prints it. Nothing in the repo parses those lines, ruff and mypy pass,
 no engine file was touched, and I verified it by import rather than by playing a match,
 because a clocktest was running and a clocktest is a stopwatch.
+
+## 6 Sep 18:35 -- iteration 38: the queue had been dead for 72 minutes, and the 8 s probe is queued
+
+The laptop looked busy and was: eight workers of `training.binpack_decode` (the net lane's
+580 M-position WDL decode, started 17:15:49). What was NOT running was the gauntlet queue.
+The worker announced `v94-vs-sf12-120s` at 17:21 and then blocked in `busy_gauntlets()`,
+which counts `binpack_decode` as load -- correctly, because a 120 s match measured under
+eight busy workers measures the decode. Nothing was killed and nothing should have been; the
+decode is the net lane's job and the net is still the only axis measured to hold more than
++50 Elo. But it cost 72 minutes of gauntlet time on a day when the whole remaining 120 s
+budget is about ten sixty-game runs, and the fix is scheduling, not the guard: take the box
+straight after a verdict lands, not six minutes before one starts. Written into NOTES.md as
+a standing rule, because rule (5) said "GPU work" and this was a decode.
+
+With the box occupied by a decode and then by a timing-sensitive 120 s match, no bench and no
+exactness run were possible, so this iteration spent itself on the two zero-CPU items at the
+top of the board. First, `p8-sf10` and `p8-sf12` are queued: the champion against Stockfish
+skill 10 and 12 at **8 s**, 40 games each, six minutes apiece, inserted after the running
+120 s match and before `v94-vs-sf14-120s`. Iter 37's arithmetic is the reason -- a 60-game
+120 s run resolves +/- 90-100 Elo and every switch we own claims +0..+30, while 600 games at
+8 s against the same external opponent fit the same 80-minute slot at +/- 20. The decision
+rule is pre-registered in NOTES so the next iteration reads a number instead of re-arguing:
+40-70% makes that rung the screening regime. The probe also tests something about the
+opponent that I had not seen stated anywhere -- the rung configs set only `Skill Level`, and
+Stockfish weakens skill by capping depth, so a rung should gain almost nothing from 120 s
+while we gain two or three plies. `p8-sf12` against `v94-vs-sf12-120s` is the same opponent
+at two clocks and settles it either way for twelve minutes.
+
+Second, `testing/pairdiff.py`: the reader iter 37 asked for, joining two gauntlet logs on the
+`[pair N S]` index so two runs at one rung are differenced pair by pair rather than compared
+as percentages. It prints the unpaired standard error beside the paired one, so it will say
+plainly if pairing does not help -- iter 37 predicted -20..-35% and that prediction has not
+been tested on real logs yet. Verified on synthetic input two ways: a self-difference is
+exactly zero over 60 pairs, and two independent random logs come back at +9%, which is the
+right answer when there is no shared opening term. Worth knowing before anyone tries it: no
+existing log carries the suffix at all, because it only landed at 17:16, so the first usable
+comparison is `v94-vs-sf12-120s` against a later run at that rung.
+
+The research pause still stands: no v9.5 candidate, no new 40+ game gauntlet beyond what was
+already queued, no email.
