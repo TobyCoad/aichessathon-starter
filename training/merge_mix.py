@@ -10,6 +10,7 @@ inside each shard fixes both: every epoch sees both distributions in the same pr
 
 from __future__ import annotations
 
+import argparse
 import glob
 from pathlib import Path
 
@@ -28,6 +29,21 @@ LICHESS = [
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--sf-share",
+        type=float,
+        default=0.5,
+        help="fraction of each merged shard that is Stockfish, by POSITION COUNT",
+    )
+    parser.add_argument("--out", default="data/mixw", help="directory for the merged shards")
+    parser.add_argument("--val", default="data/mixvalw.npy")
+    arguments = parser.parse_args()
+    share = arguments.sf_share
+    if not 0.0 < share < 1.0:
+        raise SystemExit("--sf-share must be between 0 and 1")
+    Path(arguments.out).mkdir(parents=True, exist_ok=True)
+
     sf_paths = [Path(p) for p in sorted(glob.glob("data/sfw/feb24w_[0-9][0-9].npy"))]
     if not sf_paths:
         raise SystemExit("no data/sfw/feb24w_NN.npy shards")
@@ -39,9 +55,14 @@ def main() -> None:
     sf = np.load(sf_paths[0], mmap_mode="r")
     for k, lichess_path in enumerate(LICHESS):
         lichess = np.load(lichess_path, mmap_mode="r")
-        take = min(per, len(lichess))
+        take = per
+        # share = sf / (sf + lichess)  =>  lichess = sf * (1 - share) / share
+        lichess_take = min(len(lichess), round(take * (1.0 - share) / share))
         out = open_memmap(
-            f"data/mixw/mixw_{k:02d}.npy", mode="w+", dtype=RECORD, shape=(2 * take,)
+            f"{arguments.out}/mixw_{k:02d}.npy",
+            mode="w+",
+            dtype=RECORD,
+            shape=(take + lichess_take,),
         )
         written = 0
         while written < take:
@@ -55,12 +76,17 @@ def main() -> None:
             out[written : written + n] = sf[sf_at : sf_at + n]
             written += n
             sf_at += n
-        for i in range(0, take, CHUNK):
-            j = min(i + CHUNK, take)
-            out[take + i : take + j] = lichess[i:j]
+        for i in range(0, lichess_take, CHUNK):
+            j = min(i + CHUNK, lichess_take)
+            out[written + i : written + j] = lichess[i:j]
         out.flush()
         del out
-        print(f"mixw_{k:02d}: {written:,} Stockfish + {take:,} Lichess", flush=True)
+        got = written / (written + lichess_take)
+        print(
+            f"mixw_{k:02d}: {written:,} Stockfish + {lichess_take:,} Lichess "
+            f"({got:.1%} Stockfish)",
+            flush=True,
+        )
         if sf_index >= len(sf_paths):
             break
 
@@ -69,7 +95,7 @@ def main() -> None:
     lichess_val = np.load("data/validation_w512-150m.npy", mmap_mode="r")
     sf_val = np.load("data/sfw/feb24w_val.npy", mmap_mode="r")
     n = min(500_000, len(lichess_val), len(sf_val))
-    np.save("data/mixvalw.npy", np.concatenate([np.array(lichess_val[:n]), np.array(sf_val[:n])]))
+    np.save(arguments.val, np.concatenate([np.array(lichess_val[:n]), np.array(sf_val[:n])]))
     print(f"mixvalw: {n:,} Lichess + {n:,} Stockfish-WDL", flush=True)
 
 
