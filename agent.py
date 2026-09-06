@@ -1042,6 +1042,27 @@ ADJUDICATION: Final = True
 ADJ_BEHIND_LATE: Final = 300  # cp added to the behind-side draw score by the cap
 ADJ_WINDOW: Final = 80  # arm the fifty-move plan only this close to the cap
 ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
+# ADJ_V2: the platform's cap is 600 plies AND IT IS A DRAW -- material is never
+# consulted (canonical rules, verified twice; harness/rules.py is a stale copy
+# with 300 + a material award, and testing/referee.py was corrected on 6 Sep to
+# play the real game). Three things follow, and all three are the opposite of
+# what ADJUDICATION assumes:
+#   (a) the cap is 600, not 300, so every ply-based ramp is re-based on it;
+#   (b) behind on material, reaching the cap is a DRAW, not a loss: we do not
+#       have to buy a draw before a deadline, we only have to not lose. So the
+#       behind-side bonus stops being "a draw is nearly a full half point"
+#       (ADJ_BEHIND_LATE 300 cp -- more than a rook) and becomes a bounded
+#       preference, ADJ_BEHIND_LATE_V2;
+#   (c) ahead, the cap TAKES a won game away, so ahead-side urgency belongs near
+#       600 -- it was reaching full strength ~300 plies early.
+# The practical size of this is not the cap change but the ramp: `late` is
+# (ply - cap/2) / (cap/2), so at ply 225 the champion is already at late 0.50 --
+# a +170 cp draw score when behind and 37 cp of contempt when ahead, in an
+# ordinary middlegame. Under ADJ_V2 late is 0 there and the base contempts
+# (+20 / -25) stand until ply 300. Longest game on record is 323 plies.
+ADJ_V2: Final = False
+PLATFORM_PLY_CAP: Final = 600  # canonical rules: still running at 600 -> draw
+ADJ_BEHIND_LATE_V2: Final = 100  # cp; a draw is worth a pawn, never a rook
 # HISTORY2_FIX (v10 search.md 3.7): zero quiets[ply, searched] for non-quiet
 # moves; without it the cutoff malus punishes stale moves recorded by an earlier
 # node at the same ply. KILLER_CLEAR (same source): clear killers[ply + 2] on
@@ -2151,9 +2172,10 @@ class FastEngine:
             if ADJUDICATION:
                 match_ply = _match_ply(board)
                 hmc = board.halfmove_clock
+                cap = PLATFORM_PLY_CAP if ADJ_V2 else ADJUDICATION_PLY
                 if (
-                    ADJUDICATION_PLY - match_ply <= ADJ_WINDOW
-                    and match_ply + (100 - hmc) <= ADJUDICATION_PLY
+                    cap - match_ply <= ADJ_WINDOW
+                    and match_ply + (100 - hmc) <= cap
                     and hmc + ADJ_HORIZON < 100
                     and _material_balance(board) < 0
                 ):
@@ -2589,8 +2611,10 @@ def _contempt(board: chess.Board, static: int) -> int:
     """The draw score for the root side, negative when a draw would cost it.
 
     Ahead on material or on the network's own view of the position, a draw is a
-    loss of expectation, and increasingly so as the ply-300 adjudication -- which
-    awards the game on raw material -- approaches. Behind, a draw is a gain.
+    loss of expectation, and increasingly so as the ply cap approaches -- under
+    ADJUDICATION because the cap awards the game on raw material, under ADJ_V2
+    because the cap is a draw and takes a won game away. Behind, a draw is a
+    gain (a certain one under ADJ_V2: the cap draws whatever the material).
     Level, a small reluctance to repeat: in a Swiss the opponent is usually the
     weaker side, and playing on is where that shows.
     """
@@ -2598,10 +2622,15 @@ def _contempt(board: chess.Board, static: int) -> int:
     game_ply = _match_ply(board) if ADJUDICATION else (
         2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
     )
-    late = min(1.0, max(0.0, (game_ply - 150) / (ADJUDICATION_PLY - 150)))
+    cap = PLATFORM_PLY_CAP if ADJ_V2 else ADJUDICATION_PLY
+    late = min(1.0, max(0.0, (game_ply - cap / 2) / (cap / 2)))
     if material >= 100 or static >= 60:
         return -int(CONTEMPT_AHEAD + (CONTEMPT_AHEAD_LATE - CONTEMPT_AHEAD) * late)
     if material <= -100 or static <= -60:
+        if ADJ_V2 and material < 0:
+            # The cap is a draw: we are not buying our way out of a loss, so a
+            # draw is worth a bounded preference, and only near the real cap.
+            return -CONTEMPT_BEHIND + int(ADJ_BEHIND_LATE_V2 * late)
         if ADJUDICATION and material < 0:
             # Losing the ply-300 material adjudication: a draw approaches a full
             # half point as the cap nears, so make repetitions decisive, not +20.
