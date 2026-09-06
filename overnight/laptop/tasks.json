@@ -85,29 +85,19 @@
   "games": 600
  },
  {
-  "name": "caporder-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/"
- },
- {
-  "name": "145-v93fill",
-  "sed": "s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/",
+  "name": "148-v94all",
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
   "games": 600
  },
  {
-  "name": "v93fill-clocktest-l",
+  "name": "v94all-clocktest-l",
   "kind": "clocktest",
-  "sed": "s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/"
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/"
  },
  {
-  "name": "146-cutnode",
-  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
-  "games": 600
- },
- {
-  "name": "cutnode-clocktest-l",
+  "name": "drawcap-clocktest-l",
   "kind": "clocktest",
-  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
+  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
  },
  {
   "name": "147-seequiet",
@@ -120,8 +110,13 @@
   "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/"
  },
  {
-  "name": "drawcap-clocktest-l",
+  "name": "146-cutnode",
+  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "cutnode-clocktest-l",
   "kind": "clocktest",
-  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
+  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
  }
 ]

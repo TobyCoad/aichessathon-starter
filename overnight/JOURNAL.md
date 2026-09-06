@@ -1083,3 +1083,31 @@ interactive session.
 
 6 Sep 07:15 v9.3 SHIPPED (email sent): v9.2 + 153-mixnet2 (mixed SF+Lichess net, PROMOTE +19 at
 200, md5 verified different from the old net). Net promoted into the tree (weights/net.npz).
+
+6 Sep 07:45 (loop iter 21) ENDGAME_SHRINK closed on evidence, and the v9.4 bundle queued.
+The 17-min endgame suite that iter 20 relaunched detached finished at 07:02: mean 9.2 cp
+against the 10.8 baseline, but all of the gain sat in one band -- 5-8 pieces 3.1 vs 17.0,
+while 9-12 went 12.0 -> 17.1 and 13-16 5.0 -> 6.6, both past the 1.5 cp veto. Rather than
+ship or bin it blindly I re-ran testing.eg_calib against the NEW champion net (v9.3's mixed
+Stockfish/Lichess net) to see whether a narrower ramp -- an EG_ON=9 early-out keeping only
+the band that won -- was worth a second suite slot. It is not, and the reason is the good
+news of the day: the new net has already fixed that band. Static error at 5-8 pieces is
+331.9 cp against the old net's 673.7 (-51%), and 252.8 vs 320.9 overall (-21%); pure
+material scores 444.8 / 275.1 / 243.9, so it is now WORSE than the net in every band,
+where under the old net it beat the net at 5-8 (444.8 vs 673.7). The blend has nothing
+left to blend toward, so ENDGAME_SHRINK is CLOSED -- the switch stays in the tree, off and
+harmless, and no further suite or gauntlet slot goes to it. A methodological note went into
+NOTES alongside it: for 153-mixnet2 the endgame suite said WORSE (13.8 vs 10.8), the static
+instrument says 21% BETTER and the 8 s SPRT said +19 Elo, so the 400-position/2.5 s suite
+is a weak proxy and should be used as a veto for gross regressions only, never as a
+promotion gate. Then queued v9.4 as ONE bundle, 148-v94all + v94all-clocktest-l:
+CAPTURE_ORDER (600-game INCONCLUSIVE +0.6, a pass under the human's rule) + QS_TT +
+ASP_WIDE + NMP_V2B, which absorbs and replaces 145-v93fill, v93fill-clocktest-l and the
+now-moot caporder-clocktest-l -- four switches, one gauntlet slot instead of three. Bundle
+bench d8 under gauntlet load 1,512,004 nodes at 238 knps: the ~1.09x is CAPTURE_ORDER's
+known ordering cost and nothing else is pathological. INIT_FOLD and the fastboard eager
+signatures ride in the v9.4 zip (exact, no gauntlet). Laptop queue: 155-mixnet2s (running,
+the interactive session's net) -> 148-v94all -> v94all-clocktest-l -> drawcap-clocktest-l
+-> 147-seequiet -> seequiet-clocktest-l -> 146-cutnode -> cutnode-clocktest-l. Desktop off;
+GPU with the interactive session. v9.2 and v9.3 are emailed and awaiting the human's
+uploads, so v9.4 is the day's third and last slot and can wait for a clean verdict.

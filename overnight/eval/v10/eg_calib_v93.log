@@ -1,0 +1,36 @@
+compiled board: on
+agent imported in 46.2s
+400 positions evaluated in 0.0s
+
+static |eval - label| by piece-count band (the games.md instrument):
+   5- 8: n=114  net   331.9  material   444.8
+   9-12: n=135  net   262.6  material   275.1
+  13-16: n=151  net   184.4  material   243.9
+  all  : n=400  net   252.8  material   311.7
+
+blend sweep (mean |blended - label| per band; moved = |blended - net|):
+  WMIN 128 CAP 150:  5-8  330.3  9-12  237.5  13-16  176.1  all  240.8  moved>100 116  maxmove  150  worse 178
+  WMIN 128 CAP 300:  5-8  331.9  9-12  237.9  13-16  176.1  all  241.3  moved>100 116  maxmove  300  worse 180
+  WMIN 128 CAP 450:  5-8  342.6  9-12  238.9  13-16  176.1  all  244.7  moved>100 116  maxmove  450  worse 181
+  WMIN 128 CAP 600:  5-8  345.0  9-12  238.9  13-16  176.1  all  245.4  moved>100 116  maxmove  580  worse 181
+  WMIN 128 CAP   0:  5-8  345.0  9-12  238.9  13-16  176.1  all  245.4  moved>100 116  maxmove  580  worse 181
+  WMIN 153 CAP 150:  5-8  327.1  9-12  240.3  13-16  177.4  all  241.3  moved>100  93  maxmove  150  worse 175
+  WMIN 153 CAP 300:  5-8  330.6  9-12  242.0  13-16  177.4  all  242.9  moved>100  93  maxmove  300  worse 177
+  WMIN 153 CAP 450:  5-8  335.3  9-12  242.3  13-16  177.4  all  244.3  moved>100  93  maxmove  450  worse 177
+  WMIN 153 CAP 600:  5-8  335.4  9-12  242.3  13-16  177.4  all  244.3  moved>100  93  maxmove  466  worse 177
+  WMIN 153 CAP   0:  5-8  335.4  9-12  242.3  13-16  177.4  all  244.3  moved>100  93  maxmove  466  worse 177
+  WMIN 179 CAP 150:  5-8  325.0  9-12  245.8  13-16  179.1  all  243.2  moved>100  69  maxmove  150  worse 172
+  WMIN 179 CAP 300:  5-8  329.1  9-12  246.4  13-16  179.1  all  244.6  moved>100  69  maxmove  300  worse 174
+  WMIN 179 CAP 450:  5-8  329.6  9-12  246.4  13-16  179.1  all  244.7  moved>100  69  maxmove  348  worse 174
+  WMIN 179 CAP 600:  5-8  329.6  9-12  246.4  13-16  179.1  all  244.7  moved>100  69  maxmove  348  worse 174
+  WMIN 179 CAP   0:  5-8  329.6  9-12  246.4  13-16  179.1  all  244.7  moved>100  69  maxmove  348  worse 174
+  WMIN 205 CAP 150:  5-8  326.0  9-12  251.3  13-16  180.7  all  245.9  moved>100  32  maxmove  150  worse 167
+  WMIN 205 CAP 300:  5-8  327.8  9-12  251.5  13-16  180.7  all  246.5  moved>100  32  maxmove  231  worse 168
+  WMIN 205 CAP 450:  5-8  327.8  9-12  251.5  13-16  180.7  all  246.5  moved>100  32  maxmove  231  worse 168
+  WMIN 205 CAP 600:  5-8  327.8  9-12  251.5  13-16  180.7  all  246.5  moved>100  32  maxmove  231  worse 168
+  WMIN 205 CAP   0:  5-8  327.8  9-12  251.5  13-16  180.7  all  246.5  moved>100  32  maxmove  231  worse 168
+  WMIN 230 CAP 150:  5-8  328.0  9-12  256.7  13-16  182.4  all  249.0  moved>100   2  maxmove  117  worse 160
+  WMIN 230 CAP 300:  5-8  328.0  9-12  256.7  13-16  182.4  all  249.0  moved>100   2  maxmove  117  worse 160
+  WMIN 230 CAP 450:  5-8  328.0  9-12  256.7  13-16  182.4  all  249.0  moved>100   2  maxmove  117  worse 160
+  WMIN 230 CAP 600:  5-8  328.0  9-12  256.7  13-16  182.4  all  249.0  moved>100   2  maxmove  117  worse 160
+  WMIN 230 CAP   0:  5-8  328.0  9-12  256.7  13-16  182.4  all  249.0  moved>100   2  maxmove  117  worse 160

@@ -274,7 +274,37 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 06:55, iter 20)
+## Running now (6 Sep 07:40, iter 21)
+- ENDGAME_SHRINK **CLOSED** (do not reopen). Two measurements killed it:
+  (a) the 17-min suite on the OLD net finished 07:02 -- mean 9.2 cp vs baseline 10.8,
+  with 5-8 pieces 3.1 vs 17.0 (a huge win) but 9-12 17.1 vs 12.0 and 13-16 6.6 vs 5.0
+  (both past the 1.5 cp veto). The whole value sat in the 5-8 band.
+  (b) re-running testing.eg_calib against the NEW champion net (overnight/eval/v10/
+  eg_calib_v93.log) shows that band is now fixed by the net itself: static error at
+  5-8 is 331.9 cp (old net 673.7, -51%), 9-12 262.6, 13-16 184.4, all 252.8 (old 320.9,
+  -21%). Pure material is 444.8 / 275.1 / 243.9 -- **worse than the net in every band
+  now**, where under the old net it beat the net at 5-8 (444.8 vs 673.7). The premise
+  of the blend is gone, so a re-tuned ramp (the planned EG_ON=9 early-out) cannot
+  recover the 5-8 win. The switch stays in the tree, off and harmless; no more slots.
+- METHOD NOTE (worth trusting later): the three endgame instruments disagree, and the
+  games win. For 153-mixnet2 the suite said WORSE (13.8 vs 10.8), the static instrument
+  says 21% BETTER, and the 8 s SPRT said +19 Elo. The 400-position/2.5 s suite is a weak
+  proxy -- use it as a veto for gross regressions only, never as a promotion gate.
+- v9.4 BUNDLE QUEUED as 148-v94all (600 games, 8 s) + v94all-clocktest-l, replacing
+  145-v93fill / v93fill-clocktest-l / caporder-clocktest-l (folded in / made moot by the
+  bundle clocktest). Bundle = CAPTURE_ORDER + QS_TT + ASP_WIDE + NMP_V2B, i.e. every
+  switch that has passed or is free but has not shipped. Bench d8 under gauntlet load:
+  1,512,004 nodes at 238 knps -- the 1.09x is CAPTURE_ORDER's known ordering cost and
+  nothing else is pathological. INIT_FOLD + the fastboard eager signatures ride in the
+  v9.4 zip (exact, no gauntlet). If the bundle fails, split by dropping CAPTURE_ORDER
+  (the only member with a non-trivial node change) and re-queue once.
+- Laptop queue: 155-mixnet2s (running, interactive session's net, 20 games 07:35) ->
+  148-v94all -> v94all-clocktest-l -> drawcap-clocktest-l -> 147-seequiet ->
+  seequiet-clocktest-l -> 146-cutnode -> cutnode-clocktest-l. Desktop OFF.
+- Uploads today: v9.2 (03:30) and v9.3 (07:15) are emailed and unuploaded; v9.4 is the
+  third and last slot of the day, so it may wait for the bundle verdict without cost.
+
+## Running before (6 Sep 06:55, iter 20)
 - SUITE INTERRUPTED AND RELAUNCHED: iter 19's egshrink suite died at 50/400 when
   its session ended (a plain background child is killed with the iteration).
   Relaunched 06:45 DETACHED via PowerShell Start-Process (PID 54076) -- ALWAYS
@@ -457,23 +487,20 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(0) Fold the egshrink suite verdict (egshrink_suite.log, done ~07:02; relaunched
-detached PID 54076 after iter 19's copy died at 50/400): any band >1.5 cp worse
-than 10.8/17.0/12.0/5.0 vetoes; pass -> ENDGAME_SHRINK joins the v9.3/v9.4
-bundle. Fold 153-mixnet2's checkpoint verdict when it lands (interactive
-session's net; the loop only records it). DRAW_BUDGET (built iter 20, off) needs
-drawcap-clocktest-l PASS, then it is a bundle filler gated by the bundle's 120 s
-games. (1) 144-caporder FOLDED (iter 19): CAPTURE_ORDER passes into the v9.3 union.
-Still to fold: 145-v93fill, 146-cutnode, 147-seequiet (they run after the two
-mixnet gauntlets, ~afternoon). Ship v9.3 from the union of passes PLUS the
-no-gauntlet riders (CAPTURE_ORDER, NMP_V2B, INIT_FOLD, eager signatures):
-build ONE bundle challenger with every passed switch flipped, one confirming
-SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING and CUTNODE
-are closed for good. (2) ENDGAME_SHRINK suite gate RUNNING since 06:14 (iter 19,
-result -> overnight/eval/v10/egshrink_suite.log): vs 10.8 / 17.0 / 12.0 / 5.0,
-any band >1.5 cp worse vetoes; pass -> it joins the v9.3/v9.4 bundle, never a
-solo slot. If the suite was interrupted, re-run it when no gauntlet is near a
-checkpoint. Rounds 25-29 postmortems are DONE (rounds25-29.md); do not
-re-analyze them. Keep the exactness check green. (3) Do NOT start GPU work; the
-SF retrain and 153-mixnet2/155-mixnet2s belong to the interactive session --
-fold their gauntlet results when they appear in overnight/laptop/results/.
+(1) FOLD 148-v94all when its 200-game checkpoint lands (it starts when 155-mixnet2s
+finishes). PROMOTE or INCONCLUSIVE-positive + v94all-clocktest-l PASS = ship v9.4:
+flip CAPTURE_ORDER / QS_TT / ASP_WIDE / NMP_V2B True in the tree, re-run the exactness
+check, build the zip from overnight/challengers/148-v94all with INIT_FOLD also flipped
+True in the zip copy, verify the clean-unzip cold import < 45 s and the d8 bench nodes,
+write CANDIDATE.md, notify. If it REJECTS, drop CAPTURE_ORDER and re-queue the other
+three once (the one allowed split), then close CAPTURE_ORDER.
+(2) Then fold drawcap-clocktest-l (unblocks DRAW_BUDGET as a v9.5 filler), 147-seequiet
+(SEE_QUIET, 0.76x nodes -- the most interesting untested switch left) and 146-cutnode
+(after which IMPROVING and CUTNODE are closed for good).
+(3) ENDGAME_SHRINK is CLOSED (see "Running now"); do not spend another suite slot on it.
+Rounds 25-29 postmortems are DONE. Do NOT start GPU work -- the SF/mix net chain and
+155-mixnet2s belong to the interactive session; the loop only folds their results.
+(4) If everything is queued and the laptop is busy, the remaining unbuilt fillers are
+killer decay and root-move improvements (V10_PLAN #12) and the postmortem peak_eval
+counter (rounds25-29 P3); otherwise read the newest platform post-mortems and add any
+new failure mode to the backlog with an Elo estimate.
