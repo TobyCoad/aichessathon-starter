@@ -106,5 +106,11 @@
   "name": "seequiet-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/"
+ },
+ {
+  "name": "153-mixnet2",
+  "net": "overnight/challengers/153-mixnet2/weights/net.npz",
+  "sed": "",
+  "games": 600
  }
 ]

@@ -1,0 +1,14 @@
+compiled board: on
+  50/400  mean loss so far 7.4  120s
+  100/400  mean loss so far 12.3  249s
+  150/400  mean loss so far 10.1  362s
+  200/400  mean loss so far 12.6  498s
+  250/400  mean loss so far 13.1  631s
+  300/400  mean loss so far 11.7  759s
+  350/400  mean loss so far 14.6  881s
+  400/400  mean loss so far 13.8  1010s
+
+overnight\challengers\153-mixnet2: 400 positions at 2.5s: mean loss 13.8 cp, median 0 cp, best move 52.2%, >=100 cp on 3.5%
+    5-8 pieces: n=114 mean loss 8.8 cp
+   9-12 pieces: n=135 mean loss 23.8 cp
+  13-16 pieces: n=151 mean loss 8.5 cp
