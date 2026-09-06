@@ -1,0 +1,5 @@
+name 147-seequiet
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 200
+REJECT  147-seequiet is not safe to ship

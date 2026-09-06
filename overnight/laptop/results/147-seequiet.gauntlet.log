@@ -1,0 +1,4 @@
+stage 1: crash gate, 147-seequiet vs random
+  failed 7/24 games (init 7)
+
+REJECT  147-seequiet is not safe to ship
