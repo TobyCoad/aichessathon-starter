@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 20:25
+time 2026-09-06 20:36
 task p8-sf10
-progress       8 games  .... llr +2.77 [-2.94, 2.94] after 4 pairs, elo +137.0 +/- 2263.0  [pair 3 1]
+progress      32 games  .... llr +9.59 [-2.94, 2.94] after 16 pairs, elo +88.7 +/- 137.6  [pair 15 0.75]
