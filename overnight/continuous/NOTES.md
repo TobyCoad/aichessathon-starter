@@ -499,6 +499,51 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 11:20, iter 27)
+- THE REFEREE NOW PLAYS THE PLATFORM'S GAME (commit ce2f33d, iter 26's item 0, DONE).
+  `testing/referee.py` no longer imports the stale `harness.rules` constants: it defines
+  `PLATFORM_PLY_CAP = 600` and `PLATFORM_INIT_BUDGET_S = 90.0`, returns a DRAW with
+  termination `ply_cap` at the cap, and the raw-material `_adjudicate` is DELETED (not
+  switched off, so nothing can drift back to it). `--ply-cap` is threaded through
+  `testing/gauntlet.py` (BOTH the crash gate and the SPRT; it hardcoded 300 twice) and
+  defaults to 600 in `testing/arena.py` and `testing/clocktest.py`. Re-verified the rule
+  myself against https://aichessathon.com/docs/rules.md before touching anything: "A game
+  still running at 600 plies is drawn", material is never referenced, init budget 90 s.
+  Verified end to end: `testing.arena` random vs random at `--ply-cap 6` ends 4/4 games
+  `ply_cap`, all draws. ruff + mypy clean on testing/. `harness/` untouched.
+- SIDE EFFECT WORTH KNOWING: the referee's init budget was 60 s, the platform's is 90 s.
+  That 30 s of extra strictness is what failed 140/141/147 ("init 1", "init 19", "init 7")
+  under gauntlet load -- three slots lost to an instrument bug, not to the engine. The
+  platform-init margin is still the release gate (clean-unzip cold import < 45 s here
+  against their ~1.8x box), which is the right place for it. 147b-seequiet's earlier gate
+  failure should be read in that light when it re-runs.
+- 149-v94wdl WAS LAUNCHED 11:01, BEFORE THE FIX LANDED (11:18), so the v9.4 gauntlet is the
+  LAST run measured under the 300-ply material rule; every run started after 11:18 uses the
+  corrected referee. Let it run -- v9.4 carries no adjudication change and both sides play
+  under the same rule, so the comparison is fair. ONE CAVEAT to apply when reading it: at a
+  300-ply material cap a shuffle-y ending where you are behind counts as a LOSS that the
+  platform would call a DRAW, and the WDL net's strength is exactly the 5-8 piece band
+  (suite 4.2 cp vs the v9.3 net's 8.8), so the bias runs AGAINST the net. If 149 rejects
+  marginally (point estimate between -10 and 0), that is the one case where a re-run under
+  the corrected referee is worth a slot; a PROMOTE needs no asterisk.
+- 157-wdlnet offline numbers (session's chain, for the CANDIDATE.md): WDL-val 0.005962 from
+  an initial 0.007830 (-24%), check_nnue all checks passed, endgame suite 11.4 cp mean
+  (champion 10.8, v9.3's own net 13.8) -- 5-8 pieces 4.2 (was 8.8), 9-12 21.5 (was 23.8),
+  13-16 7.7 (was 8.5). eg_calib produced no bands, so the session kept the net and let the
+  gauntlet judge, per the human's one-gauntlet rule.
+- QUEUE (freeze lifted only behind the release gate): 149-v94wdl -> v94wdl-clocktest-l ->
+  drawcap2-clocktest-l -> 146-cutnode -> 147b-seequiet. The three tail tasks came back from
+  deferred.json now that 149 is running and the GPU trainers have finished (no python
+  trainer is alive; the WDL and both v10 pilots are done). 156-mixnet3 STAYS deferred: v9.4
+  moves the champion net, so it would have to be re-based against the new champion anyway.
+- STILL DEFERRED ON PURPOSE: adding `train.py|merge_mix` to worker.sh's `busy_gauntlets`
+  regex (Next step (4)). It is inert while no trainer runs, and if the session starts one it
+  would make the worker WAIT and block the release gauntlet. Do it the moment v9.4 has shipped.
+- ADJ_V2 NOT STARTED, deliberately: ~12 min left is not enough for an agent.py switch plus
+  check_fastsearch, and the standing rule forbids ending an iteration with a half-done build
+  in the tree. The spec in the "PLY CAP IS 600" section above is unchanged and now unblocked
+  -- step 1 of it is done, so the next iteration starts at step 2 and can judge it honestly.
+
 ## Running now (6 Sep 10:45, iter 26)
 - THE MACHINE WAS NOT ACTUALLY QUIET. The session stopped 147b-seequiet at 10:18 and moved
   it to deferred.json, but SEVEN orphaned gauntlet pool workers (parent 52300, dead; spawned
@@ -983,23 +1028,29 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) v9.4 IS THE ONLY THING THAT MATTERS UNTIL IT SHIPS. When the session's chain inserts
-`149-v94wdl` at the front of overnight/laptop/tasks.json, make sure nothing is running ahead
-of it (kill 147b-seequiet if it is). Fold its checkpoint: PROMOTE, or INCONCLUSIVE with a
-positive point estimate, plus `v94wdl-clocktest-l` PASS = ship v9.4 -- flip CAPTURE_ORDER /
-QS_TT / ASP_WIDE / NMP_V2B True AND copy overnight/nets/157-wdlnet.npz into weights/, re-run
-the exactness check, zip FROM the tested challenger with INIT_FOLD flipped True in the zip
-copy, clean-unzip cold import < 45 s, d8 bench nodes, CANDIDATE.md, notify. If it REJECTS,
-drop CAPTURE_ORDER (the marginal one, +0.6 +/- 23.5 solo) and re-queue the other three once.
-(2) FOLD 147b-seequiet and cutnode-clocktest-l when they land. SEE_QUIET at 0.76x nodes is
-still the most interesting untested switch; CUTNODE is benign at 0.995x and 146-cutnode
-(deferred.json) is its one allowed requeue after v9.4.
-(3) v9.5 bundle is now RAZOR + ROOT_NODES + SINGULAR_EXT2 + DRAW_BUDGET (narrow guards only;
-a widened DRAW_BUDGET cannot inherit drawcap-clocktest-l's PASS and needs its clocktest
-re-run). Build order for anything more: ProbCut (search.md #8, 4-6 h) then root PVS/LMR (#16).
-(4) AFTER v9.4 SHIPS: add `train.py|merge_mix` to worker.sh's busy_gauntlets regex (see
-"Running now" (c)) so no more gauntlet slots die to init timeouts under GPU training.
-(5) Do NOT start GPU work or queue net tasks -- the WDL and mixnet3 chains are the
-interactive session's. 156-mixnet3 stays in deferred.json until v9.4 is out.
+(1) v9.4 IS STILL THE ONLY THING THAT MATTERS. 149-v94wdl is RUNNING (started 11:01, gate
+first, 600 games). Fold its checkpoint: PROMOTE, or INCONCLUSIVE with a positive point
+estimate, plus `v94wdl-clocktest-l` PASS = ship v9.4 -- flip CAPTURE_ORDER / QS_TT /
+ASP_WIDE / NMP_V2B True AND copy overnight/nets/157-wdlnet.npz into weights/, re-run the
+exactness check, zip FROM the tested challenger with INIT_FOLD flipped True in the zip copy,
+clean-unzip cold import < 45 s, d8 bench nodes, CANDIDATE.md, notify. If it REJECTS, read
+the ply-cap caveat in "Running now (11:20)" first: drop CAPTURE_ORDER (the marginal one,
++0.6 +/- 23.5 solo) and re-queue the other three once.
+(2) THE MOMENT v9.4 HAS SHIPPED: add `train.py|merge_mix` to worker.sh's busy_gauntlets
+regex (held back on purpose -- it would block the release gauntlet if a trainer started).
+(3) THEN BUILD ADJ_V2 (step 2 of the "PLY CAP IS 600" spec, now unblocked because the
+referee is fixed): cap 600 everywhere ADJUDICATION_PLY is read, the `late` ramp re-based to
+`(game_ply - 300) / 300`, ADJ_BEHIND_LATE reconsidered from scratch under "the cap is a
+draw" rather than re-tuned, and the ADJ_WINDOW fifty-move plan moved from plies 220-300 to
+520-600. It can finally be judged honestly: every gauntlet started after 11:18 today plays
+the 600-ply draw. Off in the tree, one switch, agent.py only.
+(4) v9.5 bundle: RAZOR + ROOT_NODES + SINGULAR_EXT2 + DRAW_BUDGET (widened; ships only if
+drawcap2-clocktest-l PASSes -- the old narrow PASS does not describe it) + whatever
+146-cutnode / 147b-seequiet return. ADJ_V2 joins it only with its own verdict.
+(5) Do NOT start GPU work or queue net tasks; 156-mixnet3 stays deferred until v9.4 is out
+and can be re-based against the new champion net.
 (6) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
 the depth bench -- an identical node count there is not evidence of a no-op.
+(7) Standing referee caveat: verdicts from before 6 Sep 11:18 were measured under a 300-ply
+material adjudication that the platform does not have. Do not re-run them for that reason
+alone (both sides shared the rule), but do not defend a borderline old verdict with it either.

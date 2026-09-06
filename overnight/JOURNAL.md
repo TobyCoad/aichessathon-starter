@@ -1401,3 +1401,49 @@ that gets closed for the wrong reason. The fix has an order: give testing/gauntl
 the cap as a parameter -- and only then build and judge ADJ_V2. I did not start that build.
 It is a contained agent.py job but it is not a fifteen-minute one, and the standing rule
 against leaving a half-done build in the tree at the end of an iteration is the right rule.
+
+### 6 Sep 11:20 (iteration 27) -- the instrument, not the engine
+
+I built nothing for the engine this iteration and I think that was the right trade. Round 31's
+post-mortem left one finding that outranked every backlog item: our own referee has been
+playing a different game from the platform. testing/referee.py imported PLY_CAP and
+INIT_BUDGET_S from harness/rules.py, which is a stale copy -- 300 plies with the game awarded
+on raw material, and a 60 s init budget. The canonical rules the harness itself names say a
+game still running at 600 plies is drawn, that material never enters the determination, and
+that init gets 90 s. I fetched them again before touching anything rather than trusting the
+previous iteration's note, and got the same three answers.
+
+So testing/ now defines its own PLATFORM_PLY_CAP = 600 and PLATFORM_INIT_BUDGET_S = 90.0, the
+cap returns a draw with termination "ply_cap", and I deleted the material adjudication instead
+of hiding it behind a flag -- a legacy mode would only have given a later iteration a way to
+drift back into the wrong game. gauntlet.py hardcoded 300 in two places, the crash gate as
+well as the SPRT, and both now take --ply-cap; arena.py and clocktest.py default to 600.
+harness/ is untouched, which is the whole reason this fix belongs here. I proved the new path
+end to end the cheap way, random against random at --ply-cap 6: four games, four ply_cap
+terminations, four draws.
+
+The part I did not expect was the init budget. Being stricter than the platform felt like a
+safety margin, but it is the mechanism behind three lost gauntlet slots -- 140, 141 and 147
+all died with "init" failures under load, and none of them was an engine fault. The real
+platform-init guard is the release gate's clean-unzip cold import under 45 s, which is where
+that margin belongs; a referee that fails a challenger 30 s before the platform would is just
+noise generation. 147b-seequiet re-runs under 90 s now.
+
+Timing forced one judgement call. The session queued 149-v94wdl at 11:00 and the worker
+started it at 11:01, seventeen minutes before my fix landed, so the v9.4 release gauntlet is
+the last run measured under the old rule. I let it run. v9.4 carries no adjudication change
+and both sides play under the same referee, so the comparison is fair, and restarting it
+would cost the human's release fifteen minutes for a correction of about one to three percent
+of games. But I wrote down the one asymmetry that could matter: at a 300-ply material cap a
+shuffle-y ending where you are behind is scored a loss the platform would call a draw, and the
+WDL net's whole advantage is the 5-8 piece band, so the bias runs against the thing being
+tested. A PROMOTE needs no asterisk; a marginal reject is the one case worth re-running.
+
+I deliberately left two things undone. The worker.sh busy_gauntlets regex change is inert
+today and would actively block the release gauntlet if the session started another trainer, so
+it waits until v9.4 is out. And ADJ_V2 -- the engine half of this finding, where the ramp that
+reaches full strength at ply 300 gets re-based on a cap that is twice as far away and means
+the opposite thing -- is a contained agent.py job but not a twelve-minute one, and the standing
+rule against ending an iteration with a half-done build in the tree is a rule I would rather
+keep than test. It is unblocked now, which is the point: after today it can be judged by a
+referee that agrees with the platform about what a long game is worth.
