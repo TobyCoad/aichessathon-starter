@@ -1072,7 +1072,7 @@ CUTNODE: Final = False
 # tried only when the static eval stands at or above beta, skipped when the TT
 # holds an upper bound below beta (expected fail-low; the null search is wasted
 # nodes). Verification search at depth >= 10 deferred to NMP_V2B.
-NMP_V2: Final = False
+NMP_V2: Final = True
 # CAPTURE_ORDER (V10_PLAN #7): rescore non-promotion captures after score_moves.
 # SEE-losing captures drop below every quiet (band -(1 << 21) + see*16);
 # winning/equal captures keep the MVV-LVA band; both get a capture-history
