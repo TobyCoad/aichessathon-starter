@@ -73,6 +73,12 @@
   "games": 600
  },
  {
+  "name": "153-mixnet2",
+  "net": "overnight/challengers/153-mixnet2/weights/net.npz",
+  "sed": "",
+  "games": 600
+ },
+ {
   "name": "caporder-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/"
@@ -106,11 +112,5 @@
   "name": "seequiet-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/"
- },
- {
-  "name": "153-mixnet2",
-  "net": "overnight/challengers/153-mixnet2/weights/net.npz",
-  "sed": "",
-  "games": 600
  }
 ]

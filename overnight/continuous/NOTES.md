@@ -162,6 +162,12 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   (70/70, 40/40) and committed as-is; 141-v92prune tests the pair. ALWAYS commit kernel +
   agent together; never leave the tree with a half-done build at the end of an iteration.
 
+- 153-mixnet2 (corrected scale, SF + Lichess interleaved, warm start, best epoch 21): SF-val
+  0.002702 (champion 0.005318, -49%), Lichess-val 0.007959 (champion 0.004633, +72% -- still
+  drifts from the human distribution), suite 13.8 cp (champion 10.8: 5-8 pieces 8.8 vs 17.0
+  BETTER, 9-12 23.8 vs 12.0 WORSE, 13-16 8.5 vs 5.0 WORSE). Gauntlet queued next on the
+  laptop; judge by the games. If it fails too: a light fine-tune (lr 3e-5, 25% SF share,
+  4 epochs) is the last cheap try; otherwise the SF data feeds a from-scratch net later.
 - SCALE BUG FOUND 03:20: on Lichess positions the SF-trained net's evals are 1.72x the
   targets (slope 1.717 vs the champion's 1.014): the binpack score scale 0.45 cp/unit was
   wrong by that factor (the right value is ~0.262, i.e. SF's internal units are ~100/328...).

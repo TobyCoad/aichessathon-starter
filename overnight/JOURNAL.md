@@ -1059,3 +1059,6 @@ vs 10.8/17.0/12.0/5.0 when the laptop is quiet (kz16w veto: any band >1.5 cp wor
 then it rides in the v9.3/v9.4 bundle, never a solo slot. State: 144-caporder near its
 600-game end (elo ~-1.5 at 476, llr -1.26 -- likely INCONCLUSIVE-negative), then
 145-v93fill, 146-cutnode, 147-seequiet. Desktop off; GPU with the interactive session.
+
+6 Sep 06:00 153-mixnet2 trained (best epoch 21): SF-val 0.002702 vs 0.005318, Lichess-val
+0.007959 vs 0.004633, suite 13.8 vs 10.8 (better below 9 pieces, worse 9-16). Gauntlet next.
