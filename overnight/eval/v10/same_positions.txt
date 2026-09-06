@@ -1,0 +1,29 @@
+PAIRED on 280 identical leader-to-move positions (|SF d16 eval| <= 300 cp), our engine
+given the leader's own remaining clock (median budget: they spent 1.74s, we took 1.78s)
+
+  LEADER ACPL   7.63   95% CI +-2.21
+  OURS   ACPL   9.19   95% CI +-2.64
+  PAIRED difference (ours - leader)  +1.56 cp/move, 95% CI +-2.60
+  bootstrap 95% CI of the paired difference: [-0.99, +4.22]
+  we agreed with their move 56.8% of the time
+  matched SF d16: leader 52.9%, us 52.9%
+  moves losing >=100 cp: leader 3, us 5
+  moves losing >=50 cp:  leader 10, us 12
+
+  by piece count:
+    >=27   n= 70  leader   7.94  ours   9.31  paired diff  +1.37 +-3.75  agree 70%
+    17-26  n= 70  leader  12.87  ours  10.34  paired diff  -2.53 +-5.40  agree 56%
+    11-16  n= 70  leader   9.13  ours  16.64  paired diff  +7.51 +-7.84  agree 63%
+    <=10   n= 70  leader   0.57  ours   0.44  paired diff  -0.13 +-0.42  agree 39%
+
+  our worst departures (ours - leader, cp):
+    round-23-win-black-vs-ransom-3d3835a2.pg ply  76 pieces 13  eval  +237  leader lost    9, we lost  228
+    round-11-win-black-vs-sobriety-0b546ee5. ply  98 pieces 13  eval  +276  leader lost    1, we lost  104
+    round-12-win-white-vs-ms-f73819dd.pgn    ply  92 pieces 13  eval  +162  leader lost    0, we lost   68
+    round-15-win-black-vs-checkers-d513a8ce. ply  36 pieces 24  eval  +110  leader lost   25, we lost   81
+    round-26-win-white-vs-the-roooookkk-5e59 ply  65 pieces 16  eval  +115  leader lost   13, we lost   68
+    round-23-win-black-vs-ransom-3d3835a2.pg ply  80 pieces 12  eval  +267  leader lost    0, we lost   51
+    round-24-unknown-black-vs--8d85365a.pgn  ply   8 pieces 30  eval   -26  leader lost    0, we lost   46
+    round-27-win-black-vs-lubina-4d1c6a55.pg ply  14 pieces 29  eval   +23  leader lost    0, we lost   46
+    round-06-win-white-vs-jsp-b0134086.pgn   ply  13 pieces 30  eval   +92  leader lost   10, we lost   55
+    round-11-win-black-vs-sobriety-0b546ee5. ply  90 pieces 13  eval  +227  leader lost    0, we lost   44

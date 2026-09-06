@@ -387,6 +387,67 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## THE SEARCH AXIS IS CLOSED (6 Sep 17:30) -- TWO INDEPENDENT METHODS AGREE
+Do not spend another hour on depth, move ordering, branching factor, node rate or the
+transposition table. Both research agents converged on this from opposite directions.
+- MEASURED EBF IS 2.06, not the ~3 I estimated (matched 40-position set, fresh engine per
+  position: d6 261,890 -> d8 1,110,289 -> d10 4,750,385 -> d12 15,014,299; per-ply 2.059 /
+  2.068 / 1.778). That is healthy. First-move cutoff 85.4%; lifting it to ~100% (not even
+  reachable) is worth about +3.5 Elo. MOVE ORDERING IS NOT THE LEVER.
+- THE ARITHMETIC THAT CLOSES IT: one ply costs 2.06x nodes = 1.043 doublings = +33 Elo at
+  120 s, so a 300-500 Elo gap would be 9-15 extra plies = 675x to 49,000x our node rate. No
+  numba engine on one core is 675x ours. THE LEADER IS NOT OUT-SEARCHING US. The opponent
+  profile reaches the same conclusion independently: agreement-vs-depth peaks at d14 for
+  both, both match Stockfish d16 at exactly 52.9% on the same 280 contested positions, and
+  they play FEWER deep-only moves than we do.
+- Node-rate ceiling is +6..+10 Elo realistic; +56 Elo is the physically impossible limit
+  where all non-evaluation time is free. TT size, ordering and staged movegen are all inside
+  that. Interleaved TT layout: built, node-identical, zero win. TT bits 22->24 measured
+  IDENTICAL depth, 22->25 LOST a ply to cache pressure.
+- WHERE THE COST ACTUALLY IS: evaluation is 30% of a 3.26 us node, make/unmake 10%,
+  accumulator 6%, pick scan 0.9%, TT probe 0.2%. There is no hot spot because 82.8% of
+  search() entries never generate a move (45.1% drop into quiescence, 24.4% return on
+  reverse futility, 12.5% on the TT). The cost is per-node control flow.
+
+## THREE MEASUREMENTS IN OUR OWN DOCS ARE WRONG -- FIXED HERE
+- "Evaluation is 40% of node time" WAS MINE AND IT WAS WRONG. It came from a build with
+  evaluate() stubbed to material, whose tree is 4.4x SMALLER -- so it compared two different
+  searches, not two costs. The real figure is 30%.
+- OUR NODE COUNTS ARE INFLATED 1.41x by search->quiesce double counting. Every knps figure in
+  this repo is high by that factor: 218-332 knps is really 155-236 knps of distinct nodes.
+- speed.md's "61 redundant numba specialisations" is really 6 (it read the on-disk cache
+  index, not the live dispatchers).
+- AGENTS.md says the init budget is 60 s; the LIVE RULES SAY 90 s (fetched from
+  aichessathon.com/docs/agent-contract.md this afternoon: "The 90s init budget covers
+  importing your agent and runs before the clock starts"). AGENTS.md is stale -- trust the
+  fetched contract. Also from it: ten uploads per team per day, not three; the preinstalled
+  stack is torch/numpy/python-chess/onnxruntime/numba and a requirements.txt IS IGNORED;
+  Cython and any native binary are impossible ("the image carries no compiler to build one
+  at runtime"). onnxruntime has never been considered for the net's forward pass.
+
+## WIN_FOCUS AND CONVERT_BUDGET ARE DEAD -- MEASURED NULL ON TWO SAMPLES
+They are committed and OFF. Do not ship them; do not spend a 120 s gauntlet on them.
+- On 60 of the leader's own won positions (+300..+800), scored by ONE identical Stockfish d16
+  method: leader's actual move 9.0 cp, ours switches OFF 8.7, ours ON 7.4. Our deficit vs the
+  leader there is -0.3 cp/move, 95% CI [-9.0, +8.4]. THERE IS NO DEFICIT in that band.
+- On the right sample -- 52 positions from the 7 games where WE reached >= +150 and did NOT
+  win -- the switch effect is +5.6 cp/move (WORSE), 95% CI [-48.9, +60.0].
+- The opponent profile's headline "we lose 23.0 vs their 8.4 in won positions" IS AN
+  ARTEFACT: its own cache holds n=34 for us against n=107 for them, scored by different
+  routes and reported as paired. Reproducing from that cache gives 64.1 for us; measuring
+  properly gives 8.7. Three incompatible numbers for one quantity. Discard the whole per-band
+  attribution in that report; its GAME-RESULT findings (+501 Elo, 94.1% vs 41.7% on 15 shared
+  opponents) stand, because those come from results, not from this scoring path.
+
+## WHAT IS ACTUALLY LEFT
+- The only axis measured to hold more than +50 Elo is THE EVALUATION AT <= 16 PIECES.
+- One concrete reproducible defect to debug, worth more than any statistic here: in
+  round-11 vs saucybeans, FEN 5rk1/p5p1/P2bb3/3p4/3B1Pn1/1PQ5/4P1Bq/2RR1K2 b - - 2 33, we are
+  +1093 and play d6f4, throwing 336 cp -- and v9.4 STILL PLAYS IT TODAY. The post-mortem
+  labels the cause `evaluation`.
+- In our blown wins we lose 26.9 cp/move (median 4.0) against 8.7 for the leader in
+  comparable positions -- driven by a few catastrophes, not general sloppiness.
+
 ## RESEARCH PAUSE (human's instruction, 6 Sep 15:10) -- DO NOT SHIP v9.5 YET
 His words: "lets take a step back for 9.5 ... it seems we are effectively putting band aid
 patches in place and rushing them out the door. i want some advanced changes which really

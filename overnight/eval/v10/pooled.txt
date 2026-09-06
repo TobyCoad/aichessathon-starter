@@ -1,0 +1,15 @@
+== pooled paired comparison, 521 identical positions ==
+  all pooled               n=521  leader   13.4  ours   20.0  paired diff   +6.5  95% [+3.0,+10.7]
+  |eval|<=100              n=255  leader    5.9  ours    5.9  paired diff   +0.0  95% [-1.6,+1.5]
+  +100..+300 (small edge)  n= 79  leader   12.9  ours   20.8  paired diff   +7.9  95% [-0.8,+17.9]
+  +300..+800               n=107  leader    8.4  ours   23.0  paired diff  +14.6  95% [+8.0,+21.7]
+  >+800                    n= 38  leader   65.4  ours  114.5  paired diff  +49.1  95% [+13.5,+91.9]
+  <-300                    n= 36  leader   27.1  ours   10.8  paired diff  -16.3  95% [-29.5,-5.5]
+
+== squandering: from a WON position (>+300), where does the move leave it? ==
+  LEADER  n=145  drops to <=+300:  1.4%   drops to <=+100:  0.0%   mean eval after  677.8
+  OURS    n=145  drops to <=+300:  4.1%   drops to <=+100:  0.0%   mean eval after  650.5
+
+== time allocation on identical positions ==
+  contested |eval|<=300  n=330  leader spent median 1.64s mean 1.84s | ours median 1.57s mean 1.86s
+  won >+300              n=145  leader spent median 1.55s mean 1.66s | ours median 0.90s mean 1.15s

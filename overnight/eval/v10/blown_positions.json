@@ -1,0 +1,470 @@
+[
+ {
+  "file": "round-09-draw-white-vs-fuzzybot-84951de0.pgn",
+  "fen": "1r2br1k/2q2pp1/pN1p3p/P2Bp1b1/pP2P3/2PRP3/6PP/3Q1RK1 w - - 4 28",
+  "ref": 152,
+  "played": "h2h3",
+  "delta": -39,
+  "cause": "search",
+  "clock_ms": 58699
+ },
+ {
+  "file": "round-09-draw-white-vs-fuzzybot-84951de0.pgn",
+  "fen": "1r2br1k/2q2pp1/pN1p1b1p/P2Bp3/pP2P3/2PRP2P/6P1/3Q1RK1 w - - 1 29",
+  "ref": 166,
+  "played": "f1f6",
+  "delta": -52,
+  "cause": "evaluation",
+  "clock_ms": 57133
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/pq4p1/3bbn2/P2p4/3BppP1/1P6/1Q2PPB1/2RR2K1 b - - 0 28",
+  "ref": 186,
+  "played": "f6g4",
+  "delta": 46,
+  "cause": "",
+  "clock_ms": 66352
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/pq4p1/P2bb3/3p4/3Bppn1/1P6/1Q2PPB1/2RR2K1 b - - 0 29",
+  "ref": 304,
+  "played": "b7e7",
+  "delta": 41,
+  "cause": "",
+  "clock_ms": 64535
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p3q1p1/P2bb3/3p4/3Bppn1/1PQ5/4PPB1/2RR2K1 b - - 2 30",
+  "ref": 385,
+  "played": "e4e3",
+  "delta": 90,
+  "cause": "",
+  "clock_ms": 63396
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p3q1p1/P2bb3/3p4/3B1pn1/1PQ1P3/4P1B1/2RR2K1 b - - 0 31",
+  "ref": 573,
+  "played": "e7h4",
+  "delta": 58,
+  "cause": "",
+  "clock_ms": 57518
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P2bb3/3p4/3B1Pnq/1PQ5/4P1B1/2RR2K1 b - - 0 32",
+  "ref": 806,
+  "played": "h4h2",
+  "delta": 266,
+  "cause": "",
+  "clock_ms": 52105
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P2bb3/3p4/3B1Pn1/1PQ5/4P1Bq/2RR1K2 b - - 2 33",
+  "ref": 1093,
+  "played": "d6f4",
+  "delta": -41,
+  "cause": "evaluation",
+  "clock_ms": 49501
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P3b3/3p4/3B1bn1/1P3Q2/4P1Bq/2RR1K2 b - - 1 34",
+  "ref": 990,
+  "played": "g4e3",
+  "delta": -4,
+  "cause": "",
+  "clock_ms": 46842
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P3b3/3p4/3B1b2/1P2nQ2/4P1Bq/2RRK3 b - - 3 35",
+  "ref": 1108,
+  "played": "e3g2",
+  "delta": 892,
+  "cause": "",
+  "clock_ms": 42235
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P3b3/3p4/3B1b2/1P3Q2/4P1nq/2RR1K2 b - - 1 36",
+  "ref": 2000,
+  "played": "g2e3",
+  "delta": 0,
+  "cause": "",
+  "clock_ms": 40377
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P3b3/3p4/3B1b2/1P2nQ2/4P2q/2RRK3 b - - 3 37",
+  "ref": 2000,
+  "played": "e3g2",
+  "delta": 0,
+  "cause": "",
+  "clock_ms": 39961
+ },
+ {
+  "file": "round-11-draw-black-vs-saucybeans-3aa9f044.pgn",
+  "fen": "5rk1/p5p1/P3b3/3p4/3B1b2/1P3Q2/4P1nq/2RR1K2 b - - 5 38",
+  "ref": 2000,
+  "played": "g2e3",
+  "delta": -818,
+  "cause": "search",
+  "clock_ms": 35855
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/2qn1pk1/p2p2pr/Np1Pp2n/1PP5/5PP1/P3BQRP/3R3K w - - 0 30",
+  "ref": 160,
+  "played": "c4b5",
+  "delta": -14,
+  "cause": "",
+  "clock_ms": 57528
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/2qn1pk1/3p2pr/Np1Pp2n/1P6/5PP1/P3BQRP/3R3K w - - 0 31",
+  "ref": 150,
+  "played": "e2b5",
+  "delta": -2,
+  "cause": "",
+  "clock_ms": 57080
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/2q2pk1/3p1npr/NB1Pp2n/1P6/5PP1/P4QRP/3R3K w - - 1 32",
+  "ref": 163,
+  "played": "a5c6",
+  "delta": 8,
+  "cause": "",
+  "clock_ms": 56042
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/2q2pkr/2Np1np1/1B1Pp2n/1P6/5PP1/P4QRP/3R3K w - - 3 33",
+  "ref": 188,
+  "played": "d1d2",
+  "delta": -1,
+  "cause": "",
+  "clock_ms": 52557
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/2q2pkr/2Np1np1/1B1Pp3/1P6/5Pn1/P2R1QRP/7K w - - 0 34",
+  "ref": 217,
+  "played": "f2g3",
+  "delta": -9,
+  "cause": "",
+  "clock_ms": 51179
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "2q4r/5pkr/2Np1np1/1B1Pp3/1P6/5PQ1/P2R2RP/7K w - - 1 35",
+  "ref": 229,
+  "played": "b5f1",
+  "delta": -26,
+  "cause": "",
+  "clock_ms": 50390
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "2q4r/5pk1/2Np1np1/3Pp3/1P6/5PQr/P2R2RP/5B1K w - - 3 36",
+  "ref": 211,
+  "played": "g3e1",
+  "delta": 12,
+  "cause": "",
+  "clock_ms": 49172
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/5pk1/2Np1np1/3Ppq2/1P6/5P1r/P2R2RP/4QB1K w - - 5 37",
+  "ref": 231,
+  "played": "d2f2",
+  "delta": -6,
+  "cause": "",
+  "clock_ms": 47554
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/5pk1/2Np2p1/3Ppq1n/1P6/5P1r/P4RRP/4QB1K w - - 7 38",
+  "ref": 248,
+  "played": "a2a3",
+  "delta": -24,
+  "cause": "",
+  "clock_ms": 44894
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/5pk1/2Np2p1/3Ppq2/1P6/P4Pnr/5RRP/4QB1K w - - 1 39",
+  "ref": 244,
+  "played": "h1g1",
+  "delta": -76,
+  "cause": "horizon",
+  "clock_ms": 44163
+ },
+ {
+  "file": "round-22-loss-white-vs-sobriety-647393c9.pgn",
+  "fen": "7r/5pk1/2Np2p1/3Pp1q1/1P6/P4Pnr/5RRP/4QBK1 w - - 3 40",
+  "ref": 164,
+  "played": "f2e2",
+  "delta": -126,
+  "cause": "search",
+  "clock_ms": 43207
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "2rq2rk/1b2npp1/pn2p2p/1p2P3/2pP2QN/P1N3R1/1PB2PPP/4R1K1 w - - 9 22",
+  "ref": 164,
+  "played": "h4f3",
+  "delta": 1,
+  "cause": "",
+  "clock_ms": 79905
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "2rq2rk/4npp1/pn2p2p/1p2P3/2pP2Q1/P1N2bR1/1PB2PPP/4R1K1 w - - 0 23",
+  "ref": 171,
+  "played": "g3f3",
+  "delta": -12,
+  "cause": "",
+  "clock_ms": 78813
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "2rq1r1k/4npp1/pn2p2p/1p2P3/2pP2Q1/P1N2R2/1PB2PPP/4R1K1 w - - 1 24",
+  "ref": 174,
+  "played": "h2h4",
+  "delta": -19,
+  "cause": "",
+  "clock_ms": 76716
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "2rq1r1k/4npp1/p3p2p/1p1nP3/2pP2QP/P1N2R2/1PB2PP1/4R1K1 w - - 1 25",
+  "ref": 157,
+  "played": "g4e4",
+  "delta": 20,
+  "cause": "",
+  "clock_ms": 75232
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "2rq1r1k/4np2/p3p1pp/1p1nP3/2pPQ2P/P1N2R2/1PB2PP1/4R1K1 w - - 0 26",
+  "ref": 181,
+  "played": "h4h5",
+  "delta": -4,
+  "cause": "",
+  "clock_ms": 73887
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "3q1r1k/4np2/p1r1p1pp/1p1nP2P/2pPQ3/P1N2R2/1PB2PP1/4R1K1 w - - 1 27",
+  "ref": 178,
+  "played": "c3d5",
+  "delta": -7,
+  "cause": "",
+  "clock_ms": 71627
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "3q1r1k/4np2/p1r3pp/1p1pP2P/2pPQ3/P4R2/1PB2PP1/4R1K1 w - - 0 28",
+  "ref": 159,
+  "played": "e4e3",
+  "delta": -23,
+  "cause": "",
+  "clock_ms": 70414
+ },
+ {
+  "file": "round-24-loss-white-vs-gijs-smit-529dc23a.pgn",
+  "fen": "3q1r1k/4np2/p1r4p/1p1pP1pP/2pP4/P3QR2/1PB2PP1/4R1K1 w - - 0 29",
+  "ref": 150,
+  "played": "e3c3",
+  "delta": -50,
+  "cause": "search",
+  "clock_ms": 64688
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/3pp1p1/n1p1P3/Nr1n1P2/R2PB1P1/1P1N1RBP/3Q2K1 b - - 0 22",
+  "ref": 188,
+  "played": "d6e5",
+  "delta": -24,
+  "cause": "",
+  "clock_ms": 75298
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/4p1p1/n1p1p3/Nr1n1P2/2RPB1P1/1P1N1RBP/3Q2K1 b - - 1 23",
+  "ref": 171,
+  "played": "e5f4",
+  "delta": -13,
+  "cause": "",
+  "clock_ms": 71793
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/4p1p1/n1p5/Nr1n1B2/2RP2P1/1P1N1RBP/3Q2K1 b - - 0 24",
+  "ref": 167,
+  "played": "e6e5",
+  "delta": -21,
+  "cause": "",
+  "clock_ms": 70890
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/6p1/n1p1p1B1/Nr1n4/2RP2P1/1P1N1RBP/3Q2K1 b - - 1 25",
+  "ref": 163,
+  "played": "c5c4",
+  "delta": 4,
+  "cause": "",
+  "clock_ms": 67506
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/6p1/n3p1B1/NrNn4/2RP2P1/1P3RBP/3Q2K1 b - - 0 26",
+  "ref": 150,
+  "played": "a5c4",
+  "delta": 11,
+  "cause": "",
+  "clock_ms": 65450
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/6p1/4p1B1/NrRn4/3P2P1/1P3RBP/3Q2K1 b - - 0 27",
+  "ref": 162,
+  "played": "b4c4",
+  "delta": 2,
+  "cause": "",
+  "clock_ms": 62497
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/2q2pbp/6p1/4p1B1/N1Pn4/6P1/1P3RBP/3Q2K1 b - - 0 28",
+  "ref": 154,
+  "played": "c7c4",
+  "delta": 17,
+  "cause": "",
+  "clock_ms": 59285
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/5pbp/1N4p1/4p1B1/2qn4/6P1/1P3RBP/3Q2K1 b - - 1 29",
+  "ref": 174,
+  "played": "c4e6",
+  "delta": -20,
+  "cause": "",
+  "clock_ms": 57477
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2b2rk1/5pbp/4q1p1/3Np1B1/3n4/6P1/1P3RBP/3Q2K1 b - - 3 30",
+  "ref": 161,
+  "played": "e5e4",
+  "delta": -35,
+  "cause": "search",
+  "clock_ms": 56288
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "5bk1/5p1p/5Qp1/5n2/1q2pB2/6P1/1P5P/5BK1 b - - 4 39",
+  "ref": 182,
+  "played": "h7h5",
+  "delta": 5,
+  "cause": "",
+  "clock_ms": 38132
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "5bk1/5p2/6p1/5n1p/1q2pB2/2Q3P1/1P5P/5BK1 b - - 1 40",
+  "ref": 192,
+  "played": "b4b6",
+  "delta": -1,
+  "cause": "",
+  "clock_ms": 37458
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "5bk1/5p2/1q4p1/5n1p/4pB2/2Q3P1/1P4KP/5B2 b - - 3 41",
+  "ref": 216,
+  "played": "f8g7",
+  "delta": -23,
+  "cause": "",
+  "clock_ms": 37100
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2Q3k1/5pb1/1q4p1/5n1p/4pB2/6P1/1P4KP/5B2 b - - 5 42",
+  "ref": 196,
+  "played": "g8h7",
+  "delta": 8,
+  "cause": "",
+  "clock_ms": 36553
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2Q5/5pbk/1q4p1/5n1p/2B1pB2/6P1/1P4KP/8 b - - 7 43",
+  "ref": 258,
+  "played": "b6b2",
+  "delta": 0,
+  "cause": "",
+  "clock_ms": 34889
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "2Q5/5pbk/6p1/5n1p/2B1pB2/6PK/1q5P/8 b - - 1 44",
+  "ref": 272,
+  "played": "b2f6",
+  "delta": -35,
+  "cause": "search",
+  "clock_ms": 33163
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "8/5pbk/5qp1/2Q2n1p/2B1pB2/6PK/7P/8 b - - 3 45",
+  "ref": 290,
+  "played": "g7h6",
+  "delta": -138,
+  "cause": "horizon",
+  "clock_ms": 31033
+ },
+ {
+  "file": "round-31-draw-black-vs-abhi-s-chess-demon-409a4645.pgn",
+  "fen": "8/5p1k/5qpb/4Qn1p/2B1pB2/6PK/7P/8 b - - 5 46",
+  "ref": 158,
+  "played": "f6e5",
+  "delta": -56,
+  "cause": "search",
+  "clock_ms": 29662
+ },
+ {
+  "file": "round-35-draw-white-vs-no-more-ammo-d1c8cf57.pgn",
+  "fen": "4q3/4r1bk/6pp/rp1QPp2/2pP1P2/2P4P/4NK2/1R3R2 w - - 8 31",
+  "ref": 164,
+  "played": "b1b2",
+  "delta": -10,
+  "cause": "",
+  "clock_ms": 54779
+ },
+ {
+  "file": "round-35-draw-white-vs-no-more-ammo-d1c8cf57.pgn",
+  "fen": "4q3/6bk/1r5p/rp1PPpp1/2p2P2/2P2Q1P/1R2NK2/5R2 w - - 0 34",
+  "ref": 167,
+  "played": "f2g1",
+  "delta": -75,
+  "cause": "search",
+  "clock_ms": 48372
+ },
+ {
+  "file": "round-37-loss-white-vs-mate-in-one-cfece183.pgn",
+  "fen": "r3r1k1/1p2bppp/2p1pn2/p3N3/2PP1B1Q/P7/1q3PPP/3RR1K1 w - - 0 20",
+  "ref": 200,
+  "played": "f4h6",
+  "delta": -148,
+  "cause": "search",
+  "clock_ms": 75168
+ }
+]

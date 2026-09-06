@@ -1,0 +1,38 @@
+=== A. agreement with Stockfish AT EACH DEPTH (contested, |eval|<=300) ===
+    (the depth that maximises agreement is a crude estimate of effective depth)
+  LEADER n<=1421: d1:49.8% d2:49.6% d3:50.8% d4:50.5% d5:51.3% d6:51.4% d7:52.3% d8:51.9% d9:52.7% d10:52.3% d11:52.6% d12:53.1% d13:52.9% d14:53.8% d15:53.2% d16:52.6%
+     peak agreement at depth 14 (53.8%, n=1421)
+  US n<=1773: d1:48.3% d2:50.6% d3:51.4% d4:51.6% d5:51.7% d6:52.0% d7:51.4% d8:51.7% d9:51.8% d10:52.0% d11:51.9% d12:52.1% d13:52.1% d14:52.2% d15:52.2% d16:52.1%
+     peak agreement at depth 14 (52.2%, n=1773)
+
+=== B. DEPTH-SENSITIVE positions: SF's choice at d4 differs from d16 ===
+  LEADER: 422/1421 = 30% of contested positions are depth-sensitive
+     plays the d16 move 30.6%   plays the (refuted) d4 move 23.2%   ACPL there 6.1 +-1.5
+     depth-INsensitive positions: ACPL 6.5, match 62.0% (n=999)
+  US: 469/1773 = 26% of contested positions are depth-sensitive
+     plays the d16 move 29.9%   plays the (refuted) d4 move 28.1%   ACPL there 9.4 +-2.0
+     depth-INsensitive positions: ACPL 9.3, match 60.0% (n=1304)
+
+=== C. deep-only finds: SF settles on the move only at depth >= 12 ===
+  LEADER: 35/1421 = 2.46% of moves are ones SF only prefers from depth 12
+  US: 50/1773 = 2.82% of moves are ones SF only prefers from depth 12
+
+=== D. error concentration (all own moves, per game) ===
+  LEADER: 29 games; total cp lost per game median 757 mean 1131; top-3 moves account for median 59% of it
+     worst 1% of moves (21) carry 50% of total loss; worst 5% carry 75%
+  US: 37 games; total cp lost per game median 1157 mean 1403; top-3 moves account for median 51% of it
+     worst 1% of moves (24) carry 38% of total loss; worst 5% carry 67%
+
+=== E. time budget shape: spend as a fraction of clock remaining ===
+  LEADER: n=2137 spend/clock mean 4.29% median 4.06% IQR [3.60%, 4.87%]  max single spend 4.28s
+     clock after 10 own moves: median   86.0s (n=28)
+     clock after 20 own moves: median   64.3s (n=28)
+     clock after 30 own moves: median   48.4s (n=26)
+     clock after 40 own moves: median   36.8s (n=24)
+     clock after 50 own moves: median   28.1s (n=21)
+  US: n=2406 spend/clock mean 4.49% median 3.87% IQR [2.52%, 5.52%]  max single spend 11.14s
+     clock after 10 own moves: median   91.8s (n=37)
+     clock after 20 own moves: median   66.3s (n=35)
+     clock after 30 own moves: median   48.4s (n=32)
+     clock after 40 own moves: median   30.4s (n=28)
+     clock after 50 own moves: median   21.4s (n=24)

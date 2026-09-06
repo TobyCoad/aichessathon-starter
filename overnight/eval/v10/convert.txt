@@ -1,0 +1,14 @@
+== LEADER (29 games)
+   reached >= +150 cp in 22 games; won 21 = 95%; mean score from there 0.955
+   holding +100..+800 at >=27  : n=  79  mean eval change over next 20 plies  +660.6 cp (median +451, share that fell >100cp 0%)
+   holding +100..+800 at 17-26 : n= 470  mean eval change over next 20 plies  +320.9 cp (median +197, share that fell >100cp 2%)
+   holding +100..+800 at 11-16 : n= 385  mean eval change over next 20 plies  +414.7 cp (median +260, share that fell >100cp 4%)
+   holding +100..+800 at <=10  : n= 256  mean eval change over next 20 plies  +735.1 cp (median +613, share that fell >100cp 0%)
+   ALL bands: n=1190 mean +462.9 cp  95%CI +-31.9
+== US (37 games)
+   reached >= +150 cp in 22 games; won 15 = 68%; mean score from there 0.795
+   holding +100..+800 at >=27  : n=  80  mean eval change over next 20 plies  +265.2 cp (median +30, share that fell >100cp 9%)
+   holding +100..+800 at 17-26 : n= 442  mean eval change over next 20 plies  +336.6 cp (median +116, share that fell >100cp 12%)
+   holding +100..+800 at 11-16 : n= 263  mean eval change over next 20 plies  +360.6 cp (median +181, share that fell >100cp 6%)
+   holding +100..+800 at <=10  : n= 130  mean eval change over next 20 plies  +989.1 cp (median +1284, share that fell >100cp 0%)
+   ALL bands: n=915 mean +430.0 cp  95%CI +-38.9

@@ -1,0 +1,12 @@
+== LEADER: own moves 2166
+   ahead >=+100  : n=  954  capture rate  20.5%
+   level         : n= 1142  capture rate  13.0%
+   behind <=-100 : n=   70  capture rate   8.6%
+   when ahead, share of moves that are pawn moves: 23.3%
+   non-pawn moves landing within 2 squares of the enemy king: 23.5% (mean distance 4.11, n=1381)
+== US: own moves 2536
+   ahead >=+100  : n=  647  capture rate  20.1%
+   level         : n= 1381  capture rate  14.8%
+   behind <=-100 : n=  415  capture rate  15.4%
+   when ahead, share of moves that are pawn moves: 17.0%
+   non-pawn moves landing within 2 squares of the enemy king: 17.9% (mean distance 4.25, n=1575)

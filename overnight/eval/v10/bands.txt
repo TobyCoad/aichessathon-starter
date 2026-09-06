@@ -1,0 +1,17 @@
+corpus-wide ACPL by eval band (own moves, their games vs our games)
+  <-800        LEADER    0.0+- 0.0 (n=   7)   US   65.4+-31.7 (n= 139)
+  -800..-300   LEADER   27.1+-13.1 (n=  36)   US   45.7+-19.2 (n= 132)
+  -300..-100   LEADER   17.6+-11.1 (n=  27)   US   19.1+- 6.4 (n= 142)
+  |eval|<=100  LEADER    4.8+- 0.7 (n=1143)   US    7.3+- 1.0 (n=1386)
+  +100..+300   LEADER   12.3+- 3.3 (n= 251)   US   15.2+- 4.4 (n= 245)
+  +300..+800   LEADER    9.0+- 2.4 (n= 346)   US   27.1+- 7.7 (n= 215)
+  >+800        LEADER   55.1+-26.0 (n= 356)   US   78.2+-36.0 (n= 184)
+
+share of own moves spent in each band:
+  <-800        LEADER   0.3%   US   5.7%
+  -800..-300   LEADER   1.7%   US   5.4%
+  -300..-100   LEADER   1.2%   US   5.8%
+  |eval|<=100  LEADER  52.8%   US  56.7%
+  +100..+300   LEADER  11.6%   US  10.0%
+  +300..+800   LEADER  16.0%   US   8.8%
+  >+800        LEADER  16.4%   US   7.5%

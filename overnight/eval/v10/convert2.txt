@@ -1,0 +1,26 @@
+== LEADER (24 decided-header games)
+   peak >= +150: n=22  wins 21  draws  0  losses  1  score 0.955
+   peak >= +300: n=22  wins 21  draws  0  losses  1  score 0.955
+   peak >= +500: n=22  wins 21  draws  0  losses  1  score 0.955
+   trough <= -150: n= 2  saves(>=0.5)  1  score 0.250
+   trough <= -300: n= 2  saves(>=0.5)  1  score 0.250
+   trough <= -500: n= 2  saves(>=0.5)  1  score 0.250
+   NOT converted from >= +150 (1):
+      round-02-loss-black-vs-darknight-3121cf00.pgn  peak +1797 at 11 pieces, 0.0 by checkmate, 102 plies, ended 6 pieces
+
+== US (37 decided-header games)
+   peak >= +150: n=22  wins 15  draws  5  losses  2  score 0.795
+   peak >= +300: n=17  wins 15  draws  2  losses  0  score 0.941
+   peak >= +500: n=16  wins 15  draws  1  losses  0  score 0.969
+   trough <= -150: n=13  saves(>=0.5)  2  score 0.077
+   trough <= -300: n=10  saves(>=0.5)  0  score 0.000
+   trough <= -500: n=10  saves(>=0.5)  0  score 0.000
+   NOT converted from >= +150 (7):
+      round-11-draw-black-vs-saucybeans-3aa9f044.pgn peak +2000 at 17 pieces, 0.5 by threefold_repetition, 65 plies, ended 17 pieces
+      round-31-draw-black-vs-abhi-s-chess-demon-409a peak  +326 at 14 pieces, 0.5 by insufficient_material, 323 plies, ended 3 pieces
+      round-22-loss-white-vs-sobriety-647393c9.pgn   peak  +231 at 20 pieces, 0.0 by checkmate, 133 plies, ended 13 pieces
+      round-27-draw-black-vs-slopfish-fb52f93e.pgn   peak  +174 at 24 pieces, 0.5 by fifty_moves, 171 plies, ended 7 pieces
+      round-35-draw-white-vs-no-more-ammo-d1c8cf57.p peak  +174 at 20 pieces, 0.5 by insufficient_material, 125 plies, ended 3 pieces
+      round-24-loss-white-vs-gijs-smit-529dc23a.pgn  peak  +172 at 26 pieces, 0.0 by checkmate, 131 plies, ended 9 pieces
+      round-09-draw-white-vs-fuzzybot-84951de0.pgn   peak  +150 at 26 pieces, 0.5 by threefold_repetition, 57 plies, ended 24 pieces
+

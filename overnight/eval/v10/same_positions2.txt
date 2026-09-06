@@ -1,0 +1,24 @@
+SAMPLE 2: leader-to-move positions OUTSIDE the contested window, plus extra 11-16
+  ALL of sample 2              n=241  leader  20.18  ours  32.51  diff +12.34  boot95 [+5.24,+20.71]  agree 66%  SFmatch L68%/U64%
+  leader WINNING (+300..+1500) n=145  leader  23.33  ours  46.99  diff +23.66  boot95 [+12.96,+36.52]  agree 68%  SFmatch L69%/U64%
+    winning, 17-26             n= 45  leader  29.80  ours  48.18  diff +18.38  boot95 [+4.58,+36.98]  agree 69%  SFmatch L78%/U69%
+    winning, 11-16             n= 45  leader  11.16  ours  25.44  diff +14.29  boot95 [+5.16,+26.07]  agree 64%  SFmatch L69%/U71%
+    winning, <=10              n= 45  leader  31.96  ours  73.53  diff +41.58  boot95 [+14.87,+78.36]  agree 69%  SFmatch L60%/U51%
+  leader LOSING (-1500..-300)  n= 36  leader  27.11  ours  10.81  diff -16.31  boot95 [-29.50,-5.25]  agree 50%  SFmatch L58%/U53%
+  contested 11-16 (extra)      n= 60  leader   8.40  ours  10.55  diff  +2.15  boot95 [-3.67,+10.18]  agree 70%  SFmatch L70%/U70%
+
+worst departures:
+  round-23-win-black-vs-ransom-3d3835a2. ply 142 pc  7 eval  +1273  leader     0  ours   581
+  round-22-win-white-vs-lightning-tree-4 ply 211 pc  6 eval  +1311  leader     0  ours   382
+  round-08-win-white-vs-abhi-s-chess-dem ply  43 pc 24 eval   +999  leader     0  ours   312
+  round-15-win-black-vs-checkers-d513a8c ply 112 pc  9 eval  +1153  leader   175  ours   405
+  round-09-win-white-vs-lubina-04fb60db. ply  65 pc 13 eval   +201  leader     0  ours   201
+  round-02-loss-black-vs-darknight-3121c ply  74 pc 11 eval  +1025  leader   201  ours   365
+  round-24-unknown-black-vs--8d85365a.pg ply  66 pc 19 eval   +474  leader     0  ours   148
+  round-01-win-black-vs-2sigbros-65b127b ply  28 pc 27 eval   +657  leader     0  ours   135
+  round-12-win-white-vs-ms-f73819dd.pgn  ply 162 pc 10 eval   +422  leader     0  ours   133
+  round-06-win-white-vs-jsp-b0134086.pgn ply  49 pc 22 eval   +530  leader    20  ours   146
+  round-29-win-white-vs-fuzzybot-e8fd704 ply 135 pc 10 eval   +906  leader     0  ours   116
+  round-12-win-white-vs-ms-f73819dd.pgn  ply 156 pc 10 eval   +403  leader     0  ours   111
+
+timing: leader spent median 1.44s, ours 1.03s
