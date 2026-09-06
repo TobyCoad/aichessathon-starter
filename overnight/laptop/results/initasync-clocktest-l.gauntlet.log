@@ -1,0 +1,22 @@
+initasync-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+init-async: ready at 6.4s with the search kernel still compiling
+compiled board: on
+   110 plies  1-0           lowest clock    8.2s  longest move  67.6s  at ply 30   33.5s  used w   125s b   136s
+init-async: ready at 6.1s with the search kernel still compiling
+compiled board: on
+   167 plies  1/2-1/2       lowest clock    6.3s  longest move  67.9s  at ply 30   35.1s  used w   152s b   151s
+init-async: ready at 6.2s with the search kernel still compiling
+compiled board: on
+   250 plies  1/2-1/2       lowest clock    5.7s  longest move  68.1s  at ply 30   35.0s  used w   176s b   176s
+init-async: ready at 6.2s with the search kernel still compiling
+compiled board: on
+   255 plies  1/2-1/2       lowest clock    5.5s  longest move  67.7s  at ply 30   34.1s  used w   178s b   177s
+init-async: ready at 4.4s with the search kernel still compiling
+compiled board: on
+   146 plies  1-0           lowest clock    6.5s  longest move  53.6s  at ply 30   40.6s  used w   140s b   148s
+init-async: ready at 4.8s with the search kernel still compiling
+compiled board: on
+   191 plies  1/2-1/2       lowest clock    5.8s  longest move  52.5s  at ply 30   43.0s  used w   158s b   158s
+
+flags 0/6  errors 0  lowest clock 5.5s  longest move 68.1s
+PASS
