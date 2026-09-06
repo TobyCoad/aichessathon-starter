@@ -1706,3 +1706,30 @@ should inline them and LLVM opt is cheap here, but it gets measured, not assumed
 fix if it does cost -- inline='always' -- hands the compile time straight back, because
 IR-level inlining runs before type inference. Order of work is one block per commit,
 biggest first, gated each time on a bit-identical depth-8 node count of 1,110,289.
+
+Two things landed while this iteration was closing. 160-v95's 400-game checkpoint came back
+undecided -- "checkpoint 400: +10 Elo, undecided -> 200 more", +9.6 +/- 29.0, llr -0.04 --
+so it plays out to 600 and v9.5's verdict moves from 14:42 to about 15:40, with the ship
+window after its two clocktests around 16:05. And at 14:38 the interactive session committed
+the human's new instruction: stop testing against our own champion, measure against
+opponents/sf-skill8 at 120 s instead, because every verdict since 3 Sep has been self-play
+and self-play cannot see a blind spot both sides share.
+
+That second one arrived four minutes before I finished and it changes more than one number.
+160-v95 is now a gauntlet in a regime he has just scrapped, holding the only slot for
+another hour ahead of the INIT_ASYNC clocktest and ahead of his own new task. I considered
+stopping it at 400 and shipping v9.5 on the positive point estimate, and decided against:
+he edited that queue at 14:38, placed his new task deliberately behind the two clocktests
+that gate v9.5, and left 160-v95 in place, so the reading that respects his edit is to let
+it finish. The cost is bounded and v9.5 still ships today. What does have to be said plainly
+when it ships is that its four search switches rest on old-regime evidence; INIT_ASYNC, the
+half that actually matters, is gated by a clocktest and is untouched by any of this.
+
+The regime change also re-ranks the backlog, and in a direction that happens to favour what
+this iteration built. A 120 s run against a fixed external opponent costs about 78 minutes
+and we can afford perhaps two a day, against roughly eight self-play runs at 8 s. Gauntlet
+slots are now the scarcest resource we have, so work that needs no slot is worth more than
+it was this morning. SEARCH_SPLIT needs none: it is exact code motion gated on a
+bit-identical node count and a clocktest, so it can proceed alongside the new measurements
+instead of queueing behind them. It was already the largest item on the board by size; it is
+now the largest twice over.
