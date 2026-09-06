@@ -1256,6 +1256,21 @@ _DRAW_HMC: Final = 20           # halfmove clock that proves no progress either 
 _DRAW_PIECES: Final = 14
 _DRAW_MIN_CLOCK: Final = 8.0    # seconds left below which we never cap the budget
 _DRAW_CAP_FLOOR: Final = 0.25   # seconds, when the increment is still unobserved
+# CONVERT_BUDGET is DRAW_BUDGET's opposite sign: DRAW_BUDGET banks the clock in a proven
+# shuffle, this spends it on the two or three moves that decide a won position. The
+# conversion study (overnight/eval/v10/conversion.md) measured the case: 11 of 22 analysed
+# games reached reference >= +100 and NONE was won (0W/6D/5L); a median 75% of each
+# collapse is carried by ONE move of ours; `horizon` is the largest single cause in 5 of 10
+# of them; and 7 of 10 of those moves were played with over 20 s in hand. We spend 43.5% of
+# the clock on moves where |reference| < 30 and 4.1% on the moves at >= +150 -- the manager
+# is indifferent to winning, so the bank is never there when it matters.
+CONVERT_BUDGET: Final = False
+_CONV_LO: Final = 120           # cp; root score at which a conversion is live
+_CONV_HI: Final = 900           # cp; above this the game wins itself
+_CONV_MOVES: Final = 2          # consecutive own searches inside the band
+_CONV_MULT: Final = 2.0         # multiplies BOTH soft and hard
+_CONV_MIN_CLOCK: Final = 20.0   # seconds left below which we never extend
+_CONV_MAX_FRACTION: Final = 0.16  # never more than this share of the clock on one move
 _DRAW_SCORES: list[int] = []    # our root scores this game, newest last
 _DRAW_LAST_PLY: int = -1
 # ADJUDICATION: chess ply of the game's first request, and the last ply seen
@@ -2768,6 +2783,27 @@ def _draw_budget_soft(board: chess.Board, time_left_ms: int, soft: float) -> flo
     return soft
 
 
+def _convert_budget(time_left_ms: int, soft: float, hard: float) -> tuple[float, float]:
+    """CONVERT_BUDGET: extend BOTH deadlines while a win is live, capped by the clock share.
+
+    It must scale `hard`, not the stop rule. Round 31's decisive move spent 2.63 s against a
+    hard cap of 3.03 s -- 87% of everything the manager could legally give -- and `choose`'s
+    stability/score-drop/node-effort product multiplies `soft` only and is clamped to
+    [0.4, 1.5], so a stop-rule change would be inert on exactly the move it targets.
+    """
+    remaining = max(time_left_ms - 400.0, 50.0) / 1000.0
+    if (
+        len(_DRAW_SCORES) >= _CONV_MOVES
+        and all(_CONV_LO <= score <= _CONV_HI for score in _DRAW_SCORES[-_CONV_MOVES:])
+        and remaining > _CONV_MIN_CLOCK
+    ):
+        now = time.monotonic()
+        cap = now + remaining * _CONV_MAX_FRACTION
+        soft = min(now + (soft - now) * _CONV_MULT, cap)
+        hard = min(max(soft, now + (hard - now) * _CONV_MULT), cap)
+    return soft, hard
+
+
 def _observed_increment() -> float:
     """The increment in seconds as seen between our calls; 0 until two samples."""
     if len(_INC_SAMPLES) < 2:
@@ -2974,6 +3010,8 @@ def _get_move(fen: str, time_left_ms: int) -> str:
             soft, hard = _budget(board, time_left_ms)
             if DRAW_BUDGET:
                 soft = _draw_budget_soft(board, time_left_ms, soft)
+            if CONVERT_BUDGET:
+                soft, hard = _convert_budget(time_left_ms, soft, hard)
             _FAST.hint = _fb.move_from_chess(opening) if opening is not None else 0
             global _SEARCHED_MOVES
             _SEARCHED_MOVES += 1
@@ -2981,7 +3019,7 @@ def _get_move(fen: str, time_left_ms: int) -> str:
                 fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
                 soft = hard = time.monotonic() + fixed
             candidate = _FAST.play(board, soft, hard)
-            if DRAW_BUDGET:
+            if DRAW_BUDGET or CONVERT_BUDGET:   # either switch needs the root-score feed
                 _note_draw_score(board, int(_FAST.root_score))
             if candidate in board.legal_moves:
                 move = candidate
