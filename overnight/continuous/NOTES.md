@@ -662,6 +662,58 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 16:25, iter 35) -- SEARCH_SPLIT IS CLOSED AFTER BLOCK C: B AND E BOTH MEASURE ZERO
+I built block B and then, when it failed, block E. Both were exact and both bought
+NOTHING. **SEARCH_SPLIT is closed; do not spend another iteration on blocks A or D.**
+Nothing was committed to the engine files -- the tree is unchanged from cd56ad3.
+- **BLOCK B (the eval gates, `eval_gates`, a 7-tuple with a `done` flag) -- BUILT, EXACT,
+  REVERTED.** ruff + mypy + check_fastsearch 70/70 and 40/40 PASS, bench depth 8
+  **1,110,289 nodes bit-identical** at 277 knps. Then the init numbers, two A/B pairs run
+  in both orders under the same load:
+      HEAD  search inference 24.33 / 27.75 s   import 39.2 / 43.6 s
+      +B    search inference 25.99 / 26.49 s   import 40.1 / 40.5 s   (+ eval_gates 1.52 s)
+  i.e. search's inference did NOT fall, and the helper's own compile is a straight
+  ADDITION. `eval_gates` llvm_lines = **12,003**, because it calls `quiesce` (11,227) and
+  LLVM inlines it -- so the helper is not a small function at all, and its 1.39 s of
+  lowering is pure new cost. search's llvm_lines went UP, 17,680 -> 17,957.
+- **BLOCK E (the beta-cutoff history gravity, `update_history`) -- BUILT, EXACT, REVERTED.**
+  I built it because block B suggested a better model than initsplit.md's "inference is
+  superlinear in LINE count": inference is paid on the LOOP fixpoint, and what block C
+  actually removed was two loops over the move list. Block E is the other loop pair in
+  `search` (the butterfly malus loop and the conthist malus loop, fastsearch.py:1319-1369),
+  no calls at all, `history2`/`conthist_on`/`capture_order` recomputed inside so INIT_FOLD
+  still folds. Gates all green, bench **1,110,289 nodes** at 276 knps. Init, back-to-back
+  HEAD / +E / HEAD on a quiet box:
+      search inference 22.34 / **21.86** / 21.99 s      import 36.34 / **35.52** / 35.87 s
+  -0.31 s of inference against +0.18 s of helper compile. Zero, inside a +/-3 s noise band.
+  `update_history` llvm_lines is only 1,089: the gravity loops are trivially small.
+- **THE CONCLUSION, and it is worth more than the two reverts.** Block C's -5.9 s did not
+  come from a general law. Neither line count (block B removed 84 lines for nothing) nor
+  loop count (block E removed the other two loops for nothing) predicts the saving. What is
+  left of `search`'s 22-25 s of inference is the MAIN MOVE LOOP, which contains the
+  recursive `search` calls and therefore cannot be split at all. **Init work should now go
+  to INIT_ASYNC (already built, clocktest PASS) and to INIT_FOLD, not to more code motion.**
+  Budget after block C: ~30 s local with INIT_FOLD on, ~36-44 s with it off.
+- `overnight/eval/initprof.py` now profiles `order_node` / `eval_gates` / `update_history`
+  too, so a future split measures itself without an edit.
+- **UNCOMMITTED `WIN_FOCUS` IN agent.py IS NOT MINE -- I LEFT IT ALONE.** The tree has an
+  uncommitted, OFF-by-default `WIN_FOCUS` switch (agent.py, `choose`: floors the TIME_V6
+  soft-budget factor at 1.0 while `_CONV_LO <= score <= _CONV_HI`) written from
+  opponent_profile.md. It is the interactive session's, it is off, and it does not touch
+  the kernel -- my bench and exactness runs are unaffected by it. I did not commit it and
+  I did not revert it. Whoever owns it: it is still only in the working tree.
+- **opponent_profile.md LANDED 15:55 AND IT RE-RANKS EVERYTHING. Read section 1 before
+  picking any more search switches.** Headline: the gap is +501 Elo [+334, +741], and
+  **no search advantage is detectable** -- on the same 280 contested positions we and the
+  leader match Stockfish d16 at exactly 52.9%, and moves that need depth >= 12 are 2.8% of
+  ours to 2.5% of theirs. On 521 of their own positions replayed through our engine the
+  paired deficit is +0.0 cp/move in LEVEL positions and -16.3 cp/move (we are BETTER) when
+  losing; it is +14.6 at +300..+800 and +49.1 above +800. They reach +500 in 92% of decided
+  games to our 43%. **The entire measurable gap is conversion of won positions**, which is
+  exactly what CONVERT_BUDGET, DRAW_BUDGET and the uncommitted WIN_FOCUS address -- and
+  none of them has ever had a strength test. That, not another pruning switch, is the next
+  bundle. `engine_ceiling.md` had not landed at 16:25.
+
 ## Running now (6 Sep 15:20, iter 34) -- SEARCH_SPLIT BLOCK C SHIPPED INTO THE TREE, -5.9 s OF INIT
 The research pause forbids shipping v9.5 and any gauntlet of 40+ games, so this iteration
 did the one thing the pause explicitly leaves open and that needs NO gauntlet slot: the
@@ -1640,13 +1692,21 @@ scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
 (0a) THE RESEARCH PAUSE IS STILL ON (human, 15:10): do NOT ship v9.5, do NOT start a
-gauntlet of 40+ games. `convert-clocktest-l` is running and is allowed. Iter 34 stopped
-`v94-120s`, which the pause had parked but nobody had killed -- see the iter 34 section.
-(0b) **BUILD SEARCH_SPLIT BLOCK B** (fastsearch.py:931-1013), then A then D, one commit
-each. Block C landed in iter 34 for -5.9 s of local init with a bit-identical node count;
-B is the biggest block left and its exact contract (a 7-tuple, because it has two early
-returns) is written out in the iter 34 section. This needs NO gauntlet slot, which under
-the new regime is the whole point.
+gauntlet of 40+ games. `engine_ceiling.md` had still not landed at 16:25; fold it when it
+does. `opponent_profile.md` and `net_architecture.md` HAVE landed -- read
+opponent_profile.md section 1 before choosing anything.
+(0b) **SEARCH_SPLIT IS CLOSED.** Block C shipped (-5.9 s); blocks B and E were built,
+measured at zero and reverted (iter 35 section). Do NOT build blocks A or D. Init work
+goes to INIT_ASYNC + INIT_FOLD from here.
+(0c) **THE NEXT BUNDLE IS CONVERSION, not pruning.** opponent_profile.md measures the whole
+gap in won positions: level +0.0 cp/move, losing -16.3 (we are better), +300..+800 +14.6,
+>+800 +49.1; they spend 1.55 s per move where we spend 0.90 s. The three switches that
+target it already exist -- CONVERT_BUDGET (built, clocktest PASS), DRAW_BUDGET (built,
+clocktest PASS) and the session's uncommitted WIN_FOCUS -- and NONE has had a strength
+test. Under the new regime that test is 60 games at 120 s vs `opponents/sf-skill8`
+(`v94-vs-sf8-120s` in held.json is the template). Queue that bundle FIRST when the pause
+lifts, ahead of the v9.6 pruning bundle in held.json.
+
 (0) SUPERSEDED IN PART BY ITER 32: `initasync-clocktest-l` now runs BEFORE `v95-clocktest-l`,
 and v9.5's zip flips INIT_ASYNC True alongside INIT_FOLD if that clocktest passes. v9.5's
 verdict is `160-v95`'s 400-game checkpoint, not the 200 (it landed in the middle band).

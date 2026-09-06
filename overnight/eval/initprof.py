@@ -4,7 +4,7 @@ os.environ.setdefault("NUMBA_DEVELOPER_MODE", "1")
 import agent  # noqa
 import fastsearch as fs
 import fastboard as fb
-for name in ("search", "quiesce", "make_move", "order_node", "gen_legal"):
+for name in ("search", "quiesce", "order_node", "eval_gates", "update_history", "make_move", "gen_legal"):
     d = getattr(fs, name, None) or getattr(fb, name, None)
     if d is None:
         continue

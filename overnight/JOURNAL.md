@@ -1782,3 +1782,41 @@ I wrote it out in full in NOTES rather than start it with ten minutes left: iter
 its last window specifying block C exactly is why block C took forty minutes today instead of
 two hours, and a half-finished kernel edit is the one thing the rules say never to leave
 behind.
+
+## 6 Sep 15:55-16:30 (iter 35) -- two splits built, two splits reverted, and the rule they
+were built on turns out not to exist
+
+Iter 34 left block B specified to the tuple, so I built it. It went in cleanly: eval_gates
+takes the improving/RFP/razor/futility block out of search and reports a done flag with the
+value to return, because unlike block C it can end the node in two places. Everything a
+kernel edit is gated on was green -- ruff, mypy, 70/70 and 40/40 on the exactness check, and
+a depth-8 bench of 1,110,289 nodes, bit-identical. Only one live-out of the five iter 34
+listed turned out to be live: percent is dead below the block in the current tree, so the
+contract is a six-tuple, and ruff is what caught it.
+
+Then the measurement said no. Two A/B pairs, run in both orders because the box load was
+drifting: search's type inference did not fall at all, and eval_gates cost 1.52 s of its own
+compile on top. The reason is visible in one number -- the helper's LLVM is 12,003 lines,
+because it calls quiesce and LLVM inlines all 11,227 of them straight back in. It is not a
+small function. Block C's order_node was 1,983 lines and calls nothing heavy.
+
+That suggested a better rule than the one in initsplit.md. Inference is not charged per
+line; it is charged on the loop fixpoint, and what block C actually removed was two loops
+over the move list. So I built block E: the beta-cutoff gravity update, the other loop pair
+in search, no calls at all. Same gates, same bit-identical node count, and back-to-back on a
+quiet box it came back 21.86 s of inference against 22.34 and 21.99 for the champion either
+side of it -- zero, against a helper cost of 0.18. Its LLVM is 1,089 lines: the gravity
+loops are simply tiny.
+
+So both reverted, and SEARCH_SPLIT is closed. Neither line count nor loop count predicts the
+saving, and what is left of search's 22-25 s is the main move loop, which recurses and cannot
+be split. Block C's -5.9 s was the one real win and it stands. Init work goes to INIT_ASYNC
+and INIT_FOLD from here, and the two hours the remaining blocks would have cost go somewhere
+better -- which matters, because opponent_profile.md landed at 15:55 and says the search is
+not where we are losing. On 280 contested positions we and the leader match Stockfish d16 at
+exactly the same 52.9%; move for move we are their equal in level positions and better than
+they are when losing. The entire +501 Elo gap sits in won positions, +14.6 cp per move at
++300..+800 and +49.1 above +800, and they spend 1.55 s a move there to our 0.90. We have
+three switches built for precisely that -- CONVERT_BUDGET, DRAW_BUDGET and the session's
+uncommitted WIN_FOCUS -- and not one of them has ever been played for points. That is the
+next bundle, and it should go ahead of the pruning bundle sitting in held.json.
