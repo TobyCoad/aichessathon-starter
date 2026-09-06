@@ -387,6 +387,37 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## RESEARCH PAUSE (human's instruction, 6 Sep 15:10) -- DO NOT SHIP v9.5 YET
+His words: "lets take a step back for 9.5 ... it seems we are effectively putting band aid
+patches in place and rushing them out the door. i want some advanced changes which really
+turn the tide". He is right, and the numbers agree: our last three verdicts were +9.4 +/- 28.6,
++0.6 +/- 23.5 and -3.0 +/- 29.0 -- we have been flipping switches inside our own noise while
+the gap to the leader is 300-500 Elo.
+- DO NOT build or email a v9.5 candidate until the research lands. Nothing is lost by
+  waiting: uploads are TEN per day, not three, and v9.4 is live and validated.
+- DO NOT start any gauntlet of 40 games or more. `149-v94wdl`, `v9-120s-l` and `v94-120s`
+  are parked in overnight/laptop/held.json along with the v9.6 bundle; restore them from
+  there afterwards. `convert-clocktest-l` (10 min) may run -- it is cheap information.
+- THREE OPUS RESEARCH AGENTS ARE RUNNING and need the CPU/GPU. Do not compete with them:
+  * overnight/eval/v10/opponent_profile.md -- how much stronger the leader actually is, per
+    move and per phase, from Stockfish-referenced analysis of both game sets
+  * overnight/eval/v10/engine_ceiling.md -- where the 60% of node time that is NOT evaluation
+    goes, our true effective branching factor on matched positions, and our first-move
+    cutoff rate. If ordering is weak that is worth more than any evaluation work.
+  * overnight/eval/v10/net_architecture.md -- whether 768x16-zones is simply the wrong
+    feature set. network.md closed HalfKP at a data scale of 21.6 M positions; we now have
+    1.16 BILLION, and mirrored HalfKP at accumulator 256 may be BOTH smaller on disk and
+    cheaper per evaluation than what we ship today.
+- WHAT WE ALREADY KNOW, so nobody re-derives it: eval is 40% of node time (218 knps vs 362
+  with evaluate() stubbed to material); we reach ~depth 10-11 at the real time control;
+  against the 9 opponents we have both played we score 36.4% and the leader 90.0%; their
+  draw rate is 7% to our 26%; init has never cost us a ladder game (37 games, zero init
+  losses, first move never over 13 s) -- that risk is upload-validation only.
+- CONVERT_BUDGET is BUILT and committed OFF (agent.py only, exactness PASS). It is NOT
+  shippable until convert-clocktest-l passes: it doubles the HARD deadline, which is exactly
+  what a clocktest exists to catch. Its own author put the ceiling at +0..+15 Elo, so it is
+  a bundle rider, not a release.
+
 ## 160-v95 STOPPED AT 408 GAMES -- FLAT, CLOSED. SHIP v9.5 AS INIT-ONLY (session, 14:45)
 Trajectory vs the v9.4 champion: 54 games +12.9, 104 +3.3, 154 -4.5, 204 -0.0, 254 -0.0,
 360 +9.7, 408 **+9.4 +/- 28.6, llr -0.06**. Four hundred games and the SPRT has learned
