@@ -358,6 +358,29 @@ same budget (6 epochs, --limit 40000000):
   it and was training on the GPU alongside the WDL run. Kill the whole tree (the bash running
   the .sh AND the python beneath it) and then VERIFY by command line, not by PID.
 
+## v9.4 GAUNTLET RUNNING (149-v94wdl, from 11:00) -- search bundle + the WDL net
+- The WDL net (157-wdlnet) trained: best val 0.005962 from 0.007830 on the WDL objective.
+  That 23.9% is NOT an improvement figure -- the champion started high because it had never
+  seen WDL targets. Do not quote it as Elo.
+- WHAT WDL ACTUALLY CHANGED (matched by position hash between the pure-eval and WDL shards;
+  the decoder collects out of order, so element-wise comparison is meaningless): only 1.5% of
+  targets unchanged, 59.9% moved >100 cp, 31.0% moved >300 cp, mean move 342.9 cp. By band:
+  2-8 pieces 765.7 cp, 9-12 553.9, 13-16 361.3, 17-32 235.1 -- largest exactly where we lose.
+- ENDGAME SUITE 157-wdlnet vs the v9.3 net: 11.4 cp vs 13.8 overall, and BETTER IN EVERY BAND
+  (5-8 4.2 vs 8.8, 9-12 21.5 vs 23.8, 13-16 7.7 vs 8.5). Encouraging, but the suite is a weak
+  proxy; the games decide.
+- eg_calib DID NOT RUN: it opens "overnight/eval/endgame_suite.json" by a RELATIVE path and
+  the chain runs it from inside the challenger dir. Harmless here -- and it would have been
+  the wrong instrument anyway, because eg_calib scores against Stockfish fixed-depth EVAL
+  labels that a WDL net is meant to deviate from. Fix the path before relying on it again.
+- GAUNTLET POWER, measured (200k-run simulation calibrated on our own sigma; the printed
+  +/- is a 95% CI, sprt.py:94, so sigma at 200 games is ~20 Elo). The promote-at-+10-on-a-
+  200-game-checkpoint rule promotes: a true -10 change 20.9% of the time, a true 0 change
+  42.8%, a true +10 69.0%, a true +20 88.9%. Taking the FIRST checkpoint at 400 instead
+  halves the regression risk (20.9% -> 10.2%) and costs only ~10 points of power on a true
+  +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
+  than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
+
 ## QUEUE FREEZE UNTIL v9.4 SHIPS (session, 6 Sep 10:20) -- LOOP: QUEUE NO GAUNTLETS
 Do not add ANY task with `games` to overnight/laptop/tasks.json until `149-v94wdl` has run.
 Not a variant, not a renamed one, not a "bounded" one. Iteration 5 re-queued the deferred
