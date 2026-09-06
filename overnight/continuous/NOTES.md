@@ -373,7 +373,44 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   output-slope rescale is worth NOTHING in games (+69 at 76 games decayed to -3 by 346) --
   SLOPE RESCALE CLOSED. Measure slope as a diagnostic, never ship a rescale.
 
-## Running now (6 Sep 08:45, iter 23)
+## Running now (6 Sep 09:15, iter 24)
+- THE ONE THING THIS ITERATION CHANGED: the laptop queue can no longer take the machine
+  ahead of the v9.4 release. The session's queue_v94.py inserts 149-v94wdl at index 0, but
+  insertion cannot preempt a task the worker has ALREADY STARTED, and 147-seequiet /
+  146-cutnode were both 600-game tasks (~3 h each) sitting directly in front of it. Fixed
+  two ways: (a) pending order is now 147-seequiet -> seequiet-clocktest-l ->
+  cutnode-clocktest-l -> 146-cutnode, so the v9.5 gauntlets bracket the cheap clocktests
+  rather than the reverse; (b) **147-seequiet is capped at `games: 200`** -- it stops at its
+  first checkpoint (~70-85 min) whatever it reads, so the worst case block on v9.4 is one
+  checkpoint, not one SPRT. At 200 games the checkpoint rule can PROMOTE (>= +10) or return
+  INCONCLUSIVE; it cannot REJECT (that needs 400). INCONCLUSIVE-positive is a pass for a
+  bundle filler, which is all SEE_QUIET needs to be. If a later iteration wants a full
+  600-game read on SEE_QUIET, re-queue it AFTER v9.4 has shipped.
+- WHY the window exists, measured: wdl_decode.sh started 09:03 (it waited for the drawcap
+  clocktest); binpack_decode counts in the worker's `busy_gauntlets` probe, so the worker is
+  parked until the decode ends (~09:25). Then merge + train (12 epochs, ~125 s each, sharing
+  the GPU with 156-mixnet3) to ~10:30, export/check_nnue/endgame suite to ~11:00 -- the
+  suite parks the worker again. So 149-v94wdl realistically queues ~11:00 and the free
+  window is ~09:25-10:30, which is exactly what the capped 147-seequiet fills.
+- DRAW_BUDGET GATE PASSED: drawcap-clocktest-l PASS, flags 0/6, errors 0, lowest clock 5.7 s,
+  longest move 11.8 s (6 games at 120 s+0.5 s charged x1.5). DRAW_BUDGET is now a cleared
+  v9.5 filler -- it needs no further gate of its own.
+- TREE VERIFIED GREEN at 09:10 (nothing was left half-done by iter 23): ruff All checks
+  passed, mypy no issues in agent.py/fastsearch.py, check_fastsearch 70/70 exact at depth 4
+  + 40/40 best-move agreement at depth 6 with the table on, node ratio median 1.00. Every
+  switch listed below is still OFF in the tree.
+- v9.5 bundle union so far: DRAW_BUDGET (clocktest PASSED, this iteration) + ROOT_NODES +
+  SINGULAR_EXT2 + whatever 147-seequiet and 146-cutnode pass. Still not queueable until
+  149-v94wdl's verdict lands -- the champion moves under it.
+- NO NEW SWITCH WAS BUILT this iteration, deliberately. The remaining unbuilt search.md
+  items are #11 razoring (d <= 3, +0..5), #8 ProbCut (+3..8, 4-6 h) and #16 root PVS/LMR
+  (+0..3); all three are kernel edits, and ~20 min of iteration budget after the queue work
+  is not enough to finish one plus ruff/mypy/exactness/bench. NOTES' own standing rule --
+  "never leave the tree with a half-done build at the end of an iteration" (5 Sep 22:40) --
+  outranks filling the slot. Next iteration should start with razoring: it is the smallest
+  of the three and the only one that fits a single iteration.
+
+## Running before (6 Sep 08:45, iter 23)
 - Nothing could be started again: 155-mixnet2s is still running (288 games, -7.2 +/- 33.8;
   it was +69.5 +/- 60 at 76 games, so the slope-rescale net is regressing to nothing --
   expect INCONCLUSIVE-negative at 600, i.e. a fail; it is the interactive session's task,
