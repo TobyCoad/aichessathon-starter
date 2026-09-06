@@ -1,34 +1,34 @@
-# v9.1 -- v9 + TIME_V6 (time management rebuilt)
+# v9.2 -- v9.1 + NMP_V2 (null-move rework)
 
-Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v9.1.zip** (21.7 MB zip,
-28.0 MB unpacked; also `submission-v91.zip` in the repo root). Built from the TESTED
-challenger dir `overnight/challengers/v9-120s-l` (v9's kernel + the TIME_V6 switch).
+Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v9.2.zip** (21.7 MB zip,
+28.0 MB unpacked; also `submission-v92.zip` in the repo root). Built from the TESTED
+challenger dir `overnight/challengers/143-nmp` (v9.1's kernel + the NMP_V2 switch), no
+untested extras.
 
-## What changed (vs v9, the current upload)
-- **TIME_V6** -- the clock is used instead of banked. The old scheme kept a 10% reserve
-  and dropped to 0.5 s moves below 15 s, which the post-mortems showed left ~12 s per game
-  unspent and caused time-trouble blunders. The new budget credits the increment it
-  measures between calls, keeps a 6% reserve, uses the literature's stop rule at each
-  iteration end (best-move stability x score-drop x node-effort, from Ethereal / Stash /
-  Weiss / Alexandria) instead of predicting the next iteration, and below 12 s spends an
-  exact eighteenth of the clock per move so it settles near 6-8 s instead of 13 s.
+## What changed (vs v9.1)
+- **NMP_V2** -- the null move as the reference engines do it: dynamic reduction
+  R = 3 + depth/4 + min((static eval - beta)/200, 3) instead of the old 2 + depth/6,
+  tried only when the static eval is at or above beta, and skipped when the table
+  already holds an upper bound below beta. One to three plies more reduction on the
+  null search, which the research pass flagged as our most under-tuned pruning term.
 
 ## Measured
-- 40 games at 120 s + 0.5 s on the platform openings vs v9: **+11 =22 -7, 55.0%**.
-- Clock replay (1.5x charge, 6 games): **PASS**, 0 flags, lowest clock 5.8 s, longest
-  move 11.9 s (v9's replay: lowest 11.3 s -- the new floor is by design).
-- 8 s SPRT: not applicable (below 12 s the low-clock rule dominates; TIME_V6 is a 120 s
-  change, so the 120 s games are its gate).
-- Cold import of the clean unzip: 41 s here under heavy load (decode + tests running);
-  v9 measured 33.6 s; platform budget 90 s (v8.5 took 63 s there).
+- 8 s SPRT vs v9.1: **PROMOTE at the 200-game checkpoint, +26 Elo** (+76 =63 -62, 53.5%).
+- Crash gate: clean, 24/24 vs random.
+- Cold import of the clean unzip: **33.7 s** here (platform ~55-60 s of its 90 s budget).
+- Clock test: not re-run (no time-management change; v9.1's replay stands).
 
-## Not included
-- CONT_HIST (continuation history): REJECT at 8 s vs v9 -- closed.
-- IMPROVING / CUTNODE: built (off), not yet tested; next bundle.
+## Also decided tonight
+- Stockfish-data net (152-sfnet): REJECT, -76 +/- 48 at 8 s. Cause found: my score-scale
+  calibration made its evaluations 1.7x too loud for the search's pruning margins, and it
+  had forgotten human positions. Scale corrected, shards rescaled, a mixed
+  Stockfish + Lichess net is retraining (153-mixnet2) and will be gauntleted at ~05:30.
+  (An earlier "150-sfnet PROMOTE +19" was void: the worker had tested the champion
+  against itself; that worker bug is fixed.)
+- IMPROVING + CUTNODE: REJECT (40% over 140). CONT_HIST: REJECT.
+- INIT_FOLD and eager fastboard signatures (exact, ~8 s off the import) are built and
+  verified but not in this zip; they ship with the next version after a clean-unzip check.
 
 ## Next
-- v9.2 bundle: IMPROVING + CUTNODE + NMP_V2 (+ CAPTURE_ORDER if built), 8 s SPRT + clocktest.
-- Stockfish-data net: the February 2024 Stockfish self-play binpack is decoding into
-  ~580M positions now; a warm-started retrain on it runs tonight and is compared with
-  the Lichess-trained net on the endgame suite and a gauntlet. Ships as its own version
-  if it wins.
+- Queue: capture ordering (144-caporder), the QS-table + aspiration filler bundle
+  (145-v93fill), SEE-of-quiets (147-seequiet), then the mixed net (153-mixnet2).

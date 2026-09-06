@@ -997,3 +997,8 @@ worse in games although its loss on SF positions is 43% lower -- it forgot human
 (slope 1.717 vs 1.014) -- the 0.45 cp/unit binpack scale was wrong; 0.262 is right. Shards
 rescaled x0.582 in place; mixed net retraining as 153-mixnet2 with correct targets; the
 first mixed run (polluted targets) was stopped at epoch 22.
+
+6 Sep 03:30 v9.2 SHIPPED by the session (email sent): v9.1 + NMP_V2 from the tested 143-nmp
+challenger (+26 at the 200 checkpoint, 53.5%); import 33.7 s clean. Loop iteration 15 had
+timed out mid-ship. Corrected-scale mixed net (153-mixnet2) training: initial SF-val 0.005318
+-> 0.002939 after one epoch.

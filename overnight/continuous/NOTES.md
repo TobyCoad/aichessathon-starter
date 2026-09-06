@@ -185,6 +185,11 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
+- v9.2 (6 Sep 03:30, emailed; the human uploads in the morning) = v9.1 + NMP_V2, zip built
+  from the tested challenger 143-nmp (PROMOTE +26 at 200), import 33.7 s clean. NMP_V2 is
+  being flipped on in the tree by the session (exactness check running). INIT_FOLD / eager
+  signatures are NOT in v9.2: ship them with v9.3 after a clean-unzip import check.
+  Iteration 15 timed out (45 min) before finishing its own v9.2; do not redo it.
 - v9.1 (5 Sep 21:55, uploaded by the human when he reads the email) = v9 + TIME_V6, all True
   in the tree (exact 70/70). Evidence: 40 games at 120 s vs v9 55.0% (+11 =22 -7), clocktest
   PASS (floor 5.8 s by design). v9 (19:53) = v8.5 + QS_EVAL_CACHE + ADJUDICATION +
