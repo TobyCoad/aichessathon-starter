@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 12:37
-task v94-120s
-progress   clean over 24 games, 100% vs random
+time 2026-09-06 12:58
+task 160-v95
+progress      20 games  .... llr +0.15 [-2.94, 2.94] after 10 pairs, elo +34.9 +/- 120.7
