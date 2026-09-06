@@ -1249,3 +1249,36 @@ first, respect the closed list, quantify where the half point went, check the cl
 against the now-live TIME_V6, test whether the errors again cluster below 16 pieces, and say
 plainly if the game shows no new failure mode rather than inventing work. It was still
 running when this iteration ended; the report is on disk for the next one to fold.
+
+6 Sep 09:35 (loop iter 24, addendum) The round 31 post-mortem landed before I stopped, so I
+folded it rather than leaving it for the next iteration. The verdict is the useful kind of
+negative: no new failure mode, and the move that actually cost the half point is already
+fixed by the net we shipped. The agent re-probed the position with the current tree at the
+same 33.2 s clock the game had, and v9.3 plays the reference move g6g5 in 1.38 s where v9.1
+needed a ten second replay. That is in-game evidence for 153-mixnet2 that is independent of
+its gauntlet, which is worth more than the gauntlet on its own.
+
+The finding I did not expect is that our headline number has moved and several Elo estimates
+are now standing on a figure that is out of date. The errors still cluster below 16 pieces --
+six of eight flagged moves, 480 of 781 cp, on 24% of our moves -- but the mean static error
+in that band is now 136 cp, against the 475 in games.md and the 674 in rounds25-29. The shape
+of the problem is intact; the size of it has collapsed. Anything in the backlog justified by
+"the net's static error below 16 pieces is 475 cp" needs re-reading before it gets a slot.
+
+Two smaller things. TIME_V6 is live but tamed -- the tree carries reserve 0.06 and LOW_CLOCK
+12.0, not the 0.04 and 9 the plan specified -- and it recovered about 2.7 s of the twelve
+second bank, all of which went on 106 moves the reference scores at exactly zero. No error in
+the game correlates with a short think, and the hard cap at the one move that mattered was
+23% tighter than TIME_V5's would have been. And the ply-300 material adjudication did not
+fire: the game reached ply 323 un-adjudicated with White up K+B+P vs K+B at ply 300, which
+contradicts the premise round 18 gave for the ADJ_BEHIND_LATE bias we shipped in v9. That is
+a rules re-read, not a build, but if the cap is not real then the bias is paying for nothing
+and should be measured before v9.5 freezes.
+
+One trap recorded with the actionable item. DRAW_BUDGET's guards would have been inert in
+this game -- pieces <= 10 and clock > 12 s overlap on about three of the 106 drawn shuffle
+moves -- and widening them to pieces <= 14 and clock > 8 banks thirty to thirty-five seconds.
+But DRAW_BUDGET passed drawcap-clocktest-l this morning with the NARROW guards. Widening
+makes it fire far more often, so a widened DRAW_BUDGET cannot inherit that PASS and needs its
+clocktest re-run before it ships. I wrote that next to the item so a later iteration does not
+carry the tick across a change that invalidates it.

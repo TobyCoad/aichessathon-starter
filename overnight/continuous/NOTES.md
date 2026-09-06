@@ -410,6 +410,41 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   outranks filling the slot. Next iteration should start with razoring: it is the smallest
   of the three and the only one that fits a single iteration.
 
+## Round 31 post-mortem folded 6 Sep 09:35 (iter 24) -- overnight/eval/v10/round31.md
+First platform game since v9.2/v9.3 went live (draw as Black vs abhi-s-chess-demon, 08:21).
+HEADLINE: **no new failure mode, and the decisive error is already fixed by the shipped v9.3
+net.** Do not open a work item off this game. Four things worth carrying:
+1. THE SHIPPED NET IS WORKING. The half point went in one stretch, moves 44-52 at 14->12
+   pieces (-326 of the -391 cp lost below 17 pieces; ref peak +290 at move 45, zero from
+   move 55). Re-probed with the CURRENT tree at the SAME 33.2 s clock, v9.3 plays the
+   reference move g6g5 in 1.38 s where v9.1 needed a 10 s replay. Move 46 also improves.
+   That is direct in-game evidence for the 153-mixnet2 net, independent of its gauntlet.
+2. THE ENDGAME ERROR HAS COLLAPSED IN MAGNITUDE, not in kind. Errors still cluster low
+   (6 of 8 flagged moves and 480 of 781 cp at 11-16 pieces, on 24% of our moves), but the
+   mean static error at <= 16 pieces is now **136 cp** against games.md's 475 and
+   rounds25-29's 674. The <= 10 band lost 28 cp over 93 moves. Re-read any Elo estimate
+   that was justified by the old 475/674 figure before spending a slot on it.
+   Move 52 (f5, ref e2) did NOT improve with 34.9 s of search: still a static error, not depth.
+3. TIME_V6 IS LIVE BUT TAMED, and recovered only ~23% of the bank. The tree carries
+   RESERVE_FRACTION_V6 = 0.06 / LOW_CLOCK_V6 = 12.0, not the 0.04 / 9 the plan specified.
+   Measured: 187.2 s of 200.5 s used, ended holding 13.31 s, lowest 10.267 s, zero flags --
+   the absorbing floor moved 13.0 -> 10.27 s, i.e. 2.7 s of the ~12 s games.md predicted.
+   And the recovered time went on 106 moves the reference scores at exactly 0 (52.7 s, 28%
+   of all time spent). No error correlates with a short think; move 45 spent 2.63 s of a
+   3.03 s hard cap, and TIME_V6's cap there was 23% SMALLER than TIME_V5's would have been
+   (third game running). Anyone reopening the time budget must beat that, not re-derive it.
+4. TWO CONCRETE ITEMS, both filler-only, neither worth a gauntlet slot of its own:
+   (a) DRAW_BUDGET's guards would have been INERT here -- `pieces <= 10` AND `clock > 12 s`
+   overlap on only ~3 of the 106 drawn shuffle moves. Widening to `pieces <= 14` /
+   `clock > 8` banks ~30-35 s (+0..+5 Elo). NOTE: DRAW_BUDGET already PASSED
+   drawcap-clocktest-l with the NARROW guards; widening makes it fire far more often, so a
+   widened DRAW_BUDGET needs its clocktest RE-RUN before it ships. Do not inherit the PASS.
+   (b) THE PLY-300 MATERIAL ADJUDICATION DID NOT FIRE: round 31 reached ply 323
+   un-adjudicated with White up K+B+P vs K+B at ply 300. That contradicts the premise
+   round 18 gave for the live ADJ_BEHIND_LATE bias in ADJUDICATION (shipped in v9). Worth a
+   re-read of the platform rules, not a build -- but if the cap is not real, the bias is
+   paying a cost for nothing and should be measured before v9.5 freezes.
+
 ## Next switch to build -- RAZOR, scoped 6 Sep 09:20 (iter 24) so iter 25 can just write it
 search.md #11, +0..+5 Elo at 120 s, the smallest unbuilt search item. Everything below was
 read off the live source this iteration; no code was written, the tree is untouched.
