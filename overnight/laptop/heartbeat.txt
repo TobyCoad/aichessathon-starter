@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 16:51
+time 2026-09-06 17:01
 task v94-vs-sf8-120s
-progress       4 games  .... llr +2.08 [-2.94, 2.94] after 2 pairs, elo +190.8 +/- 2209.2
+progress      12 games  .... llr +26.72 [-2.94, 2.94] after 6 pairs, elo +338.0 +/- 2062.0
