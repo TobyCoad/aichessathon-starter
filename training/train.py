@@ -47,6 +47,20 @@ HIDDEN = 32
 SCALE = 400.0
 
 
+# Twelve heads, indexed by piece count 0..32. Equal-width bands spend seven of
+# eight heads above 16 pieces, where the net is already accurate; this table puts
+# seven of twelve below 17, where every measured move-quality loss sits (static
+# error 331.9 cp at 5-8 pieces against 184.4 at 13-16). Shared verbatim with
+# `_bucket` in agent.py; check_nnue compares them count by count.
+# index = piece count 0..32; bands 2-4 5-6 7-8 9-10 11-12 13-14 15-16 17-19 20-22
+# 23-25 26-28 29-32.
+BUCKET_MAP_12: list[int] = [
+    0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 11,
+]
+assert len(BUCKET_MAP_12) == MAX_PIECES + 1
+
+
 def bucket_of(count: Tensor, buckets: int) -> Tensor:
     """Output head for a position with `count` pieces on the board, 1..32.
 
@@ -54,14 +68,50 @@ def bucket_of(count: Tensor, buckets: int) -> Tensor:
     the endgame gets heads of its own. One shared head scored four different
     KQvK positions within 120 cp of each other and could not convert; a head
     that only ever sees few-piece positions has the capacity to tell them apart.
+    Twelve heads use BUCKET_MAP_12 instead, which is endgame-dense.
     """
+    if buckets == 12:
+        table = torch.tensor(BUCKET_MAP_12, device=count.device, dtype=count.dtype)
+        return table[torch.clamp(count, 0, MAX_PIECES)]
     return torch.clamp((count - 1) * buckets // MAX_PIECES, 0, buckets - 1)
 
 
-def zone_of(square: Tensor, zones: int = 8) -> Tensor:
+def bucket_parents(buckets: int, saved_buckets: int) -> list[int]:
+    """For each head of a `buckets` net, the head of a `saved_buckets` net that
+    covered the same piece counts, so an expanded net starts numerically identical
+    to the one it grew from. A new head whose counts straddle two old heads takes
+    the one holding most of them."""
+    counts = torch.arange(MAX_PIECES + 1)
+    fine = bucket_of(counts, buckets).tolist()
+    coarse = bucket_of(counts, saved_buckets).tolist()
+    parents: list[int] = []
+    for head in range(buckets):
+        votes: dict[int, int] = {}
+        for f, c in zip(fine, coarse, strict=True):
+            if f == head:
+                votes[c] = votes.get(c, 0) + 1
+        if not votes:
+            raise SystemExit(f"head {head} of {buckets} covers no piece count")
+        parents.append(max(votes, key=lambda k: votes[k]))
+    return parents
+
+
+def mirror_flip(king_square: Tensor) -> Tensor:
+    """Vectorised `training.features.mirror_flip`: 0 or 7 per position."""
+    return torch.where((king_square & 7) >= 4, 7, 0)
+
+
+def zone_of(square: Tensor, zones: int = 8, mirrored: bool = False) -> Tensor:
     """Vectorised `training.features.king_zone`: the king's zone from its own side."""
     rank = square >> 3
     file = square & 7
+    if mirrored:
+        if zones != 16:
+            raise ValueError(f"no mirrored zone map for {zones} king zones")
+        low = rank * 4 + file
+        mid = 8 + (rank - 2) * 2 + (file >> 1)
+        high = 12 + ((rank - 4) >> 1) * 2 + (file >> 1)
+        return torch.where(rank <= 1, low, torch.where(rank <= 3, mid, high))
     if zones == 1:
         return torch.zeros_like(square)
     if zones == 4:
@@ -104,6 +154,55 @@ def expand_zones(weight: Tensor, zones: int, saved_zones: int) -> Tensor:
     return blocks[parents].reshape(zones * FEATURES, -1).contiguous()
 
 
+def mirror_zone_parents(zones: int, saved_zones: int) -> list[tuple[int, int]]:
+    """For each zone of the mirrored `zones` map, the pair of unmirrored zones it
+    pools: the zone of a representative king square on files a-d and the zone of
+    that square's file-flipped partner. Raises if a mirrored zone straddles two
+    unmirrored ones, which would make the average below meaningless."""
+    squares = torch.arange(64)
+    fine = zone_of(squares, zones, mirrored=True).tolist()
+    coarse = zone_of(squares, saved_zones).tolist()
+    pairs: dict[int, tuple[int, int]] = {}
+    for square in range(64):
+        if square & 7 >= 4:  # only files a-d represent a mirrored zone
+            continue
+        want = (coarse[square], coarse[square ^ 7])
+        got = pairs.setdefault(fine[square], want)
+        if got != want:
+            raise SystemExit(
+                f"mirrored zone {fine[square]} straddles unmirrored zones {got} and {want}"
+            )
+    missing = [z for z in range(zones) if z not in pairs]
+    if missing:
+        raise SystemExit(f"mirrored zones {missing} have no a-d king square")
+    return [pairs[z] for z in range(zones)]
+
+
+def mirror_from_unmirrored(weight: Tensor, zones: int, saved_zones: int) -> Tensor:
+    """Symmetrise an unmirrored first layer into a mirrored one.
+
+    Mirrored zone z pools unmirrored zones a (king on a-d) and h (king on e-h), and
+    a feature seen from the h side has its file flipped, so the h block's rows are
+    permuted by `index ^ 7` before averaging. A net that has seen both wings is
+    already close to left-right symmetric, so this starts the run at roughly the
+    checkpoint's own loss instead of at noise."""
+    blocks = weight.view(saved_zones, FEATURES, -1)
+    flip = torch.arange(FEATURES) ^ 7
+    out = torch.empty(zones, FEATURES, blocks.shape[2], dtype=weight.dtype)
+    for z, (a, h) in enumerate(mirror_zone_parents(zones, saved_zones)):
+        out[z] = 0.5 * (blocks[a] + blocks[h][flip])
+    return out.reshape(zones * FEATURES, -1).contiguous()
+
+
+def expand_heads(weight: Tensor, buckets: int, saved_buckets: int) -> Tensor:
+    """Stacked head parameter (saved_buckets, ...) -> (buckets, ...) by parent head,
+    so the expanded net is numerically identical to the one it grew from."""
+    if buckets == saved_buckets:
+        return weight
+    parents = torch.tensor(bucket_parents(buckets, saved_buckets))
+    return weight[parents].contiguous()
+
+
 class Net(nn.Module):
     """(K x 768 -> A)x2 -> H -> 1: `king_zones` copies of the first layer selected by
     the perspective's own king square, and `buckets` independent heads after the
@@ -125,10 +224,18 @@ class Net(nn.Module):
         hidden: int = HIDDEN,
         buckets: int = 1,
         king_zones: int = 1,
+        mirrored: bool = False,
     ) -> None:
         super().__init__()
         self.buckets = buckets
         self.king_zones = king_zones
+        # A buffer, not a plain attribute, so the flag travels inside the state
+        # dict: a mirrored net loaded as unmirrored would score nonsense on half
+        # the positions and there would be nothing to catch it.
+        self.register_buffer("mirrored", torch.tensor(int(mirrored), dtype=torch.uint8))
+        # The buffer is for persistence; `forward` reads this plain bool, because
+        # calling .item() on a CUDA tensor per batch would synchronise the device.
+        self.is_mirrored = bool(mirrored)
         # padding_idx is not used: padding is masked by per-sample weights instead,
         # because index 0 is a real feature (own pawn on a1) even if unreachable.
         self.bag = nn.EmbeddingBag(FEATURES * king_zones, accumulator, mode="sum")
@@ -157,8 +264,21 @@ class Net(nn.Module):
             black_king = ((white - 704) * (valid & (white >= 704))).sum(1)
             # Each perspective's zone comes from its own king, seen from its own
             # side: the black king's square is mirrored, as in features.indices.
-            white = white + (zone_of(white_king, self.king_zones) * FEATURES).unsqueeze(1)
-            black = black + (zone_of(black_king ^ 56, self.king_zones) * FEATURES).unsqueeze(1)
+            black_king = black_king ^ 56
+            if self.is_mirrored:
+                # Reflect the whole position left-right for a perspective whose own
+                # king stands on files e-h. A feature index is own/opponent half +
+                # piece * 64 + square, and every one of those strides is a multiple
+                # of 8, so XORing the index by 7 flips exactly the square's file.
+                white_flip = mirror_flip(white_king)
+                black_flip = mirror_flip(black_king)
+                white = white ^ white_flip.unsqueeze(1)
+                black = black ^ black_flip.unsqueeze(1)
+                white_king = white_king ^ white_flip
+                black_king = black_king ^ black_flip
+            zones, mirrored = self.king_zones, self.is_mirrored
+            white = white + (zone_of(white_king, zones, mirrored) * FEATURES).unsqueeze(1)
+            black = black + (zone_of(black_king, zones, mirrored) * FEATURES).unsqueeze(1)
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
         acc_b = self.bag(black, per_sample_weights=mask) + self.acc_bias
         white_to_move = stm.unsqueeze(1).bool()
@@ -175,7 +295,10 @@ class Net(nn.Module):
 
 
 def load_checkpoint(
-    path: Path, buckets: int | None = None, king_zones: int | None = None
+    path: Path,
+    buckets: int | None = None,
+    king_zones: int | None = None,
+    mirror: bool = False,
 ) -> Net:
     """Build a Net from a checkpoint, whichever layout it was saved in.
 
@@ -185,14 +308,23 @@ def load_checkpoint(
     net finished rather than from noise. Asking for fewer zones or buckets than the
     file has is refused: there is no honest way to merge them.
     """
-    state = torch.load(path, map_location="cpu", weights_only=True)
+    state = dict(torch.load(path, map_location="cpu", weights_only=True))
     accumulator = int(state["bag.weight"].shape[1])
     saved_zones = int(state["bag.weight"].shape[0]) // FEATURES
     zones = king_zones or saved_zones
+    was_mirrored = bool(state.pop("mirrored", torch.zeros(())).item())
+    mirrored = was_mirrored or mirror
+    if was_mirrored and not mirror:
+        # Not an error worth guessing about: an unmirrored continuation of a
+        # mirrored net would train the wrong feature map without any symptom.
+        raise SystemExit(f"{path} is a mirrored net; pass --mirror to continue it")
+    if mirror and not was_mirrored:
+        state["bag.weight"] = mirror_from_unmirrored(state["bag.weight"], zones, saved_zones)
+        saved_zones = zones
     if "l2.weight" in state:
         hidden = int(state["l2.weight"].shape[0])
         heads = buckets or 1
-        net = Net(accumulator, hidden, heads, zones)
+        net = Net(accumulator, hidden, heads, zones, mirrored)
         with torch.no_grad():
             net.bag.weight.copy_(expand_zones(state["bag.weight"], zones, saved_zones))
             net.acc_bias.copy_(state["acc_bias"])
@@ -202,12 +334,16 @@ def load_checkpoint(
             net.head_b3.copy_(state["l3.bias"].expand_as(net.head_b3))
         return net
     saved = int(state["head_w2"].shape[0])
-    if buckets is not None and buckets != saved:
-        raise SystemExit(f"{path} has {saved} output buckets, asked for {buckets}")
-    net = Net(accumulator, int(state["head_w2"].shape[2]), saved, zones)
+    heads = saved if buckets is None else buckets
+    if heads < saved:
+        raise SystemExit(f"{path} has {saved} output buckets, asked for {heads}")
+    net = Net(accumulator, int(state["head_w2"].shape[2]), heads, zones, mirrored)
     if zones != saved_zones:
-        state = dict(state)
         state["bag.weight"] = expand_zones(state["bag.weight"], zones, saved_zones)
+    if heads != saved:
+        for key in ("head_w2", "head_b2", "head_w3", "head_b3"):
+            state[key] = expand_heads(state[key], heads, saved)
+    state["mirrored"] = torch.tensor(int(mirrored), dtype=torch.uint8)
     net.load_state_dict(state)
     return net
 
@@ -356,6 +492,7 @@ def train(
     limit: int = 0,
     buckets: int = 1,
     king_zones: int = 1,
+    mirror: bool = False,
 ) -> tuple[Net, dict[str, float]]:
     """Train, cycling through `sources` one shard per epoch.
 
@@ -367,13 +504,15 @@ def train(
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
     if resume is not None:
-        net = load_checkpoint(resume, buckets, king_zones).to(device)
+        net = load_checkpoint(resume, buckets, king_zones, mirror).to(device)
         print(
-            f"  resumed from {resume} into {net.buckets} output bucket(s) "
-            f"and {net.king_zones} king zone(s)"
+            f"  resumed from {resume} into {net.buckets} output bucket(s), "
+            f"{net.king_zones} king zone(s), mirrored {net.is_mirrored}"
         )
     else:
-        net = Net(accumulator, buckets=buckets, king_zones=king_zones).to(device)
+        net = Net(
+            accumulator, buckets=buckets, king_zones=king_zones, mirrored=mirror
+        ).to(device)
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
     sizes = [len(_records(source, limit)) for source in sources]
@@ -516,6 +655,11 @@ def main() -> None:
     parser.add_argument(
         "--king-zones", type=int, default=1, help="first-layer copies, selected by own king"
     )
+    parser.add_argument(
+        "--mirror",
+        action="store_true",
+        help="mirrored king zones: reflect the position when the own king is on files e-h",
+    )
     parser.add_argument("--patience", type=int, default=4, help="early-stop patience, epochs")
     parser.add_argument("--weight-endgame", action="store_true", help="per-sample loss weights")
     parser.add_argument(
@@ -570,6 +714,7 @@ def main() -> None:
         limit=arguments.limit,
         buckets=arguments.buckets,
         king_zones=arguments.king_zones,
+        mirror=arguments.mirror,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)

@@ -35,8 +35,22 @@ FEATURES = 768
 MAX_PIECES = 32
 
 
-def king_zone(square: int, zones: int = 8) -> int:
+def mirror_flip(king_square: int) -> int:
+    """The file-flip a perspective applies, 0 or 7, from its own king's square.
+
+    A mirrored net stores king zones for files a-d only: when the own king stands
+    on e-h the whole position is reflected left-right for that perspective, so the
+    16-zone map covers 32 squares of king resolution at the same parameter count,
+    and every zone sees twice the data. `king_square` is already seen from the
+    perspective's own side (black's square is `^56` first)."""
+    return 7 if (king_square & 7) >= 4 else 0
+
+
+def king_zone(square: int, zones: int = 8, mirrored: bool = False) -> int:
     """Zone of a king on `square`, seen from its own side, for a net with `zones`.
+
+    With `mirrored`, `square` has already had `mirror_flip` applied, so its file is
+    a-d and the map only has to cover half the board.
 
     Eight zones: ranks 1-2 split into four two-file bands, because that is where
     kings spend most of the game and where castled-short, castled-long and
@@ -46,6 +60,16 @@ def king_zone(square: int, zones: int = 8) -> int:
     """
     rank = square >> 3
     file = square & 7
+    if mirrored:
+        if zones != 16:
+            raise ValueError(f"no mirrored zone map for {zones} king zones")
+        # Files a-d only. Ranks 1-2 get a zone per square (8), ranks 3-4 a zone
+        # per rank and file pair (4), ranks 5-8 a zone per rank pair and file pair (4).
+        if rank <= 1:
+            return rank * 4 + file
+        if rank <= 3:
+            return 8 + (rank - 2) * 2 + (file >> 1)
+        return 12 + ((rank - 4) >> 1) * 2 + (file >> 1)
     if zones == 1:
         return 0
     if zones == 4:
@@ -80,14 +104,20 @@ def king_zone(square: int, zones: int = 8) -> int:
 KING_ZONES = 8
 
 
-def indices(board: chess.Board, perspective: chess.Color) -> list[int]:
+def indices(board: chess.Board, perspective: chess.Color, mirrored: bool = False) -> list[int]:
     """Feature indices for every piece on the board, from `perspective`.
 
     Bit-scanning the twelve piece bitboards rather than calling `board.piece_map()`,
-    which allocates a dict of Piece objects and measured 4x slower.
+    which allocates a dict of Piece objects and measured 4x slower. With `mirrored`,
+    the whole position is reflected left-right when the perspective's own king stands
+    on files e-h, so that the king zone only ever indexes files a-d.
     """
     out: list[int] = []
     flip = 0 if perspective == chess.WHITE else 56
+    if mirrored:
+        king = board.king(perspective)
+        if king is not None:
+            flip ^= mirror_flip(king ^ (0 if perspective == chess.WHITE else 56))
     for piece_type in range(1, 7):
         base = (piece_type - 1) * 64
         for colour in (chess.WHITE, chess.BLACK):
@@ -124,9 +154,16 @@ def black_from_white(white: npt.NDArray[np.integer]) -> npt.NDArray[np.int64]:
 
 
 def feature_index(
-    square: int, piece_type: int, colour: chess.Color, perspective: chess.Color
+    square: int,
+    piece_type: int,
+    colour: chess.Color,
+    perspective: chess.Color,
+    flip: int = 0,
 ) -> int:
-    """Single-piece index. The engine's incremental accumulator uses this shape."""
-    rel = square if perspective == chess.WHITE else square ^ 56
+    """Single-piece index. The engine's incremental accumulator uses this shape.
+
+    `flip` is 0 or 7: a mirrored net passes 7 when the perspective's own king is on
+    files e-h, reflecting every square left-right for that perspective."""
+    rel = (square if perspective == chess.WHITE else square ^ 56) ^ flip
     own = 0 if colour == perspective else 384
     return own + (piece_type - 1) * 64 + rel
