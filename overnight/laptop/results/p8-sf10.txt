@@ -1,0 +1,7 @@
+name p8-sf10
+kind switch
+host tobys-laptop
+base_ms 8000 openings platform games 40
+INCONCLUSIVE  p8-sf10  ran out of games; champion stays
+  +21 =8 -11  score 62.5%  over 40 games
+  terminations: checkmate 32, insufficient_material 2, threefold_repetition 6
