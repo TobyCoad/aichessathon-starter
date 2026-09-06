@@ -639,8 +639,29 @@ risk and which was still only scoped as "someone should look at (a)/(b)/(c)".
   make_full / make_light / score_moves / qs_tt_store 2x each -- extra signatures forced by
   differing argument types at the call sites, ~1.5 s if unified. `quiesce` (4.2 s inference,
   10,578 lines) is the next candidate for the same treatment, after `search`.
-- QUEUE unchanged: `160-v95` -> `initasync-clocktest-l` -> `v95-clocktest-l` -> `165-v96`
-  -> `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
+- QUEUE (after the session's 14:38 edit): `160-v95` -> `initasync-clocktest-l` ->
+  `v95-clocktest-l` -> `v94-vs-sf8-120s` -> `165-v96` -> `v96-clocktest-l` -> `v96-120s`
+  -> `v94-120s`.
+- **THE REGIME CHANGE LANDED AT 14:38 (commit 4a79757) WHILE THIS ITERATION WAS RUNNING**
+  -- read its NOTES section above before doing anything else. Three consequences the loop
+  must act on, recorded here by iter 33:
+  * `160-v95` WAS LEFT RUNNING. It is a self-play 8 s gauntlet, i.e. the regime the human
+    has just scrapped, and it holds the only gauntlet slot for ~57 more minutes ahead of
+    the INIT_ASYNC clocktest and his own new `v94-vs-sf8-120s`. Stopping it at 400 was
+    considered and REJECTED: he edited the queue at 14:38, placed his new task
+    deliberately behind the two clocktests, and did NOT remove `160-v95` -- so the reading
+    that respects his edit is to let it finish. If the next iteration disagrees, that is a
+    live call, but make it deliberately and record it.
+  * v9.5 will therefore ship on OLD-REGIME evidence (self-play, 8 s) for its four search
+    switches. Say so plainly in CANDIDATE.md rather than quoting the Elo as if it were a
+    measurement against the world. INIT_ASYNC, the part of v9.5 that actually matters, is
+    gated by a clocktest and is unaffected by the regime change.
+  * **GAUNTLET SLOTS JUST BECAME SCARCE: ~2 runs a day at 78 min each, against ~8 at 8 s.**
+    That re-ranks the whole backlog in favour of work that needs NO gauntlet slot. Which is
+    exactly what `SEARCH_SPLIT` (above) is: it is exact code motion gated on a bit-identical
+    depth-8 node count and a clocktest, so it can ship in parallel with the new 120 s
+    measurements instead of competing with them. It was already the top item on size; under
+    the new regime it is the top item twice over. Same is true of the init work generally.
 - PENDING FOR THE NEXT ITERATION, both left mid-flight by the clock, neither blocking:
   (a) `160-v95`'s 400-GAME CHECKPOINT LANDED 14:41 AND IS UNDECIDED, VERBATIM:
       `checkpoint 400: +10 Elo, undecided -> 200 more` (400 games, elo +9.6 +/- 29.0,
