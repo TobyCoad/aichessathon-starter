@@ -352,6 +352,25 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   per-band static error (eg_calib) against the v9.3 net's 331.9 / 262.6 / 184.4 cp. If it
   does, the net is dropped and v9.4 goes back to being the search bundle alone -- one
   gauntlet either way.
+- WDL TRAINING UNDERWAY 09:35 (session). Decode DONE: 145,475,075 positions in 15.2 min
+  (8 workers, 20M shards). Merge DONE: 4 shards of 36,243,768 Stockfish + 36,243,768
+  Lichess each -- a TRUE 50/50 by position count, 290M per pass -- plus data/mixvalw.npy
+  (500k Lichess + 500k Stockfish-WDL), so the validation carries the same targets we train
+  toward. Fine-tune from the champion, 12 epochs, running on the GPU now.
+  READ THIS BEFORE COMPARING LOSSES: the champion scores 0.007830 on the WDL validation
+  against 0.004967 on the plain one. That is NOT a regression -- a game result is a noisy
+  label, so the WDL objective simply has a higher floor. NEVER compare a WDL val loss with
+  a non-WDL one. The gauntlet and eg_calib's per-band static error are the real reads.
+- TWO STUMBLES WORTH NOT REPEATING: (a) the merge first failed with ModuleNotFoundError
+  because it ran as `python training/merge_mix.py`, which puts training/ on sys.path and
+  breaks `from training.pack import`; use `python -m training.merge_mix`. The chain's
+  fallback correctly queued a SEARCH-ONLY v9.4, which was then withdrawn -- the fallback
+  works, but check the log before trusting a fallback verdict. (b) killing a detached chain
+  with taskkill on the outer wrapper leaves the script beneath it alive; three wdl_net.sh
+  instances were running at once. Kill the whole tree.
+- 147-seequiet, seequiet-clocktest-l, 146-cutnode, cutnode-clocktest-l MOVED to
+  overnight/laptop/deferred.json so the worker cannot start a 3 h task ahead of the v9.4
+  gauntlet. RE-ADD THEM once 149-v94wdl is running.
 - PIPELINE RUNNING (session, detached; the loop must NOT start GPU work or queue net tasks):
   wdl_decode.sh waits for the clocktest -> decodes 145M positions with --wdl-lambda 0.75
   (8 workers, 20M shards) -> wdl_net.sh merges 50/50 by POSITION COUNT (training/merge_mix.py)
