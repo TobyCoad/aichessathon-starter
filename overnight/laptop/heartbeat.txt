@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 04:32
+time 2026-09-06 04:42
 task 144-caporder
-progress     244 games  .... llr -0.56 [-2.94, 2.94] after 122 pairs, elo +1.4 +/- 34.3
+progress     280 games  .... llr -1.31 [-2.94, 2.94] after 140 pairs, elo -7.4 +/- 32.0
