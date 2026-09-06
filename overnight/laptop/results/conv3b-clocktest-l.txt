@@ -1,0 +1,5 @@
+name conv3b-clocktest-l
+kind clocktest
+host tobys-laptop
+flags 0/6  errors 0  lowest clock 5.7s  longest move 9.9s
+PASS
