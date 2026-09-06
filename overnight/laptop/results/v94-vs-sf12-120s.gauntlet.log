@@ -1,0 +1,32 @@
+stage 1: crash gate, v94-vs-sf12-120s vs random
+  clean over 24 games, 100% vs random
+
+stage 2: SPRT[-200, 200], challenger vs champion
+      3 games  .... llr +0.00 [-2.94, 2.94] after 1 pairs, elo +0.0 +/- inf  [pair 0 0.5]
+      4 games  .... llr +0.00 [-2.94, 2.94] after 2 pairs, elo -0.0 +/- 98.9  [pair 1 0.5]
+      7 games  .... llr +6.23 [-2.94, 2.94] after 3 pairs, elo +58.5 +/- 129.3  [pair 2 0.75]
+      8 games  .... llr +12.47 [-2.94, 2.94] after 4 pairs, elo +88.7 +/- 117.7  [pair 3 0.75]
+     11 games  .... llr +20.78 [-2.94, 2.94] after 5 pairs, elo +107.5 +/- 102.4  [pair 4 0.75]
+     13 games  .... llr +31.17 [-2.94, 2.94] after 6 pairs, elo +120.4 +/- 89.5  [pair 5 0.75]
+     14 games  .... llr +43.64 [-2.94, 2.94] after 7 pairs, elo +129.8 +/- 79.1  [pair 6 0.75]
+     16 games  .... llr +35.42 [-2.94, 2.94] after 8 pairs, elo +163.0 +/- 112.2  [pair 7 1]
+     18 games  .... llr +46.04 [-2.94, 2.94] after 9 pairs, elo +166.0 +/- 97.9  [pair 8 0.75]
+     20 games  .... llr +46.75 [-2.94, 2.94] after 10 pairs, elo +190.8 +/- 115.0  [pair 9 1]
+     22 games  .... llr +42.33 [-2.94, 2.94] after 11 pairs, elo +170.4 +/- 106.0  [pair 10 0.5]
+     24 games  .... llr +40.34 [-2.94, 2.94] after 12 pairs, elo +154.1 +/- 97.6  [pair 11 0.5]
+     26 games  .... llr +48.19 [-2.94, 2.94] after 13 pairs, elo +156.8 +/- 89.6  [pair 12 0.75]
+     28 games  .... llr +46.74 [-2.94, 2.94] after 14 pairs, elo +144.2 +/- 83.8  [pair 13 0.5]
+     30 games  .... llr +48.90 [-2.94, 2.94] after 15 pairs, elo +161.2 +/- 91.5  [pair 14 1]
+     32 games  .... llr +56.31 [-2.94, 2.94] after 16 pairs, elo +163.0 +/- 85.3  [pair 15 0.75]
+     35 games  .... llr +64.23 [-2.94, 2.94] after 17 pairs, elo +164.6 +/- 79.9  [pair 16 0.75]
+     37 games  .... llr +67.14 [-2.94, 2.94] after 18 pairs, elo +178.2 +/- 85.1  [pair 17 1]
+     38 games  .... llr +75.25 [-2.94, 2.94] after 19 pairs, elo +178.9 +/- 80.0  [pair 18 0.75]
+     40 games  .... llr +78.96 [-2.94, 2.94] after 20 pairs, elo +190.8 +/- 84.0  [pair 19 1]
+
+C:\dev\aichessathon\starter\overnight\challengers\v94-vs-sf12-120s vs C:\dev\aichessathon\starter\opponents\sf-skill12
+  +24 =12 -4  score 75.0%  over 40 games
+  .... llr +78.96 [-2.94, 2.94] after 20 pairs, elo +190.8 +/- 84.0
+  mean game length 120 plies
+  terminations: checkmate 28, fifty_moves 1, insufficient_material 1, stalemate 2, threefold_repetition 8
+
+INCONCLUSIVE  v94-vs-sf12-120s  ran out of games; champion stays

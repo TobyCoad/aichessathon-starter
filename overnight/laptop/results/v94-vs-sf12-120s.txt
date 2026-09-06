@@ -1,0 +1,7 @@
+name v94-vs-sf12-120s
+kind switch
+host tobys-laptop
+base_ms 120000 openings platform games 40
+INCONCLUSIVE  v94-vs-sf12-120s  ran out of games; champion stays
+  +24 =12 -4  score 75.0%  over 40 games
+  terminations: checkmate 28, fifty_moves 1, insufficient_material 1, stalemate 2, threefold_repetition 8
