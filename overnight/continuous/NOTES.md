@@ -408,6 +408,50 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   output-slope rescale is worth NOTHING in games (+69 at 76 games decayed to -3 by 346) --
   SLOPE RESCALE CLOSED. Measure slope as a diagnostic, never ship a rescale.
 
+## !!! THE PLY CAP IS 600 AND IT IS A DRAW, NOT A MATERIAL ADJUDICATION (6 Sep 10:45, iter 26)
+Round 31's post-mortem flagged "ply 323 un-adjudicated contradicts the ply-300 model -- verify,
+do not build". Verified against the CANONICAL source named in harness/rules.py line 1
+(https://aichessathon.com/docs/rules.md), fetched twice with different questions, same answer:
+  "A game still running at 600 plies is drawn, and the opening position counts toward those 600"
+and material is never considered in that determination. Init budget there is 90 s (our
+harness/rules.py says 60).
+OUR LOCAL RULES COPY IS STALE: harness/rules.py has PLY_CAP = 300 and harness/referee.py
+awards the game on raw material at that cap. We must NOT edit harness/ -- but nothing that
+depends on it is trustworthy. Evidence the platform changed under us: round 18 (old) really
+was `adjudication` at exactly 300 plies; round 31 (6 Sep) reached 323 plies and ended
+`insufficient_material`, which is impossible under a 300-ply cap and unremarkable under 600.
+Longest game we have on record is 323, so the real cap has never once been reached.
+WHAT IS NOW WRONG IN THE ENGINE (all in agent.py, no kernel involved):
+- `ADJUDICATION_PLY = 300` (line ~1028) and every consumer of it.
+- `ADJ_BEHIND_LATE = 300` adds up to +300 cp to the behind-side draw score on a ramp
+  `late = (game_ply - 150) / (300 - 150)`, i.e. FULL STRENGTH from ply 300. Its premise --
+  "behind on material at the cap = a loss, so buy the draw" -- is false: at 600 the game is
+  drawn no matter the material. Under the true rule that ramp should still be zero at every
+  ply we have ever played (at 323 the correct `late` is 0.077, not 1.0).
+- `CONTEMPT_AHEAD_LATE` ramps the same way, so when AHEAD we get maximum late-game contempt
+  ~300 plies early. And the true rule has a real consequence nobody has modelled: at 600 a
+  WON position becomes a draw, so the ahead-side urgency belongs near 600, not 300.
+- The `ADJ_WINDOW = 80` fifty-move plan (search.prepare, ~line 2152) arms at plies 220-300
+  and drops the kernel's C_HMC_DRAW. Under the true cap its window is 520-600, i.e. it should
+  never have fired in any game we have played.
+THE TRAP, and it is a bad one: `testing/referee.py` (ours, a copy) imports PLY_CAP from
+harness.rules, so OUR GAUNTLET PLAYS THE 300-PLY MATERIAL-ADJUDICATION GAME. Every gauntlet
+we have run rewards the false premise -- the v9 bundle's +23 was measured under it, and
+`adjudication` appears in the termination counts of most gauntlet logs (144-caporder: 7).
+So a corrected ADJ_V2 will look WORSE in our own SPRT while being RIGHT on the platform.
+DO NOT judge any adjudication change by an 8 s SPRT until the test harness matches.
+NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no kernel):
+ 1. `testing/referee.py:43` already takes `ply_cap` as a parameter with a default -- add a
+    `--ply-cap` argument to testing/gauntlet.py (default 600) and to testing/clocktest.py
+    (`--ply-cap` default 300 at line 129) so our tests play the platform's game. This is
+    testing/, NOT harness/, so it is allowed. Do this FIRST: it re-bases every later verdict.
+ 2. Build `ADJ_V2` (off in the tree) = cap 600 everywhere `ADJUDICATION_PLY` is read, the
+    `late` ramp re-based to `(game_ply - 300) / 300`, and ADJ_BEHIND_LATE reconsidered from
+    scratch under "the cap is a draw" rather than re-tuned.
+ 3. Only then gauntlet it, and only against a 600-ply referee.
+Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
+four-switch bundle under a referee that shared the bug.
+
 ## Running now (6 Sep 10:45, iter 26)
 - THE MACHINE WAS NOT ACTUALLY QUIET. The session stopped 147b-seequiet at 10:18 and moved
   it to deferred.json, but SEVEN orphaned gauntlet pool workers (parent 52300, dead; spawned
@@ -436,7 +480,9 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
 - RAZOR, ROOT_NODES, SINGULAR_EXT2 unchanged and still off. v9.5 bundle union: DRAW_BUDGET
   (widened, needs drawcap2-clocktest-l) + ROOT_NODES + SINGULAR_EXT2 + RAZOR + whatever
   SEE_QUIET / CUTNODE return when they are re-queued after v9.4.
-- NEXT STEP, in order: (1) if 149-v94wdl has a PROMOTE verdict + v94wdl-clocktest-l PASS,
+- NEXT STEP, in order: (0) the 600-ply finding above outranks every backlog item -- fix
+  testing/gauntlet.py's ply cap before trusting another adjudication-sensitive verdict;
+  (1) if 149-v94wdl has a PROMOTE verdict + v94wdl-clocktest-l PASS,
   ship v9.4 exactly as the human's instruction section says; (2) the moment 149-v94wdl is
   RUNNING, re-add 146-cutnode, 147b-seequiet, drawcap2-clocktest-l from deferred.json;
   (3) then add `train.py|merge_mix` to worker.sh's busy_gauntlets regex (iter 25's root

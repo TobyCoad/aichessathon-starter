@@ -1368,3 +1368,36 @@ so that PASS is not evidence about the switch that now sits in the tree. I parke
 drawcap2-clocktest-l in deferred.json and wrote into NOTES that DRAW_BUDGET does not ship in
 v9.5 without it. The narrow version is dead either way; there is no configuration left that
 the old PASS describes.
+
+The last thing I did was chase round 31's loose end, which cost no machine time at all and
+turned out to be the most important thing in the iteration. Round 31's post-mortem had
+flagged that the game reached 323 plies un-adjudicated and said plainly: verify the platform
+rules, do not build. I fetched the canonical source that harness/rules.py names in its first
+line, twice with different questions, and got the same answer both times -- a game still
+running at 600 plies is drawn, the opening position counts toward those 600, and material is
+never considered. Our local harness/rules.py says PLY_CAP = 300 with the game awarded on raw
+material. The copy is stale, and round 18 versus round 31 shows the platform changed under
+us: round 18 really was adjudicated at exactly 300, round 31 ran to 323 and ended on
+insufficient material, which cannot happen under a 300-ply cap.
+
+That makes the premise of a feature we shipped in v9 false. ADJ_BEHIND_LATE adds up to three
+hundred centipawns to the behind-side draw score on a ramp that reaches full strength at ply
+300, bought entirely with the argument that being behind on material at the cap is a loss. At
+600 it is a draw whatever the material, and the correct ramp value at the longest game we
+have ever played is 0.077 rather than 1.0. The fifty-move plan that drops the kernel's draw
+threshold arms between plies 220 and 300; under the real rule its window is 520 to 600, so it
+has never legitimately fired. The ahead-side contempt has the same error, and the real rule
+has a consequence nobody has modelled at all: at 600 plies a won position becomes a draw, so
+the urgency belongs near 600, not near 300.
+
+The part that makes this more than a bug report is that testing/referee.py imports PLY_CAP
+from harness.rules, so our own gauntlet has been playing the 300-ply material-adjudication
+game all along. Every verdict we have taken, including the v9 bundle's +23 that carried
+ADJUDICATION in with it, was measured by a referee that shared the mistake. A corrected
+ADJ_V2 will therefore look worse in our own SPRT while being right on the platform, and I
+have written that into NOTES as loudly as I can, because it is exactly the shape of finding
+that gets closed for the wrong reason. The fix has an order: give testing/gauntlet.py a
+--ply-cap argument first -- testing/ is ours, harness/ is not, and referee.py already takes
+the cap as a parameter -- and only then build and judge ADJ_V2. I did not start that build.
+It is a contained agent.py job but it is not a fifteen-minute one, and the standing rule
+against leaving a half-done build in the tree at the end of an iteration is the right rule.
