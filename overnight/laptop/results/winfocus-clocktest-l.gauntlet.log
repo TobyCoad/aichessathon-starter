@@ -1,0 +1,16 @@
+winfocus-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+   125 plies  1-0           lowest clock    7.5s  longest move  10.0s  at ply 30   53.8s  used w   139s b   137s
+compiled board: on
+   115 plies  1-0           lowest clock    6.4s  longest move   8.8s  at ply 30   63.9s  used w   140s b   140s
+compiled board: on
+   142 plies  1/2-1/2       lowest clock    6.3s  longest move   9.6s  at ply 30   62.8s  used w   149s b   148s
+compiled board: on
+   224 plies  1/2-1/2       lowest clock    5.5s  longest move  11.4s  at ply 30   37.7s  used w   169s b   169s
+compiled board: on
+    85 plies  1/2-1/2       lowest clock    8.9s  longest move   8.9s  at ply 30   66.8s  used w   132s b   132s
+compiled board: on
+   142 plies  0-1           lowest clock    6.0s  longest move   8.8s  at ply 30   70.3s  used w   147s b   146s
+
+flags 0/6  errors 0  lowest clock 5.5s  longest move 11.4s
+PASS

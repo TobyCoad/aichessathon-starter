@@ -1,0 +1,5 @@
+name winfocus-clocktest-l
+kind clocktest
+host tobys-laptop
+flags 0/6  errors 0  lowest clock 5.5s  longest move 11.4s
+PASS
