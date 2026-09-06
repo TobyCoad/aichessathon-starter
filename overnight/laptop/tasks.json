@@ -17,6 +17,30 @@
   "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
  },
  {
+  "name": "p8-sf10",
+  "kind": "switch",
+  "sed": "",
+  "champion": "opponents/sf-skill10",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 8000,
+  "openings": "platform",
+  "elo0": -200,
+  "elo1": 200
+ },
+ {
+  "name": "p8-sf12",
+  "kind": "switch",
+  "sed": "",
+  "champion": "opponents/sf-skill12",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 8000,
+  "openings": "platform",
+  "elo0": -200,
+  "elo1": 200
+ },
+ {
   "name": "v94-vs-sf14-120s",
   "kind": "switch",
   "sed": "",
