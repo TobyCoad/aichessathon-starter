@@ -79,6 +79,12 @@
   "games": 600
  },
  {
+  "name": "155-mixnet2s",
+  "net": "overnight/nets/155-mixnet2s.npz",
+  "sed": "",
+  "games": 600
+ },
+ {
   "name": "caporder-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/"
