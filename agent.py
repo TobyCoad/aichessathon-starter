@@ -1206,7 +1206,7 @@ INIT_FOLD: Final = False
 # to its own move budget. A slow first move is survivable -- the clock is 120 s + 0.5 s
 # per side -- where a failed init is a certain loss. When the compile fits inside the
 # deadline (every local run does) this is byte-for-byte the current behaviour.
-INIT_ASYNC: Final = False
+INIT_ASYNC: Final = True
 # Seconds from the top of this module at which import gives up waiting. 72 of the
 # platform's 90 leaves 18 s for python start-up, the runner and their scheduling
 # jitter; the samples above say the compile itself usually lands well inside it.

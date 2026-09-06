@@ -2137,3 +2137,32 @@ endgame suite and the static-error probe both predicted. CANDIDATE.md was update
 
 I built no engine code again, and again deliberately -- the tree is byte-identical to v9.4, an 8 s
 gauntlet held the machine the whole time, and a numba compile of mine would have corrupted it.
+
+**6 Sep 2026, 21:25 (iter 43) -- a conflict marker cost twenty minutes of laptop time; v9.6
+shipped on the gate the clocktest could not reach.** The laptop had run nothing since 20:38:
+worker.sh's stash/pull/pop had left merge markers in `overnight/laptop/tasks.json`, so every
+`next_task` died on JSONDecodeError while the worker logged `pull --rebase failed` and looped.
+From the results directory a stalled worker and a busy one look identical, which is the lesson:
+check `git status` for an unmerged queue file before reading any result. Resolved to iter 42's
+queue, committed, stash dropped, and `v96-clocktest-l` started within the minute -- PASS at 21:07
+(0/6 flags, lowest clock 6.0 s, longest move 13.7 s).
+
+v9.6 = v9.5 + INIT_ASYNC went out at 21:20. The engine is byte-for-byte v9.5 -- same search, same
+net, depth-8 bench 1,014,119 nodes exactly -- and the whole change is that the numba compile runs
+on a daemon thread that import waits for only to 72 s, after which the first `get_move` joins it
+and charges the wait to its own move budget. The thing worth recording is that **the clocktest is
+not a gate on this switch**: the kernel compiles in ~30 s here, inside the deadline, so locally
+INIT_ASYNC is a no-op by construction and every local measurement of it measures v9.5. Iter 42's
+ship criterion ("the clean-unzip import must beat 36.0 s") was therefore unsatisfiable, and I said
+so in the candidate rather than quietly shipping a number that looked like a regression. The real
+gate was to reproduce the platform's slow box: a copy with `INIT_READY_S = 3.0` returned from
+import at 5.6 s still compiling, joined on move one (37.2 s, charged to itself), played a legal
+e2e4 and moved instantly thereafter. Four platform init samples -- 74.1 s, >90 s (a LOST game),
+88.1 s, 64.1 s -- all become survivable.
+
+`p8-sf10` finished 62.5% (+21 =8 -11, +88.7 +/- 124.8) over 40 games vs Stockfish skill 10 at 8 s,
+against -17.4 Elo for the same probe on v9.4's net. Forty games spans zero and it is not a result,
+but it fires the pre-registered rule from iter 38: that rung is in the 40-70% band, so skill 10 at
+8 s is now the screening opponent and we can stop grading ourselves against ourselves. The net's
+actual verdict, `182-v95-vs-v94`, started at 21:08 and checkpoints around 22:20 -- the human has
+both zips in his Downloads folder and gets that answer whichever way it goes.

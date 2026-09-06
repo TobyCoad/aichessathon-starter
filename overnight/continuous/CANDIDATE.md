@@ -1,74 +1,60 @@
-# v9.5 -- v9.4 + a net retrained on engine data with Stockfish labels
+# v9.6 -- v9.5 + INIT_ASYNC: the init timeout can no longer lose a game
 
-Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v9.5.zip** (21.7 MB zip, 28.0 MB
-unpacked; also `submission-v95.zip` in the repo root). Built from the TESTED challenger dir
-`overnight/challengers/180-sf100`, with INIT_FOLD flipped on in the zip copy (proved exact:
-bench depth 8 is 1,014,119 nodes with the fold on AND off).
+Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v9.6.zip** (21.7 MB zip, 28.0 MB
+unpacked; also `submission-v96.zip` in the repo root). Built from the TESTED challenger dir
+`overnight/challengers/v96-clocktest-l`.
 
-Search is UNCHANGED from v9.4. This is a net-only change.
+**The engine is byte-for-byte v9.5** -- same search, same net (md5 9e2b0006), depth-8 bench
+identical at 1,014,119 nodes. The only change is *when* the numba compile happens. This is a
+robustness fix, not a strength fix, and I would rather it went up than v9.5 did.
 
-## The defect this fixes, traced end to end
-Our evaluation overvalued positions where we are attacking. Against a Stockfish d16 reference
-on 258 positions from our own games, the signed error in attacking positions was -452 cp for
-the original Lichess-trained net and -209 for v9.4's, while quiet positions sat near zero.
+## The defect
+The platform starts a fresh process for every ladder game and gives `import agent` a fixed 90 s
+budget. A game whose import overruns is lost outright ("game ended white by init") before a move
+is played. Our four platform samples: **74.1 s, >90 s (LOST), 88.1 s, 64.1 s** -- one loss in
+four, and the two survivors at 74 and 88 were inside the budget by seconds. 89% of that import is
+numba compiling the search kernel.
 
-The cause is selection bias in HUMAN games. Humans enter attacking positions when the attack
-works, so the corpus contains a filtered sample of the successful ones. Measured on 2,000
-positions from real games (ours and the leader's), the TRUE median value of having an attack
-is **+5 cp**; the Lichess corpus teaches **+440**; engine self-play teaches **+6 to +10**.
-The corpus lies by 435 cp and the net inherited 452 cp of it -- a near one-for-one match that
-closes the chain from corpus to blunder.
+## What INIT_ASYNC does
+The kernel compile moves to a daemon thread. Import waits for it only until `INIT_READY_S = 72.0`
+seconds from the top of `agent.py`; past that, import returns, the runner prints its ready line
+inside the 90 s budget, and the **first `get_move` joins the thread and charges the wait to its
+own move budget** (`_join_warmup` subtracts it from `time_left_ms`, floor 200 ms). A slow first
+move on a 120 s + 0.5 s clock is survivable; a failed init is a certain loss. All four samples
+above become safe.
 
-That is the mechanism behind our blown wins: we build an attack, believe we are ~450 cp better
-than we are, commit, it does not break through, and a won game becomes a draw or a loss.
+## Evidence
+- **`v96-clocktest-l` PASS** (21:07): flags 0/6, errors 0, lowest clock 6.0 s, longest move 13.7 s,
+  at 120 s + 0.5 s charged x1.5. Measured on this exact build.
+- **The deadline path tested directly.** The clocktest cannot reach it: the compile takes ~30 s
+  here, well inside 72 s, so locally the switch is a no-op by construction. I ran a copy with
+  `INIT_READY_S = 3.0` to reproduce the platform's slow box: import returned at **5.6 s** printing
+  `init-async: ready at 5.5s with the search kernel still compiling`, the first `get_move` joined
+  the compile (**37.2 s**, charged to itself) and returned a legal `e2e4`, the second move was
+  instant. That is the whole mechanism, end to end.
+- Clean-unzip cold import **43.0 s**, first move 0.0 s -- measured while an 8 s SPRT was loading
+  the machine, so this is a stress number, and it is under the 45 s bar.
+  **It is NOT lower than v9.5's 36.0 s and it was never going to be:** below the deadline the
+  switch is byte-identical behaviour. Anyone reading this as a speedup is reading it wrong. The
+  gain is entirely in the tail we have already lost a game to.
+- ruff PASS, mypy PASS, `check_fastsearch --depth 4 --random 30` PASS (70/70 exact, 40/40 best
+  move, node ratio 1.00), bench depth 8 = 1,014,119 nodes = v9.5's exactly (the INIT_FOLD gate).
 
-## What changed
-The net is retrained on **321 M positions of engine self-play with Stockfish n20000 labels**
-(vondele/rescored), replacing the 50/50 human/engine mix. No human data at all. The labels
-correlate **0.978** with our Stockfish reference against **0.861** for the labels v9.4 learned
-from. Scale re-derived locally as 0.2584 cp/unit before training (the step that cost a night
-when 0.45 was used instead of 0.262).
+## What is still unproven, unchanged from v9.5
+The **net has still never won a rated self-play game against v9.4.** `181-v95-vs-v94` was killed
+by our own crash gate (init timeouts from 14 simultaneous cold compiles -- fixed, and every task
+now carries `workers: 4`); the re-run **`182-v95-vs-v94`** started at 21:08 and its 200-game
+checkpoint lands around 22:20. I will email the verdict either way.
 
-## Measured
-- **Endgame suite, 400 positions at 2.5 s: 7.5 cp mean loss, the best any net has recorded**
-  (v9.4 11.4, v9.3 13.8, the old champion 10.8). The 9-12 piece band **halved, 21.5 -> 9.8**.
-  This is the instrument that scores MOVE CHOICE on positions from our own games below 16
-  pieces, which is where every platform loss and draw we have analysed ended up.
-- **Attack bias eliminated**: signed error in attacking positions -158 -> **+11** on a neutral
-  2,000-position probe; quiet +27 -> -1; weighted evaluation error **-24%**.
-- check_nnue: all checks passed. check_fastsearch: 70/70 + 40/40 PASS.
-- The zip was UNZIPPED AND RUN, not just built: cold import 36.0 s, plays e2e4, a sane K+P
-  endgame move and a sane middlegame move. Net md5 9e2b0006 (the tested net).
+The one piece of game evidence the new net does have is external, not self-play:
+**`p8-sf10` finished 62.5% (+21 =8 -11, +88.7 +/- 124.8 Elo) over 40 games at 8 s vs
+Stockfish skill 10**, where the same probe on v9.4's net finished at -17.4 Elo. Forty games is
+far too few to call it -- the interval spans zero comfortably -- but the sign matches what the
+endgame suite and the static-error probe both predicted. It also settles a testing question: at
+62.5% that rung is inside the 40-70% band, so **Stockfish skill 10 at 8 s is now our screening
+opponent** and we can stop grading ourselves against ourselves.
 
-## The honest caveat
-**There is no game evidence yet.** The 8 s SPRT against the v9.4 champion is running now and
-its 200-game checkpoint lands around 21:00. Our own notes warn that the endgame suite is "a
-veto on catastrophes, not the ranking signal" -- v9.3's net scored WORSE on it (13.8) and still
-won +19 Elo in games. Three instruments agree here and two of them are not circular, but none
-of them is Elo. If the gauntlet comes back negative I will say so immediately.
-
-## Update 6 Sep 20:35 -- one gate PASSED, the other aborted before it played a game
-
-**`v95net-clocktest-l`: PASS** (20:07). flags 0/6, errors 0, lowest clock 5.5 s, longest move
-12.8 s -- measured on THIS net, not on the earlier v9.5 that shared the number. This is the
-mandatory gate, and the zip is safe to run: it does not flag and it does not error.
-
-**The 8 s SPRT still has no result, and this time it is our test harness, not the engine.**
-`181-v95-vs-v94` printed `REJECT ... failed 7/24 games (init 7)` at 20:12. That verdict is a
-crash-gate abort, NOT a strength verdict: it never reached stage 2. All seven failures are
-`init` -- the 24-game gate ran 7 games in parallel, i.e. 14 engine processes each compiling the
-numba kernel from cold at the same moment, and seven of them took longer than the 90 s init
-budget. Nothing was played and nothing about the net was measured. Re-queued as
-`182-v95-vs-v94` with the concurrency halved (4 workers); its 200-game checkpoint lands about
-an hour after it starts.
-
-**What that abort does say, and it is not nothing.** Our cold init is 36.0 s single-process
-here; the platform's box is ~1.8x slower against a 90 s budget, so v9.5 lands around 65 s of
-90 with no margin for a loaded machine. Tonight our own gate showed init blowing straight
-through 90 s the moment the machine is busy. That is the case for v9.6 (INIT_FOLD +
-INIT_ASYNC, both already built and measured), whose clocktest is on the machine now.
-
-**Recommendation, unchanged and explicit: v9.5 is safe to upload but its strength is still
-unproven.** Three non-game instruments agree it is better and none of them is Elo. If you would
-rather wait, the SPRT verdict will be in your inbox tonight; if you upload now, nothing in the
-clocktest suggests it will misbehave.
+## Next
+`182-v95-vs-v94` (600 games, 8 s, the net's strength verdict) -> `p8-sf12` -> `v95-vs-sf14-120s`.
+v9.7's bundle: SEE_QUIET (its rejection was an init-crash abort, not a strength result -- it is
+open again), ROOT_NODES, KILLER_SHIFT, ENDGAME_SHRINK, RAZOR.

@@ -251,6 +251,20 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
+- **v9.6 (6 Sep 21:20, emailed) = v9.5 + INIT_ASYNC.** Engine byte-for-byte v9.5 (same search,
+  same net 9e2b0006, d8 bench 1,014,119, identical to v9.5); the kernel compile moves to a
+  daemon thread and import waits only to INIT_READY_S=72 s, after which the first get_move joins
+  it and charges the wait to its own budget. Evidence: `v96-clocktest-l` PASS (0/6 flags, lowest
+  clock 6.0 s, longest move 13.7 s), clean-unzip import 43.0 s under SPRT load, and -- the gate
+  that matters, because the clocktest CANNOT reach the async branch locally (compile ~30 s < 72 s,
+  so the switch is a no-op here by construction) -- a direct deadline test with INIT_READY_S=3.0:
+  import returned at 5.6 s still compiling, first get_move joined (37.2 s, charged to itself) and
+  played a legal e2e4, second move instant. Script: scratchpad `async_deadline_test.py`, recipe
+  in the iter 43 section. **Do not expect a lower local import from this switch and do not ship a
+  successor that claims one** -- iter 42's "must beat 36.0 s" ship criterion was wrong by
+  construction; the gain is entirely in the >72 s tail, where 1 of our 4 platform samples is a
+  recorded LOSS. INIT_FOLD is True in the ZIP only (the tree keeps it False so check_fastsearch
+  can zero ctrl), exactly as v9.5 shipped.
 - **v9.5 (6 Sep 19:41, emailed by the net lane) = v9.4 + the sf100 net** (321 M positions of
   engine self-play with Stockfish n20000 labels, no human data; scale 0.2584; md5 9e2b0006).
   Search byte-identical to v9.4. Endgame suite 11.4 -> 7.5 cp (best any net has recorded),
@@ -729,6 +743,41 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
  3. Only then gauntlet it, and only against a 600-ply referee.
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
+
+## Running now (6 Sep 21:25, iter 43) -- THE QUEUE FILE WAS INVALID JSON FOR 20 MINUTES; v9.6 SHIPPED
+
+**THE WORKER RAN NOTHING BETWEEN 20:38 AND 20:58 AND THE CAUSE WAS A MERGE CONFLICT IN
+`overnight/laptop/tasks.json`.** worker.sh's stash / `pull --rebase` / pop left `<<<<<<< Updated
+upstream` markers in the queue file; every `next_task` after that died on JSONDecodeError, the
+worker logged `pull --rebase failed` and looped, and `p8-sf10` (finished 20:38) was the last
+thing to run. Resolved by keeping iter 42's rewritten queue (the stashed side re-added three
+already-finished tasks: 180-sf100, v94-vs-sf12-120s, conv3b-clocktest-l), committing it and
+dropping the stash. **`git status` for an unmerged `tasks.json` is now the first thing to check
+every iteration -- a stalled worker looks exactly like a running one from the results directory.**
+
+**`v96-clocktest-l` PASS (21:07)** -- 0/6 flags, 0 errors, lowest clock 6.0 s, longest move 13.7 s.
+
+**v9.6 SHIPPED 21:20** (Downloads + `submission-v96.zip`, CANDIDATE.md rewritten, notify sent).
+The reasoning that mattered: **the clocktest is not a gate on INIT_ASYNC at all.** The kernel
+compiles in ~30 s here against a 72 s deadline, so locally the switch is byte-identical behaviour
+and every local measurement of it -- clocktest, import, bench -- is a measurement of v9.5. The
+branch was tested by reproducing the platform's slow box directly (a copy with INIT_READY_S=3.0):
+import 5.6 s, first move 37.2 s charged to itself, legal move, second move instant. Keep that
+script; any future init switch is gated the same way.
+
+**`p8-sf10` FINAL: 62.5% (+21 =8 -11), +88.7 +/- 124.8 over 40 games vs `opponents/sf-skill10`
+at 8 s.** Two things follow. (1) The pre-registered rule from iter 38 fires: 62.5% is inside the
+40-70% band, so **skill 10 at 8 s IS the screening rung** -- 600 games there is ~80 min at +/- 20
+Elo and is not self-play. (2) It is the new net's only game evidence, and the same probe on v9.4's
+net finished at -17.4 Elo. Forty games spans zero; do NOT quote it as a result, but the sign is
+the one the endgame suite and the static-error probe predicted.
+
+**`182-v95-vs-v94` STARTED 21:08** (600 games, 8 s, `workers: 4`, vs `opponents/v94net`). Its
+200-game checkpoint is the net's first real strength verdict and lands ~22:20. Email it either way.
+
+**Gate log for v9.6:** ruff PASS, mypy PASS, check_fastsearch 70/70 exact + 40/40 best move
+(node ratio 1.00), bench d8 1,014,119 nodes = v9.5's exactly (the INIT_FOLD gate), zip 21.7 MB /
+28.0 MB unpacked, clean-unzip import 43.0 s under load.
 
 ## Running now (6 Sep 20:35, iter 42) -- v9.5's CLOCKTEST PASSED; ITS SPRT WAS KILLED BY OUR OWN CRASH GATE, NOT BY THE ENGINE
 
@@ -2265,6 +2314,25 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 43) **READ `182-v95-vs-v94`'s 200-GAME CHECKPOINT (~22:20) AND EMAIL IT.** It is the
+only strength evidence v9.5/v9.6's net will ever get against v9.4, and the human has BOTH zips in
+his Downloads folder. PROMOTE or INCONCLUSIVE-positive: confirm the upload. REJECT with the llr
+crossing the bound: tell him to upload v9.4's net instead -- the search half of v9.6 is exact and
+INIT_ASYNC is worth keeping regardless, so the fallback build is v9.4's net + INIT_ASYNC, not a
+revert to v9.4.
+(0-NEW-b, iter 43) **THE SCREENING RUNG IS SETTLED: `opponents/sf-skill10` at 8 s** (`p8-sf10`
+62.5%, iter 43 section). From here an A/B is 600 games at that rung, not 600 games against
+ourselves, and `testing/pairdiff.py` joins two runs pair-by-pair. Propose the regime change to the
+human in the next candidate email -- he set the self-play regime, so say it explicitly.
+(0-NEW-c, iter 43) **v9.7's BUNDLE IS BUILT ALREADY AND NEEDS ONE SLOT:** SEE_QUIET (open again --
+`147-seequiet` was an init-crash abort, not a strength result) + ROOT_NODES + KILLER_SHIFT + RAZOR,
+all off in the tree. ENDGAME_SHRINK may only join it after the 17-min endgame suite runs on a quiet
+laptop (any band worse by >1.5 cp vetoes). Queue it as `183-v97` with `workers: 4` behind `p8-sf12`
+-- and queue its `v97-clocktest-l` in the same commit.
+(0-NEW-d, iter 43) **CHECK `git status` FOR AN UNMERGED `tasks.json` BEFORE READING ANY RESULT.**
+Twenty minutes of laptop time went to a conflict marker tonight and the results directory gave no
+sign of it; `tail overnight/laptop/worker.log` for JSONDecodeError is the one-line check.
+
 (0-NEW, iter 42) **READ `v96-clocktest-l` THEN `182-v95-vs-v94`.** If `v96-clocktest-l` PASSES,
 **SHIP v9.6 = v9.5 + INIT_FOLD + INIT_ASYNC** without waiting for any SPRT: INIT_FOLD is exact by
 construction (bit-identical depth-8 node count is the gate, do not skip it) and INIT_ASYNC only

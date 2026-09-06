@@ -1,0 +1,8 @@
+stage 1: crash gate, v94-120s vs random
+  clean over 24 games, 100% vs random
+
+stage 2: SPRT[-50, 50], challenger vs champion
+      2 games  .... llr +0.00 [-2.94, 2.94] after 1 pairs, elo +0.0 +/- inf
+      4 games  .... llr -1.14 [-2.94, 2.94] after 2 pairs, elo -88.7 +/- 173.8
+      6 games  .... llr -1.72 [-2.94, 2.94] after 3 pairs, elo -58.5 +/- 114.5
+      8 games  .... llr +0.00 [-2.94, 2.94] after 4 pairs, elo -0.0 +/- 147.2
