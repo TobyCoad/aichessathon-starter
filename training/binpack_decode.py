@@ -288,7 +288,7 @@ def decode_chunk(job: tuple[bytes, float, int]) -> tuple[np.ndarray, int, int]:
         if not idx or len(idx) > MAX_PIECES:
             continue
         cp = score if board.turn == chess.WHITE else -score
-        cp = int(round(cp * scale))
+        cp = round(cp * scale)
         cp = max(-CP_CLAMP, min(CP_CLAMP, cp))
         if kept >= len(out):
             out = np.concatenate([out, np.zeros(len(out), dtype=RECORD)])
@@ -305,9 +305,11 @@ def chunks(path: Path) -> Iterator[bytes]:
     if path.suffix == ".zst":
         import zstandard
 
-        raw = zstandard.ZstdDecompressor().stream_reader(open(path, "rb"))
+        raw = zstandard.ZstdDecompressor().stream_reader(
+            open(path, "rb")  # noqa: SIM115 -- streamed until EOF; closed at process exit
+        )
     else:
-        raw = open(path, "rb")
+        raw = open(path, "rb")  # noqa: SIM115 -- streamed until EOF; closed at process exit
     stream = io.BufferedReader(raw, buffer_size=8 << 20)
     while True:
         header = stream.read(8)
@@ -327,7 +329,8 @@ def sample(path: Path, limit: int) -> None:
     printed = 0
     for chunk in chunks(path):
         for board, move, score, ply, result in iter_chunk(chunk):
-            print(f"{board.fen()}\t{score}\t{(move.uci() if move is not None else '0000')}\t{ply}\t{result}")
+            mv = move.uci() if move is not None else "0000"
+            print(f"{board.fen()}\t{score}\t{mv}\t{ply}\t{result}")
             printed += 1
             if printed >= limit:
                 return
@@ -390,7 +393,8 @@ def main() -> None:
                 written += len(shard)
                 shard_index += 1
                 print(
-                    f"  wrote {path.name}: {len(shard):,} positions (balanced from {pending_rows:,});"
+                    f"  wrote {path.name}: {len(shard):,} positions"
+                    f" (balanced from {pending_rows:,});"
                     f" {kept_total:,} kept of {seen_total:,} seen, {time.time() - started:.0f} s",
                     flush=True,
                 )

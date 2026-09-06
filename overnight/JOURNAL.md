@@ -967,3 +967,18 @@ laptop tail; after the fold-verification rebuild the tree copy in
 overnight/challengers/initfold is current. 143-nmp was at +50 +/- 49 over 98 games at
 01:00 -- NMP_V2 looks like the v9.2 anchor; its checkpoint lands ~02:00. Desktop off;
 GPU with the interactive session (151-mixnet training).
+
+6 Sep 02:20 (loop iter 14) finished and committed the eager fastboard signatures
+(speed.md leftover, the previous iteration's uncommitted build): 14 leaf helpers
+(lsb, msb, popcount, bit, rook/bishop_attacks, attackers_to, is_attacked,
+occupancy, _add, _add_promotions, feature, _acc_row, _acc_row_one) now carry
+explicit numba signatures so each compiles once instead of up to nine
+specialisations per caller type mix. Source-only and exact by construction:
+bench d8 is 1,445,087 nodes, bit-identical to the champion; exact 70/70 +
+table-on 40/40, ruff/mypy PASS. One under-load import sample 46.0 s vs the
+tree's earlier 43.2 s -- gauntlet load noise swamps the ~-3 s idle gain, so the
+clean-unzip check at v9.2 zip time is the real measure. Also committed the
+binpack_decode ruff annotations from the same interrupted session. State:
+150-sfnet at 104 games +33.5 (checkpoint ~03:00), nmp-clocktest-l next (the
+v9.2 gate), then 144-caporder / 145-v93fill / 146-cutnode / 147-seequiet.
+Everything buildable is built; next iteration ships v9.2 on a clocktest PASS.

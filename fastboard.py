@@ -36,7 +36,7 @@ from typing import Any
 import chess
 import chess.polyglot
 import numpy as np
-from numba import njit
+from numba import boolean, float32, int32, int64, njit, uint64, void
 
 MAX_PLY = 128
 MOVE_CAP = 256
@@ -149,12 +149,15 @@ ZOB_TURN = _POLY[780]
 # ------------------------------------------------------------- primitives ----
 
 
-@njit(cache=False)
+# Eager signatures on the leaf helpers (speed.md option b): one specialisation
+# each instead of up to nine per distinct caller type mix; numba casts int/uint
+# at the call boundary (value-preserving for squares, bit-preserving for masks).
+@njit(int64(uint64), cache=False)
 def lsb(b: Any) -> Any:
     return _INDEX64[((b & (~b + ONE)) * DEBRUIJN) >> np.uint64(58)]
 
 
-@njit(cache=False)
+@njit(int64(uint64), cache=False)
 def msb(b: Any) -> Any:
     n = 0
     if b >> np.uint64(32):
@@ -177,7 +180,7 @@ def msb(b: Any) -> Any:
     return n
 
 
-@njit(cache=False)
+@njit(int64(uint64), cache=False)
 def popcount(b: Any) -> Any:
     n = 0
     while b:
@@ -186,12 +189,12 @@ def popcount(b: Any) -> Any:
     return n
 
 
-@njit(cache=False)
+@njit(uint64(int64), cache=False)
 def bit(s: Any) -> Any:
     return ONE << np.uint64(s)
 
 
-@njit(cache=False)
+@njit(uint64(int64, uint64), cache=False)
 def rook_attacks(s: Any, occ: Any) -> Any:
     out = ZERO
     for d in (0, 2):
@@ -209,7 +212,7 @@ def rook_attacks(s: Any, occ: Any) -> Any:
     return out
 
 
-@njit(cache=False)
+@njit(uint64(int64, uint64), cache=False)
 def bishop_attacks(s: Any, occ: Any) -> Any:
     out = ZERO
     for d in (1, 7):
@@ -227,7 +230,7 @@ def bishop_attacks(s: Any, occ: Any) -> Any:
     return out
 
 
-@njit(cache=False)
+@njit(uint64(uint64[::1], uint64, int64, int64), cache=False)
 def attackers_to(bb: Any, occ: Any, s: Any, by: Any) -> Any:
     """Pieces of colour `by` attacking square `s`, given occupancy `occ`."""
     base = by * 6
@@ -241,12 +244,12 @@ def attackers_to(bb: Any, occ: Any, s: Any, by: Any) -> Any:
     return out
 
 
-@njit(cache=False)
+@njit(boolean(uint64[::1], uint64, int64, int64), cache=False)
 def is_attacked(bb: Any, occ: Any, s: Any, by: Any) -> Any:
     return attackers_to(bb, occ, s, by) != ZERO
 
 
-@njit(cache=False)
+@njit(uint64(uint64[::1], int64), cache=False)
 def occupancy(bb: Any, colour: Any) -> Any:
     base = colour * 6
     return bb[base] | bb[base + 1] | bb[base + 2] | bb[base + 3] | bb[base + 4] | bb[base + 5]
@@ -262,13 +265,13 @@ def in_check(bb: Any, meta: Any) -> Any:
 # ------------------------------------------------------------- generation ----
 
 
-@njit(cache=False)
+@njit(int64(int32[::1], int64, int64, int64), cache=False)
 def _add(out: Any, n: Any, frm: Any, to: Any) -> Any:
     out[n] = frm | (to << 6)
     return n + 1
 
 
-@njit(cache=False)
+@njit(int64(int32[::1], int64, int64, int64), cache=False)
 def _add_promotions(out: Any, n: Any, frm: Any, to: Any) -> Any:
     for promo in (4, 1, 3, 2):  # queen first, knight second
         out[n] = frm | (to << 6) | (promo << 12)
@@ -660,7 +663,7 @@ def zone_of(square: Any, zones: Any) -> Any:
     return 0
 
 
-@njit(cache=False)
+@njit(int64(int64, int64, boolean), cache=False)
 def feature(square: Any, code: Any, white_pov: Any) -> Any:
     colour = code // 6
     piece = code - colour * 6
@@ -687,7 +690,10 @@ def rebuild(sqa: Any, w1: Any, b1: Any, out: Any, white_pov: Any, zone: Any) -> 
                 out[i] += row[i]
 
 
-@njit(cache=False)
+@njit(
+    void(float32[:, ::1], float32[::1], float32[::1], int64, int64, int64, int64, int64),
+    cache=False,
+)
 def _acc_row(
     w1: Any, white: Any, black: Any, s: Any, code: Any, off_w: Any, off_b: Any, sign: Any
 ) -> Any:
@@ -704,7 +710,10 @@ def _acc_row(
             black[i] -= rb[i]
 
 
-@njit(cache=False)
+@njit(
+    void(float32[:, ::1], float32[::1], int64, int64, int64, boolean, int64),
+    cache=False,
+)
 def _acc_row_one(
     w1: Any, acc: Any, s: Any, code: Any, off: Any, white_pov: Any, sign: Any
 ) -> Any:
