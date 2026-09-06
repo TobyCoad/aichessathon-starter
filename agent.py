@@ -1087,6 +1087,12 @@ CAPTURE_ORDER: Final = False
 # capture-loop cutoff and the final return, and never evict a same-key or
 # current-age entry of depth > 0 (main-search entries keep their hash moves).
 QS_TT: Final = False
+# SEE_QUIET (the SEE-pruning follow-up to SEE_MAIN): skip a late quiet move at
+# depth <= 6 when static exchange on its destination square loses more than
+# 30 * depth^2 (the moved piece hangs). Guards: not in check, not the node's
+# first move, alpha away from mate. fb.see already handles quiet moves (victim
+# value 0, both sides free to stop), so no board change is needed.
+SEE_QUIET: Final = False
 # ASP_WIDE (V10_PLAN #12): aspiration re-search windows widen geometrically
 # (~1.5x per fail: window * 3**fails // 2**fails) instead of 4**fails with a
 # jump to +/-INFINITY on the third fail; full-width only after ten fails as a
@@ -2035,6 +2041,7 @@ class FastEngine:
                 raise RuntimeError("CAPTURE_ORDER and CONT_HIST share the conthist1 buffer")
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
             ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
+            ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
             if INIT_FOLD:
                 for fold_slot, fold_value in _fs.FOLDED.items():
                     if bool(ctrl[fold_slot]) != fold_value:

@@ -257,18 +257,34 @@ what enters a bundle.
   Their bundle task 145-v93fill + v93fill-clocktest-l was already queued.
 - Interactive session's SF-net chain is at check_nnue on 150-sfnet (GPU/net
   work stays theirs; the loop only folds results).
-- laptop queue order now: 143-nmp (running), nmp-clocktest-l, 144-caporder,
+- laptop queue order now: 143-nmp (running, +50 +/- 49 at 98 games 01:00),
+  150-sfnet (interactive session's net task), nmp-clocktest-l, 144-caporder,
   caporder-clocktest-l, 145-v93fill, v93fill-clocktest-l, 146-cutnode,
-  cutnode-clocktest-l.
+  cutnode-clocktest-l, 147-seequiet, seequiet-clocktest-l.
 - desktop: OFF. Queue nothing there.
+- INIT_FOLD CAVEAT CLEARED (6 Sep 01:15, iter 11): scratch rebuilt from the
+  current tree (now CTRL_SIZE 45), bench d8 with the fold on = 1,445,087 nodes,
+  bit-identical to the champion; fold + NMP_V2 flipped = 279,188 nodes at d6,
+  identical to no-fold + NMP_V2 (the v9.2 zip scenario); prepare()'s FOLDED
+  check passed in every run (FOLDED holds only the 18 settled slots, so growing
+  CTRL_SIZE does not touch it). INIT_FOLD is clear to ride in the v9.2 zip.
+- SEE_QUIET BUILT 6 Sep 01:20 (iter 11), off in the tree (C_SEE_QUIET=44,
+  CTRL_SIZE 45): skip a late quiet at depth <= 6 when fb.see on its destination
+  square loses more than 30*depth^2 (fb.see already handles quiets; no board
+  change). Guards: not in check, searched > 0, alpha away from mate. Bench d8:
+  1,098,731 vs 1,445,087 nodes (0.760x) at similar knps under load -- healthy,
+  not IMPROVING's 0.506x. Score watch: bench pos 39 swings +534 -> +214 (same
+  best move); the rest within ~35 cp. ruff/mypy/exact 70/70 + table-on 40/40
+  PASS. Queued as 147-seequiet (600 games, 8 s) + seequiet-clocktest-l at the
+  queue tail.
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
-0. Fold 143-nmp, 144-caporder, 145-v93fill as they land; ship v9.2 from the union of
-   passing switches (each has a queued clocktest). INIT_FOLD (built, exact, -4.8 s
-   import) rides in the v9.2 zip: flip it True in the tested challenger at zip time,
-   re-check bench nodes + clean-unzip import < 45 s. NOTE: INIT_FOLD's FOLDED map
-   predates C_QS_TT/CTRL_SIZE 44 -- re-verify prepare()'s fold check + bench before
-   the zip.
+0. Fold 143-nmp, 144-caporder, 145-v93fill, 147-seequiet as they land; ship v9.2
+   from the union of passing switches (each has a queued clocktest). INIT_FOLD
+   (built, exact, -4.8 s import) rides in the v9.2 zip: flip it True in the tested
+   challenger at zip time, re-check clean-unzip import < 45 s. The old FOLDED-map
+   caveat is CLOSED: fold check + bench re-verified bit-identical against the
+   CTRL_SIZE-45 tree 6 Sep 01:15 (scratch in overnight/challengers/initfold).
 1. NMP_V2 (V10_PLAN #6): BUILT 5 Sep 23:00, off in the tree (C_NMP_V2=41).
    Dynamic R = 3 + depth//4 + min((standing-beta)//200, 3),
    null tried only when standing >= beta, skipped on a TT upper bound < beta
@@ -296,13 +312,15 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) Fold 143-nmp when it lands (~1 h to checkpoint 200); a pass makes NMP_V2
-the v9.2 anchor. Then 144-caporder and 145-v93fill in turn; ship v9.2 from the
-union of passing switches with INIT_FOLD flipped in the zip (re-verify the
-FOLDED map against CTRL_SIZE 44 first). (2) Fold the 146 split requeue when it
-lands; whatever the verdict, IMPROVING and CUTNODE are then closed. (3) While
-waiting: next build items from V10_PLAN are the remaining speed leftovers
-(eager fastboard signatures) or SEE pruning in the main search; keep the
-exactness check green. (4) Do NOT start GPU work; the SF retrain and 150-sfnet
-belong to the interactive session -- fold its suite/gauntlet results when they
-appear in overnight/laptop/results/.
+(1) Fold 143-nmp when it lands (was +50 +/- 49 at 98 games, 01:00; checkpoint
+200 ~02:00); a pass makes NMP_V2 the v9.2 anchor. Then 150-sfnet (interactive
+session's verdict to fold), 144-caporder, 145-v93fill, 147-seequiet in turn;
+ship v9.2 from the union of passing switches with INIT_FOLD flipped in the zip
+(caveat closed 01:15; only the clean-unzip import < 45 s check remains at zip
+time). (2) Fold the 146 split requeue when it lands; whatever the verdict,
+IMPROVING and CUTNODE are then closed. (3) While waiting: the remaining build
+item from V10_PLAN is the speed leftovers (eager fastboard signatures, ~-3 s
+import, source-only); SEE_QUIET is built and queued. Keep the exactness check
+green. (4) Do NOT start GPU work; the SF retrain and 151-mixnet belong to the
+interactive session -- fold its suite/gauntlet results when they appear in
+overnight/laptop/results/.

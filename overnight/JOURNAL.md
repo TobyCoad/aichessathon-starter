@@ -948,3 +948,22 @@ Interactive session's SF chain is at check_nnue on 150-sfnet; GPU untouched by t
 Lichess-val 0.011299 vs 0.004633 (forgot the human distribution); suite 10.8 = champion 10.8
 (better at 9-12 pieces, worse at 13-16). Gauntlet queued next. Mixed-data net 151-mixnet
 training (SF + Lichess shards interleaved, warm start from the champion).
+
+6 Sep 01:25 (loop iter 11) INIT_FOLD caveat cleared; SEE_QUIET built and queued.
+The v9.2 blocker from iter 10 is closed: the initfold scratch was rebuilt from the
+current tree and benched d8 at exactly 1,445,087 nodes (bit-identical to the champion),
+and fold + NMP_V2 matched no-fold + NMP_V2 node-for-node at d6 (279,188) -- the zip
+scenario works because FOLDED holds only the 18 settled slots, so growing CTRL_SIZE
+cannot break it; prepare()'s check passed in every run. Then the next-step build item:
+SEE_QUIET (C_SEE_QUIET=44, CTRL_SIZE 45, off in the tree) skips a late quiet at depth
+<= 6 when fb.see on the destination square loses more than 30*depth^2 (fb.see already
+handles quiets -- victim 0, both sides free to stop -- so no fastboard change; guards:
+not in check, searched > 0, alpha away from mate). Bench d8 1,098,731 vs 1,445,087
+nodes (0.760x) at similar knps under load -- a healthy cut, nothing like IMPROVING's
+0.506x; one bench score swings (pos 39 +534 -> +214, same best move), the rest hold
+within ~35 cp. ruff/mypy PASS, exact 70/70 + table-on 40/40 PASS, committed kernel +
+agent together. Queued 147-seequiet (600 games, 8 s) + seequiet-clocktest-l at the
+laptop tail; after the fold-verification rebuild the tree copy in
+overnight/challengers/initfold is current. 143-nmp was at +50 +/- 49 over 98 games at
+01:00 -- NMP_V2 looks like the v9.2 anchor; its checkpoint lands ~02:00. Desktop off;
+GPU with the interactive session (151-mixnet training).

@@ -179,10 +179,16 @@ C_CAPTURE_ORDER = 42
 # bounds); a store never evicts a same-key or current-age entry of depth > 0,
 # so main-search entries and their hash moves survive.
 C_QS_TT = 43
+# C_SEE_QUIET (next step after V10_PLAN #7): skip a late quiet move at depth
+# <= 6 when SEE says the moved piece is lost on its destination square
+# (see < -30 * depth * depth). fb.see handles quiets: victim value 0, then
+# both sides exchange on the target square. Never in check, never the first
+# move of the node, never near a mate score.
+C_SEE_QUIET = 44
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 44
+CTRL_SIZE = 45
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -1006,6 +1012,16 @@ def search(
             and searched > 0
             and abs(alpha) < DISTANCE_THRESHOLD
             and fb.see(bb, sq, meta, move) < -20 * depth * depth
+        ):
+            continue
+        if (
+            ctrl[C_SEE_QUIET] != 0
+            and plain
+            and depth <= 6
+            and searched > 0
+            and not in_check
+            and abs(alpha) < DISTANCE_THRESHOLD
+            and fb.see(bb, sq, meta, move) < -30 * depth * depth
         ):
             continue
         if lmp and plain and searched >= LMP_LIMIT[depth]:

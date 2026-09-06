@@ -90,5 +90,15 @@
   "name": "cutnode-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/"
+ },
+ {
+  "name": "147-seequiet",
+  "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "seequiet-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/"
  }
 ]
