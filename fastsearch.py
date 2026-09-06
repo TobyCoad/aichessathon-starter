@@ -277,6 +277,23 @@ _F_LMR_AGGR = _AGENT_FLAGS.get("LMR_AGGRESSIVE", False)
 _F_LAZY_ACC = _AGENT_FLAGS.get("LAZY_ACC", False)
 _F_PRUNE2 = _AGENT_FLAGS.get("PRUNE_V2", False)
 _F_SINGULAR = _AGENT_FLAGS.get("SINGULAR", False)
+# Settled since the v9.2/v9.4 ships, plus two that are closed for good (CONT_HIST
+# rejected at 8 s, ENDGAME_SHRINK closed once the net fixed the 5-8 band). Folding a
+# False slot deletes its branch from the compile entirely, which is why the closed
+# ones are worth as much as the shipped ones. The fold is read from agent.py at
+# import, so a challenger sed that flips one is still honoured.
+_F_NMP_V2 = _AGENT_FLAGS.get("NMP_V2", False)
+_F_NMP_V2B = _AGENT_FLAGS.get("NMP_V2B", False)
+_F_QS_TT = _AGENT_FLAGS.get("QS_TT", False)
+_F_CAPTURE_ORDER = _AGENT_FLAGS.get("CAPTURE_ORDER", False)
+_F_CONT_HIST = _AGENT_FLAGS.get("CONT_HIST", False)
+_F_EG_SHRINK = _AGENT_FLAGS.get("ENDGAME_SHRINK", False)
+# Still under test, and folded for the same reason: they are False in the champion, so
+# folding deletes their branches from its compile. A challenger sed flips the source,
+# _scan_agent_flags picks that up, and the fold follows -- so they stay testable.
+_F_RAZOR = _AGENT_FLAGS.get("RAZOR", False)
+_F_SEE_QUIET = _AGENT_FLAGS.get("SEE_QUIET", False)
+_F_SING_EXT2 = _AGENT_FLAGS.get("SINGULAR_EXT2", False)
 
 FOLDED = {
     C_HYGIENE: _F_HYGIENE, C_FUTILITY: _F_FUTILITY, C_PVS: _F_PVS, C_LMR: _F_LMR,
@@ -284,6 +301,10 @@ FOLDED = {
     C_IIR: _F_IIR, C_HISTORY2: _F_HISTORY2, C_TT_KEEP: _F_TT_KEEP, C_SAFE: _F_SAFE,
     C_SEE_MAIN: _F_SEE_MAIN, C_TT_BUCKETS: _F_TT_BUCKETS, C_LMR_AGGR: _F_LMR_AGGR,
     C_LAZY_ACC: _F_LAZY_ACC, C_PRUNE2: _F_PRUNE2, C_SINGULAR: _F_SINGULAR,
+    C_NMP_V2: _F_NMP_V2, C_NMP_V2B: _F_NMP_V2B, C_QS_TT: _F_QS_TT,
+    C_CAPTURE_ORDER: _F_CAPTURE_ORDER, C_CONT_HIST: _F_CONT_HIST,
+    C_EG_SHRINK: _F_EG_SHRINK, C_RAZOR: _F_RAZOR, C_SEE_QUIET: _F_SEE_QUIET,
+    C_SING_EXT2: _F_SING_EXT2,
 }
 
 
@@ -483,7 +504,7 @@ def evaluate(
             out += t3 * w3[k, j + 3, 0]
     score = int(float(out) * OUTPUT_SCALE)
     if (
-        ctrl[C_EG_SHRINK] == 0
+        not (_F_EG_SHRINK if _FOLD else ctrl[C_EG_SHRINK] != 0)
         or meta[fb.PIECES] >= EG_HI
         or score >= DISTANCE_THRESHOLD
         or score <= -DISTANCE_THRESHOLD
@@ -638,7 +659,7 @@ def quiesce(
         ctrl[C_ABORT] = 1
         return 0
 
-    use_qtt = ctrl[C_QS_TT] != 0 and ctrl[C_TT_OFF] == 0
+    use_qtt = (_F_QS_TT if _FOLD else ctrl[C_QS_TT] != 0) and ctrl[C_TT_OFF] == 0
     original_alpha = alpha
     if use_qtt:
         tkey = keys[meta[fb.PLY]]
@@ -877,7 +898,7 @@ def search(
             return standing
 
     if (
-        ctrl[C_RAZOR] != 0
+        (_F_RAZOR if _FOLD else ctrl[C_RAZOR] != 0)
         and percent != 0
         and depth <= RAZOR_MAX_DEPTH
         and not in_check
@@ -930,7 +951,7 @@ def search(
         and excluded == 0
         and (ctrl[C_NMP_MIN_PLY] == 0 or ply >= ctrl[C_NMP_MIN_PLY])
     ):
-        nmp2 = ctrl[C_NMP_V2] != 0
+        nmp2 = _F_NMP_V2 if _FOLD else ctrl[C_NMP_V2] != 0
         do_null = True
         if nmp2:
             if tt_depth >= 0 and tt_flag == 2 and tt_score < beta:
@@ -974,7 +995,7 @@ def search(
                 return 0
             if score >= beta:
                 if (
-                    ctrl[C_NMP_V2B] != 0
+                    (_F_NMP_V2B if _FOLD else ctrl[C_NMP_V2B] != 0)
                     and depth >= NMP_VERIFY_DEPTH
                     and ctrl[C_NMP_MIN_PLY] == 0
                 ):
@@ -1022,7 +1043,7 @@ def search(
         ctrl[C_EXCL_PLY] = -1
         if ctrl[C_ABORT]:
             return 0
-        sing2 = ctrl[C_SING_EXT2] != 0
+        sing2 = _F_SING_EXT2 if _FOLD else ctrl[C_SING_EXT2] != 0
         if value < sbeta:
             extend_hash = 1
             if (
@@ -1051,7 +1072,7 @@ def search(
     fb.score_moves(
         mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc, counter_move, base
     )
-    conthist_on = ctrl[C_CONT_HIST] != 0
+    conthist_on = _F_CONT_HIST if _FOLD else ctrl[C_CONT_HIST] != 0
     ch_base = -1
     if conthist_on:
         prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
@@ -1075,7 +1096,7 @@ def search(
                     and m != counter_move
                 ):
                     sc[j] += conthist1[ch_base + sq[m & 63] * 64 + to2]
-    capture_order = ctrl[C_CAPTURE_ORDER] != 0
+    capture_order = _F_CAPTURE_ORDER if _FOLD else ctrl[C_CAPTURE_ORDER] != 0
     if capture_order:
         # Rescore non-promotion captures (EP stays a quiet: sq[to] < 0, same as
         # score_moves). SEE-losing captures fall below every quiet score
@@ -1146,7 +1167,7 @@ def search(
         ):
             continue
         if (
-            ctrl[C_SEE_QUIET] != 0
+            (_F_SEE_QUIET if _FOLD else ctrl[C_SEE_QUIET] != 0)
             and plain
             and depth <= 6
             and searched > 0
