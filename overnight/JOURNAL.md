@@ -1002,3 +1002,20 @@ first mixed run (polluted targets) was stopped at epoch 22.
 challenger (+26 at the 200 checkpoint, 53.5%); import 33.7 s clean. Loop iteration 15 had
 timed out mid-ship. Corrected-scale mixed net (153-mixnet2) training: initial SF-val 0.005318
 -> 0.002939 after one epoch.
+
+6 Sep 04:35 (loop iter 16) finished and committed NMP_V2B, the half-done build iter 15
+left in the tree (agent.py switch + kernel code were uncommitted): on a null-move cutoff
+at depth >= 10 a reduced-depth real search at the same node must confirm the fail-high
+before it is trusted, with null pruning disabled below ply + 3*null_depth//4 inside the
+verification subtree (Stockfish's nmpMinPly zugzwang guard; C_NMP_V2B=45, C_NMP_MIN_PLY=46
+as a state slot, CTRL_SIZE 47). ruff/mypy PASS, exact 70/70 + table-on 40/40 PASS with the
+switch off. Benches vs the v9.2 tree: d8 1,385,489 and d10 4,950,623 bit-identical (the
+guard only fires at non-root depth >= 10); d11 9,402,271 vs 9,401,418 -- +0.009% nodes,
+essentially free, the verification almost always confirms. Too small to resolve in a solo
+600-game SPRT at 8 s, so per the small-items rule it gets NO solo gauntlet and rides in
+the v9.3 bundle SPRT (its weight is at 120 s depths anyway). New champion bench baselines
+recorded (NMP_V2 on): d8 1,385,489 / d10 4,950,623 / d11 9,401,418. State: 144-caporder
+at 188 games -5.5 +/- 37 (checkpoint will extend), then 145-v93fill, 146-cutnode,
+147-seequiet with clocktests interleaved. Desktop off; GPU with the interactive session
+(153-mixnet2). Next: fold the four verdicts, build the v9.3 bundle challenger (passes +
+NMP_V2B + INIT_FOLD + eager signatures), one confirming SPRT + clocktest, ship.

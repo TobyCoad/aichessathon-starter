@@ -47,6 +47,7 @@ RFP_MAX_DEPTH = 6
 RFP_MARGIN = 80
 NMP_MIN_DEPTH = 3
 NMP_REDUCTION = 2
+NMP_VERIFY_DEPTH = 10
 MAX_PLY = 72  # agent.MAX_PLY: the check-extension limit
 FUTILITY_MARGIN = np.array([0, 150, 300], dtype=np.int64)
 POLL_MASK = 255
@@ -185,10 +186,20 @@ C_QS_TT = 43
 # both sides exchange on the target square. Never in check, never the first
 # move of the node, never near a mate score.
 C_SEE_QUIET = 44
+# C_NMP_V2B (follow-up to C_NMP_V2, which PROMOTED as 143-nmp): on a null-move
+# cutoff at depth >= NMP_VERIFY_DEPTH, verify with a reduced-depth real search
+# at the same node before trusting the cutoff (zugzwang guard at the depths
+# where a wrong null cutoff poisons the whole tree). C_NMP_MIN_PLY is state,
+# not a switch: while nonzero, null-move pruning is disabled at plies below it
+# (Stockfish's nmpMinPly), so the verification subtree cannot re-cut with
+# another null near its root; it is set around the verification search and
+# restored to 0 after, and stays 0 whenever C_NMP_V2B is off (exact).
+C_NMP_V2B = 45
+C_NMP_MIN_PLY = 46
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 45
+CTRL_SIZE = 47
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -830,6 +841,7 @@ def search(
         and (((not _F_NMP_GUARD) if _FOLD else ctrl[C_NMP_GUARD] == 0)
              or ply == 0 or undo[meta[fb.PLY] - 1, fb.U_MOVE] != 0)
         and excluded == 0
+        and (ctrl[C_NMP_MIN_PLY] == 0 or ply >= ctrl[C_NMP_MIN_PLY])
     ):
         nmp2 = ctrl[C_NMP_V2] != 0
         do_null = True
@@ -874,7 +886,29 @@ def search(
             if ctrl[C_ABORT]:
                 return 0
             if score >= beta:
-                return beta
+                if (
+                    ctrl[C_NMP_V2B] != 0
+                    and depth >= NMP_VERIFY_DEPTH
+                    and ctrl[C_NMP_MIN_PLY] == 0
+                ):
+                    # Verify the null cutoff with a reduced-depth real search at
+                    # this node; null stays off below min_ply so the verification
+                    # cannot re-cut with another null near its root.
+                    ctrl[C_NMP_MIN_PLY] = ply + 3 * null_depth // 4
+                    score = search(
+                        bb, sq, meta, undo, keys, w1, b1, white, black, astack,
+                        zones, king_zones, w2t, b2, w3, b3, tt_key, tt_data,
+                        killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                        null_depth, beta - 1, beta, ply, scratch, counter, quiets,
+                        ec_key, ec_val, exts, conthist1, cutnode,
+                    )
+                    ctrl[C_NMP_MIN_PLY] = 0
+                    if ctrl[C_ABORT]:
+                        return 0
+                    if score >= beta:
+                        return beta
+                else:
+                    return beta
 
     extend_hash = 0
     if (

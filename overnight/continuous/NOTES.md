@@ -265,7 +265,23 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 02:20, iter 14)
+## Running now (6 Sep 04:30, iter 16)
+- NMP_V2B FINISHED and committed (iter 16, the half-done build iter 15 left):
+  null-cutoff verification search at depth >= 10 (C_NMP_V2B=45, C_NMP_MIN_PLY=46
+  state slot, CTRL_SIZE 47), null disabled below ply + 3*null_depth//4 inside the
+  verification subtree. ruff/mypy PASS, exact 70/70 + table-on 40/40 PASS. Bench
+  vs the v9.2 tree: d8 and d10 bit-identical (fires only at non-root depth >= 10);
+  d11 9,402,271 vs 9,401,418 (+0.009%) -- essentially free, a zugzwang guard whose
+  weight lands at 120 s depths. NO solo gauntlet (unmeasurable at 8 s in 600
+  games): it rides in the v9.3 BUNDLE SPRT per the small-items rule. Scratch dir
+  overnight/challengers/nmpv2b (bench copy only, not queued).
+- 144-caporder at 188 games 04:16, elo -5.5 +/- 37.4, llr -0.86 -- drifting
+  slightly negative; 200-game checkpoint will extend it. Then caporder-clocktest-l,
+  145-v93fill, v93fill-clocktest-l, 146-cutnode, cutnode-clocktest-l, 147-seequiet,
+  seequiet-clocktest-l. Champion bench baseline for the v9.2 tree (NMP_V2 on):
+  d8 1,385,489 nodes, d10 4,950,623, d11 9,401,418 (use these, not 1,445,087).
+
+## Running before (6 Sep 02:20, iter 14)
 - 150-sfnet at 104 games, +33.5 +/- 56.4 (02:04) -- looking positive; its
   200-game checkpoint lands ~03:00, then nmp-clocktest-l (the v9.2 gate).
 - Iter 14 finished the half-done eager-signatures build (backlog item 4, see
@@ -324,11 +340,9 @@ what enters a bundle.
    as they land; ship v9.3 from the union of later passes. INIT_FOLD FOLDED-map
    caveat CLOSED 6 Sep 01:15 (bit-identical bench vs CTRL_SIZE-45 tree; scratch
    in overnight/challengers/initfold).
-1. NMP_V2 (V10_PLAN #6): PROMOTED 6 Sep 01:25 as 143-nmp (+26 Elo, 53.5% over
-   201 games). Dynamic R = 3 + depth//4 + min((standing-beta)//200, 3),
-   null tried only when standing >= beta, skipped on a TT upper bound < beta.
-   Verification search deferred to NMP_V2B (a later idea, now with evidence the
-   base works). Awaiting nmp-clocktest-l only.
+1. NMP_V2 (V10_PLAN #6): SHIPPED in v9.2 (PROMOTE +26 as 143-nmp, clocktest
+   PASS, True in the tree). NMP_V2B (verification search) BUILT 6 Sep 04:30,
+   off in the tree: no solo gauntlet, rides in the v9.3 bundle (see Running now).
 2. CAPTURE_ORDER (V10_PLAN #7): BUILT 5 Sep 23:40, off in the tree
    (C_CAPTURE_ORDER=42, CTRL_SIZE 43). Rescore pass after score_moves: SEE < 0
    captures below every quiet (band -(1<<21) + see*16), SEE >= 0 keep the
@@ -358,20 +372,13 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) SHIP v9.2 the moment nmp-clocktest-l PASSES (it runs right after 150-sfnet,
-which was at 104 games +33.5 at 02:04; checkpoint 200 ~03:00, clocktest ~10 min
-after): flip NMP_V2 True in the tree, re-run exact, zip from
-overnight/challengers/143-nmp with INIT_FOLD flipped True in the zip copy,
-clean-unzip import < 45 s check, CANDIDATE.md, notify. The eager fastboard
-signatures are already in the tree (committed iter 14) so the challenger copy
-step picks them up ONLY if 143-nmp is rebuilt -- prefer zipping agent.py/
-fastsearch.py from the tested 143-nmp dir and fastboard.py from the tree ONLY
-if bench in the zip dir is re-verified bit-identical; otherwise ship the tested
-trio as-is (the signatures then ride in v9.3). (2) Fold 150-sfnet (interactive
-session's verdict), then 144-caporder, 145-v93fill, 146-cutnode, 147-seequiet
-in turn; ship v9.3 from the union of passes. After 146, IMPROVING and CUTNODE
-are closed for good. (3) If idle: speed leftovers (see allocation, evaluate
-blocking) or read the newest overnight/postmortem/ for failure modes. Keep the
-exactness check green. (4) Do NOT start GPU work; the SF retrain and
-151-mixnet belong to the interactive session -- fold its suite/gauntlet
+(1) v9.2 SHIPPED 03:30 (session) -- done, do not redo. (2) Fold 144-caporder,
+145-v93fill, 146-cutnode, 147-seequiet as they land; ship v9.3 from the union
+of passes PLUS the no-gauntlet riders (NMP_V2B, INIT_FOLD, eager signatures):
+build ONE bundle challenger with every passed switch + NMP_V2B flipped, one
+confirming SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING
+and CUTNODE are closed for good. (3) If idle: speed leftovers (see allocation,
+evaluate blocking) or read the newest overnight/postmortem/ for failure modes.
+Keep the exactness check green. (4) Do NOT start GPU work; the SF retrain and
+153-mixnet2 belong to the interactive session -- fold its suite/gauntlet
 results when they appear in overnight/laptop/results/.

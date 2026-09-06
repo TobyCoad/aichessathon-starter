@@ -1073,6 +1073,13 @@ CUTNODE: Final = False
 # holds an upper bound below beta (expected fail-low; the null search is wasted
 # nodes). Verification search at depth >= 10 deferred to NMP_V2B.
 NMP_V2: Final = True
+# NMP_V2B (follow-up to NMP_V2, which PROMOTED as 143-nmp): on a null-move
+# cutoff at depth >= 10, verify with a reduced-depth real search at the same
+# node before trusting the cutoff; null pruning is disabled below
+# ply + 3*null_depth//4 inside the verification subtree (Stockfish's
+# nmpMinPly zugzwang guard). Cheap at 8 s (fires only at depth >= 10) and
+# protects exactly the deep nodes where a wrong null cutoff poisons the tree.
+NMP_V2B: Final = False
 # CAPTURE_ORDER (V10_PLAN #7): rescore non-promotion captures after score_moves.
 # SEE-losing captures drop below every quiet (band -(1 << 21) + see*16);
 # winning/equal captures keep the MVV-LVA band; both get a capture-history
@@ -2037,6 +2044,7 @@ class FastEngine:
             ctrl[_fs.C_IMPROVING] = 1 if IMPROVING else 0
             ctrl[_fs.C_CUTNODE] = 1 if CUTNODE else 0
             ctrl[_fs.C_NMP_V2] = 1 if NMP_V2 else 0
+            ctrl[_fs.C_NMP_V2B] = 1 if NMP_V2B else 0
             if CAPTURE_ORDER and CONT_HIST:
                 raise RuntimeError("CAPTURE_ORDER and CONT_HIST share the conthist1 buffer")
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
