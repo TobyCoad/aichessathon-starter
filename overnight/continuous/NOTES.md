@@ -162,6 +162,12 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   (70/70, 40/40) and committed as-is; 141-v92prune tests the pair. ALWAYS commit kernel +
   agent together; never leave the tree with a half-done build at the end of an iteration.
 
+- 152-sfnet (the REAL Stockfish-net test) REJECT at 116 games: -76 +/- 48, llr -2.99. The
+  pure SF-data net loses at 8 s despite -43% SF-val loss: it forgot the human distribution
+  (Lichess-val 2.4x worse) and the platform openings are human positions. Do not ship. The
+  MIXED net (151-mixnet, SF + Lichess interleaved) is the follow-up; if it also fails, the
+  next try is a light fine-tune of the champion with a 25% SF share and lr 3e-5, judged by
+  the suite + gauntlet. Record every net verdict by md5 of the tested net.
 - !!! 150-sfnet's PROMOTE (+19 at 200) IS VOID (6 Sep 02:40): the worker rebuilds the
   challenger dir from the tree BEFORE copying the task's net, and the net path pointed inside
   that dir, so the gauntlet played v9.1 against v9.1. Do NOT promote or ship any net from it.

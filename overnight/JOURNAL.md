@@ -988,3 +988,7 @@ before copying the task's net (which lived inside that dir), so v9.1 played v9.1
 noise; the identical md5 proved it). Worker fixed (nets staged under overnight/nets/, a net equal
 to the tree's aborts the task); SF net re-exported to overnight/nets/152-sfnet.npz and queued
 first as 152-sfnet. 143-nmp PROMOTE +26/201 stands (real switch test).
+
+6 Sep 03:12 152-sfnet REJECT (-76 +/- 48 at 116 games, llr -2.99): the pure Stockfish-data net is
+worse in games although its loss on SF positions is 43% lower -- it forgot human positions
+(Lichess-val 0.0113 vs 0.0046). Mixed net 151-mixnet (epoch 21/24) is next.
