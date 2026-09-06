@@ -538,6 +538,14 @@ four-switch bundle under a referee that shared the bug.
   NORMAL shape of a running gauntlet -- gauntlet -> pool parent -> 8 pool workers -> a harness
   runner each -> an engine each, every one of them descended from the live gauntlet pid 5660.
   Check parentage before reaping; a raw count is not evidence of orphans.
+- v9.4 SHIP PATH PRE-VERIFIED (so the next iteration can ship without re-checking): the tested
+  challenger `overnight/challengers/149-v94wdl` carries the WDL net md5 1f4be882 (== 
+  overnight/nets/157-wdlnet.npz) while the tree still holds the v9.3 net 45f73c3f -- i.e. the
+  worker staged the net correctly and this is NOT another 150-sfnet self-play. Its flag block
+  differs from the tree by exactly the four intended switches and nothing else. ONE EXPECTED
+  COSMETIC DIFF, same shape as v9.3's DRAW_BUDGET lines: the challenger predates ADJ_V2, so the
+  zip built from it will simply lack that line while the tree has `ADJ_V2: Final = False`.
+  Inert, expected, do not "fix" it by rebuilding the zip from the tree.
 - NEXT STEP, in order: (1) the moment 149-v94wdl checkpoints PROMOTE and v94wdl-clocktest-l
   PASSes, ship v9.4 exactly as the human's instruction section says (flip the four switches +
   copy overnight/nets/157-wdlnet.npz into the tree, exact check, zip FROM the tested
