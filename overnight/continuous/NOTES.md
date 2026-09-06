@@ -271,7 +271,22 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 04:30, iter 16)
+## Running now (6 Sep 06:20, iter 19)
+- 144-caporder FINAL: INCONCLUSIVE at the 600-game cap, +0.6 +/- 23.5 (50.1%,
+  +206 =189 -205). Positive point estimate -> a PASS under the human's rule:
+  CAPTURE_ORDER joins the v9.3 bundle union (the bundle's own confirming SPRT
+  bounds the risk; its 1.09x bench nodes are evidently bought back by ordering).
+  caporder-clocktest-l still queued (informational; the bundle clocktest is the gate).
+- 153-mixnet2 gauntlet running (interactive session's net), ~10 games at 06:14;
+  155-mixnet2s queued after it. The v9.3 fill gauntlets (145-v93fill, 146-cutnode,
+  147-seequiet) run after both nets -- verdicts land this afternoon.
+- ENDGAME_SHRINK suite gate STARTED 06:14 (iter 19): `testing.endgame_suite run
+  --agent overnight/challengers/egshrink --seconds 2.5` ->
+  overnight/eval/v10/egshrink_suite.log; compare vs baseline 10.8 / 17.0 / 12.0 /
+  5.0, any band >1.5 cp worse vetoes. Allowed now: 153-mixnet2 is ~190 games from
+  its checkpoint. Result folded below when it lands.
+
+## Running before (6 Sep 04:30, iter 16)
 - NMP_V2B FINISHED and committed (iter 16, the half-done build iter 15 left):
   null-cutoff verification search at depth >= 10 (C_NMP_V2B=45, C_NMP_MIN_PLY=46
   state slot, CTRL_SIZE 47), null disabled below ply + 3*null_depth//4 inside the
@@ -373,7 +388,9 @@ what enters a bundle.
 1. NMP_V2 (V10_PLAN #6): SHIPPED in v9.2 (PROMOTE +26 as 143-nmp, clocktest
    PASS, True in the tree). NMP_V2B (verification search) BUILT 6 Sep 04:30,
    off in the tree: no solo gauntlet, rides in the v9.3 bundle (see Running now).
-2. CAPTURE_ORDER (V10_PLAN #7): BUILT 5 Sep 23:40, off in the tree
+2. CAPTURE_ORDER (V10_PLAN #7): PASSED (marginal) 6 Sep 06:10 as 144-caporder --
+   INCONCLUSIVE +0.6 +/- 23.5 over the full 600 games (50.1%); positive point
+   estimate = pass, joins the v9.3 bundle union. BUILT 5 Sep 23:40, off in the tree
    (C_CAPTURE_ORDER=42, CTRL_SIZE 43). Rescore pass after score_moves: SEE < 0
    captures below every quiet (band -(1<<21) + see*16), SEE >= 0 keep the
    MVV-LVA band; capture history (gravity bonus on capture cutoffs, >>=1 decay)
@@ -420,17 +437,17 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) v9.2 SHIPPED 03:30 (session) -- done, do not redo. (2) Fold 144-caporder,
-145-v93fill, 146-cutnode, 147-seequiet as they land; ship v9.3 from the union
-of passes PLUS the no-gauntlet riders (NMP_V2B, INIT_FOLD, eager signatures):
-build ONE bundle challenger with every passed switch + NMP_V2B flipped, one
-confirming SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING
-and CUTNODE are closed for good. (3) ENDGAME_SHRINK BUILT + CALIBRATED (iter 18,
-backlog item 4): its remaining gate is the 17-min endgame suite on
-overnight/challengers/egshrink vs 10.8 / 17.0 / 12.0 / 5.0 -- run it when no
-gauntlet is near a checkpoint (any band >1.5 cp worse vetoes; suite pass ->
-it joins the v9.3/v9.4 bundle, never a solo slot). Rounds 25-29 postmortems are
-DONE (rounds25-29.md); do not re-analyze them.
-Keep the exactness check green. (4) Do NOT start GPU work; the SF retrain and
-153-mixnet2 belong to the interactive session -- fold its suite/gauntlet
-results when they appear in overnight/laptop/results/.
+(1) 144-caporder FOLDED (iter 19): CAPTURE_ORDER passes into the v9.3 union.
+Still to fold: 145-v93fill, 146-cutnode, 147-seequiet (they run after the two
+mixnet gauntlets, ~afternoon). Ship v9.3 from the union of passes PLUS the
+no-gauntlet riders (CAPTURE_ORDER, NMP_V2B, INIT_FOLD, eager signatures):
+build ONE bundle challenger with every passed switch flipped, one confirming
+SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING and CUTNODE
+are closed for good. (2) ENDGAME_SHRINK suite gate RUNNING since 06:14 (iter 19,
+result -> overnight/eval/v10/egshrink_suite.log): vs 10.8 / 17.0 / 12.0 / 5.0,
+any band >1.5 cp worse vetoes; pass -> it joins the v9.3/v9.4 bundle, never a
+solo slot. If the suite was interrupted, re-run it when no gauntlet is near a
+checkpoint. Rounds 25-29 postmortems are DONE (rounds25-29.md); do not
+re-analyze them. Keep the exactness check green. (3) Do NOT start GPU work; the
+SF retrain and 153-mixnet2/155-mixnet2s belong to the interactive session --
+fold their gauntlet results when they appear in overnight/laptop/results/.
