@@ -1,0 +1,5 @@
+name 181-v95-vs-v94
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  181-v95-vs-v94 is not safe to ship

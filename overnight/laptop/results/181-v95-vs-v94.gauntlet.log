@@ -1,0 +1,4 @@
+stage 1: crash gate, 181-v95-vs-v94 vs random
+  failed 7/24 games (init 7)
+
+REJECT  181-v95-vs-v94 is not safe to ship
