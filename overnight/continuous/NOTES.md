@@ -382,13 +382,24 @@ what enters a bundle.
    16-out head. The interactive session owns the GPU and the SF-data retrain;
    the loop only folds results. Prereq left: the v9 endgame-suite baseline
    (run when the laptop is not near a gauntlet checkpoint).
-4. ENDGAME_SHRINK (V10_PLAN #11, scoped 6 Sep 05:20 -- build from
-   overnight/eval/v10/endgame_shrink.md): switch off in the tree
-   (C_EG_SHRINK/C_EG_WMIN/C_EG_CAP, CTRL_SIZE 47->50, wired like SEE_QUIET), then the
-   2-min calibration script on endgame_suite.json (run it away from a gauntlet
-   checkpoint; it also yields the per-band error instrument), then the 17-min suite as
-   the gate when the laptop is quiet; rides in a bundle SPRT, never a solo slot. Fold
-   rounds25-29.md P1 (ramp to 6 pieces; consider OCB damping) into the calibration sweep.
+4. ENDGAME_SHRINK BUILT + CALIBRATED 6 Sep 06:00 (iter 18), off in the tree
+   (C_EG_SHRINK=47/C_EG_WMIN=48/C_EG_CAP=49, CTRL_SIZE 50; blend inside
+   fastsearch.evaluate, which now takes bb + ctrl; simple_eval leaf kernel; mirror in
+   FastEngine.evaluate for root contempt). Calibration (testing.eg_calib,
+   overnight/eval/v10/eg_calib.log + eg_calib.npz -- the per-band static-error
+   instrument, reusable to score any net offline): net static error 673.7 cp at 5-8
+   pieces / 228.4 at 9-12 / 137.3 at 13-16; pure material BEATS the net at 5-8 (444.8).
+   The report's >=25%-at-CAP-300 target missed (best -18% in 9-12) but gains are
+   monotone in aggressiveness and every band improves at every setting, so defaults
+   set WMIN 128 / CAP 600: 532.1 / 176.8 / 132.5 (-21% / -23% / -3.5%); uncapped is
+   better still but moves single positions up to 2682 cp (fortress risk) -- rejected.
+   Bench d8 switch ON: 1,451,077 vs 1,385,489 nodes (1.047x, the predicted margin
+   interaction). ruff/mypy/exact 70/70 + 40/40 PASS. Scratch overnight/challengers/
+   egshrink. REMAINING GATE before it may ride in a bundle: the 17-min suite
+   (`python -m testing.endgame_suite run --agent overnight/challengers/egshrink
+   --seconds 2.5`) vs baseline 10.8 / 17.0 / 12.0 / 5.0 when the laptop is quiet
+   (kz16w kill criterion: any band worse by >1.5 cp vetoes). Never a solo SPRT slot.
+   Challenger sed: s/^ENDGAME_SHRINK: Final = False/ENDGAME_SHRINK: Final = True/
 5. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
    DONE 6 Sep 02:15 (iter 14, committed in-tree): 14 leaf helpers (lsb/msb/popcount/
    bit/attacks/attackers/occupancy/_add/_add_promotions/feature/_acc_row/...) get
@@ -408,10 +419,12 @@ scale, 6-man TB, book rescan, HalfKA.
 of passes PLUS the no-gauntlet riders (NMP_V2B, INIT_FOLD, eager signatures):
 build ONE bundle challenger with every passed switch + NMP_V2B flipped, one
 confirming SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING
-and CUTNODE are closed for good. (3) If idle: build ENDGAME_SHRINK from
-overnight/eval/v10/endgame_shrink.md (backlog item 4 -- switch + 2-min calibration;
-keep heavy CPU away from gauntlet checkpoints). Rounds 25-29 postmortems are DONE
-(rounds25-29.md); do not re-analyze them.
+and CUTNODE are closed for good. (3) ENDGAME_SHRINK BUILT + CALIBRATED (iter 18,
+backlog item 4): its remaining gate is the 17-min endgame suite on
+overnight/challengers/egshrink vs 10.8 / 17.0 / 12.0 / 5.0 -- run it when no
+gauntlet is near a checkpoint (any band >1.5 cp worse vetoes; suite pass ->
+it joins the v9.3/v9.4 bundle, never a solo slot). Rounds 25-29 postmortems are
+DONE (rounds25-29.md); do not re-analyze them.
 Keep the exactness check green. (4) Do NOT start GPU work; the SF retrain and
 153-mixnet2 belong to the interactive session -- fold its suite/gauntlet
 results when they appear in overnight/laptop/results/.

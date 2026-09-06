@@ -1040,3 +1040,22 @@ folded into its calibration; drawn-position budget cap and a peak_eval postmorte
 counter recorded as fillers. State: 144-caporder recovered to +5.5 +/- 28.6 at 380
 (llr -0.43); its 400 checkpoint will extend to 600. Then 145-v93fill, 146-cutnode,
 147-seequiet. Desktop off; GPU with the interactive session (153-mixnet2).
+
+6 Sep 06:05 (loop iter 18) ENDGAME_SHRINK built and calibrated (backlog item 4, from
+endgame_shrink.md): C_EG_SHRINK/C_EG_WMIN/C_EG_CAP (CTRL_SIZE 47->50), the blend inside
+fastsearch.evaluate (which now takes bb+ctrl at all seven call sites), a simple_eval
+material leaf kernel, and the mirror in FastEngine.evaluate for root contempt; off in
+the tree, ruff/mypy/exact 70/70 + 40/40 PASS. The 2-minute calibration (testing.eg_calib,
+log + reusable npz under overnight/eval/v10/) built the per-band static-error instrument
+games.md asked for: the net is off by 673.7 cp mean at 5-8 pieces (pure material is
+BETTER there: 444.8), 228.4 at 9-12, 137.3 at 13-16. The report's acceptance (>=25% fall
+in 9-12 at CAP 300) was missed (-18%), but every band improves at every swept setting and
+gains are monotone in aggressiveness, so defaults were set at the strongest capped point
+WMIN 128 / CAP 600: 532.1 / 176.8 / 132.5 (-21% / -23% / -3.5%); uncapped is better on
+mean but moves single positions up to 2682 cp (fortress risk) -- rejected. Bench d8 with
+the switch ON: 1,451,077 vs 1,385,489 nodes (1.047x, the predicted pruning-margin
+interaction). Remaining gate: the 17-min endgame suite on overnight/challengers/egshrink
+vs 10.8/17.0/12.0/5.0 when the laptop is quiet (kz16w veto: any band >1.5 cp worse);
+then it rides in the v9.3/v9.4 bundle, never a solo slot. State: 144-caporder near its
+600-game end (elo ~-1.5 at 476, llr -1.26 -- likely INCONCLUSIVE-negative), then
+145-v93fill, 146-cutnode, 147-seequiet. Desktop off; GPU with the interactive session.

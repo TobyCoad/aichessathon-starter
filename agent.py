@@ -1100,6 +1100,23 @@ QS_TT: Final = False
 # first move, alpha away from mate. fb.see already handles quiet moves (victim
 # value 0, both sides free to stop), so no board change is needed.
 SEE_QUIET: Final = False
+# ENDGAME_SHRINK (V10_PLAN #11, overnight/eval/v10/endgame_shrink.md): below 17
+# pieces blend the static eval toward pure material (_MATERIAL values,
+# side-to-move POV) inside fastsearch.evaluate, so the QS eval cache and the
+# TT's stored static eval hold the blended value and nothing double-blends.
+# The net's weight ramps 256/256 at 17 pieces down to WMIN/256 at 6; the
+# correction is clamped to +/- CAP cp and mate-range scores are never touched.
+# A damper for the measured 400-700 cp endgame eval errors (games.md,
+# rounds25-29.md). Calibrated 6 Sep against endgame_suite.json's 400 labels
+# (testing.eg_calib, overnight/eval/v10/eg_calib.log): net static error 673.7
+# cp at 5-8 pieces, 228.4 at 9-12, 137.3 at 13-16; WMIN 128 / CAP 600 cuts
+# those to 532.1 / 176.8 / 132.5 -- every band better, gains monotone in
+# aggressiveness, so the most aggressive capped point wins (uncapped is better
+# still but moves single positions up to 2682 cp -- fortress risk). The cure
+# is NET_V10.
+ENDGAME_SHRINK: Final = False
+ENDGAME_SHRINK_WMIN: Final = 128
+ENDGAME_SHRINK_CAP: Final = 600
 # ASP_WIDE (V10_PLAN #12): aspiration re-search windows widen geometrically
 # (~1.5x per fail: window * 3**fails // 2**fails) instead of 4**fails with a
 # jump to +/-INFINITY on the third fail; full-width only after ten fails as a
@@ -1699,10 +1716,25 @@ class FastEngine:
         else:
             own, opponent = self.black, self.white
         k = _bucket(int(meta[5]))
-        return int(
+        score = int(
             float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, self.scratch))
             * OUTPUT_SCALE
         )
+        # Mirror the kernel's ENDGAME_SHRINK blend so root contempt and any
+        # offline calibration see the number the tree actually plays.
+        pieces = int(meta[5])
+        if not ENDGAME_SHRINK or pieces >= _fs.EG_HI or abs(score) >= DISTANCE_THRESHOLD:
+            return score
+        wmin = ENDGAME_SHRINK_WMIN
+        if pieces <= _fs.EG_LO:
+            w = wmin
+        else:
+            w = wmin + (256 - wmin) * (pieces - _fs.EG_LO) // (_fs.EG_HI - _fs.EG_LO)
+        delta = (256 - w) * (int(_fs.simple_eval(self.pos.bb, meta)) - score) // 256
+        cap = ENDGAME_SHRINK_CAP
+        if cap > 0:
+            delta = max(-cap, min(cap, delta))
+        return score + delta
 
     def corrected(self) -> tuple[int, int, int]:
         """(raw static, static plus this pawn structure's correction, table index)."""
@@ -2050,6 +2082,9 @@ class FastEngine:
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
             ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
             ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
+            ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
+            ctrl[_fs.C_EG_WMIN] = ENDGAME_SHRINK_WMIN
+            ctrl[_fs.C_EG_CAP] = ENDGAME_SHRINK_CAP
             if INIT_FOLD:
                 for fold_slot, fold_value in _fs.FOLDED.items():
                     if bool(ctrl[fold_slot]) != fold_value:

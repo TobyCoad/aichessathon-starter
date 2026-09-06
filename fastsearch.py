@@ -196,10 +196,25 @@ C_SEE_QUIET = 44
 # restored to 0 after, and stays 0 whenever C_NMP_V2B is off (exact).
 C_NMP_V2B = 45
 C_NMP_MIN_PLY = 46
+# C_EG_SHRINK (V10_PLAN #11, overnight/eval/v10/endgame_shrink.md): below
+# EG_HI pieces, blend the net eval toward pure material (agent._MATERIAL
+# values, side-to-move POV) inside evaluate -- the blended value is a pure
+# function of the position, so QS_EVAL_CACHE and the TT's stored static eval
+# stay consistent. w/256 on the net ramps 256 at EG_HI down to C_EG_WMIN at
+# EG_LO (continuous at EG_HI: the formula yields 256 there); the correction
+# is clamped to +/- C_EG_CAP cp (0 = uncapped) and never touches mate-range
+# scores. A damper for the documented large wrong endgame evals (games.md
+# 475 cp at 11-16 pieces), not a cure -- that is NET_V10.
+C_EG_SHRINK = 47
+C_EG_WMIN = 48
+C_EG_CAP = 49
+EG_HI = 17
+EG_LO = 6
+EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 47
+CTRL_SIZE = 50
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -385,9 +400,21 @@ def from_table(score: Any, ply: Any) -> Any:
     return score
 
 
+@njit(cache=False)
+def simple_eval(bb: Any, meta: Any) -> Any:
+    """Pure material, agent._MATERIAL values, side-to-move POV."""
+    us = meta[fb.SIDE] * 6
+    them = 6 - us
+    total = 0
+    for p in range(5):
+        total += EG_VALUES[p] * (fb.popcount(bb[us + p]) - fb.popcount(bb[them + p]))
+    return total
+
+
 @njit(cache=False, fastmath=True)
 def evaluate(
-    meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: Any, scratch: Any
+    bb: Any, meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: Any,
+    scratch: Any, ctrl: Any,
 ) -> Any:
     """agent._eval_bucket_kernel with the side and bucket chosen here."""
     buckets = w2t.shape[0]
@@ -435,7 +462,22 @@ def evaluate(
             out += t2 * w3[k, j + 2, 0]
         if t3 > 0.0:
             out += t3 * w3[k, j + 3, 0]
-    return int(float(out) * OUTPUT_SCALE)
+    score = int(float(out) * OUTPUT_SCALE)
+    if (
+        ctrl[C_EG_SHRINK] == 0
+        or meta[fb.PIECES] >= EG_HI
+        or score >= DISTANCE_THRESHOLD
+        or score <= -DISTANCE_THRESHOLD
+    ):
+        return score
+    wmin = ctrl[C_EG_WMIN]
+    pieces = meta[fb.PIECES]
+    w = wmin if pieces <= EG_LO else wmin + (256 - wmin) * (pieces - EG_LO) // (EG_HI - EG_LO)
+    delta = (256 - w) * (simple_eval(bb, meta) - score) // 256
+    cap = ctrl[C_EG_CAP]
+    if cap > 0:
+        delta = cap if delta > cap else (-cap if delta < -cap else delta)
+    return score + delta
 
 
 @njit(cache=False)
@@ -605,13 +647,13 @@ def quiesce(
         else:
             if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                 sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-            standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+            standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
             ec_key[qslot] = qkey
             ec_val[qslot] = standing
     else:
         if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-        standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+        standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
     if standing >= beta:
         if use_qtt:
             qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], standing, 1, ply, ctrl)
@@ -697,7 +739,7 @@ def search(
     if ply >= fb.MAX_PLY - 8:
         if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-        return evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+        return evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
     if ctrl[C_KILLER_CLEAR] != 0:
         killers[ply + 2, 0] = 0
         killers[ply + 2, 1] = 0
@@ -785,7 +827,7 @@ def search(
             if cached_eval == NO_EVAL:
                 if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                     sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-                cached_eval = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+                cached_eval = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
             if excluded == 0:
                 # The SINGULAR re-search re-enters this ply: writing there would
                 # flip the grandchildren's improving flag mid-node.
@@ -809,7 +851,7 @@ def search(
         else:
             if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                 sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-            standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+            standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
             cached_eval = standing
         rfp_depth = depth - improving if ctrl[C_IMPROVING] != 0 else depth
         if standing - RFP_MARGIN * rfp_depth * percent // 100 >= beta:
@@ -829,7 +871,7 @@ def search(
             else:
                 if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                     sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-                standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+                standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
                 cached_eval = standing
         futile = standing + FUTILITY_MARGIN[depth] * percent // 100 <= alpha
 
@@ -855,7 +897,7 @@ def search(
                     else:
                         if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
                             sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
-                        standing = evaluate(meta, white, black, w2t, b2, w3, b3, scratch)
+                        standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
                         cached_eval = standing
                 do_null = standing >= beta
         if do_null:
