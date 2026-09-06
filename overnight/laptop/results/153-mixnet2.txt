@@ -1,0 +1,7 @@
+name 153-mixnet2
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  153-mixnet2  +19 Elo over 200 games
+  +77 =57 -66  score 52.8%  over 200 games
+  terminations: adjudication 7, checkmate 137, fifty_moves 7, insufficient_material 21, stalemate 2, threefold_repetition 26
