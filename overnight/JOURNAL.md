@@ -1080,3 +1080,6 @@ queued at the queue tail (TM ideas need a solo clocktest); Elo value +0..+6 at 1
 bundle filler only. State: 153-mixnet2 at 160 games +19.6 +/- 47.7 (checkpoint ~07:10),
 suite at 200/400, fills 145/146/147 land this afternoon. Desktop off; GPU with the
 interactive session.
+
+6 Sep 07:15 v9.3 SHIPPED (email sent): v9.2 + 153-mixnet2 (mixed SF+Lichess net, PROMOTE +19 at
+200, md5 verified different from the old net). Net promoted into the tree (weights/net.npz).

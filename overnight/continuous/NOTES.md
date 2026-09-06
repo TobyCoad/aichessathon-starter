@@ -191,6 +191,9 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
+- v9.3 (6 Sep 07:15, emailed) = v9.2 + the mixed SF/Lichess net (153-mixnet2, PROMOTE +19 at
+  200, md5 45f73c3f, genuine). weights/net.npz in the tree IS this net now. Every net task
+  from here is judged against it; 155-mixnet2s (output x1.31) runs next.
 - v9.2 (6 Sep 03:30, emailed; the human uploads in the morning) = v9.1 + NMP_V2, zip built
   from the tested challenger 143-nmp (PROMOTE +26 at 200), import 33.7 s clean. NMP_V2 is
   being flipped on in the tree by the session (exactness check running). INIT_FOLD / eager
