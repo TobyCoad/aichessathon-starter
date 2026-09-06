@@ -271,7 +271,24 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 06:20, iter 19)
+## Running now (6 Sep 06:55, iter 20)
+- SUITE INTERRUPTED AND RELAUNCHED: iter 19's egshrink suite died at 50/400 when
+  its session ended (a plain background child is killed with the iteration).
+  Relaunched 06:45 DETACHED via PowerShell Start-Process (PID 54076) -- ALWAYS
+  launch >30-min side jobs that way. At 200/400 (mean 13.9) 06:55; verdict in
+  overnight/eval/v10/egshrink_suite.log ~07:02, fold per-band vs 10.8/17.0/12.0/5.0.
+- DRAW_BUDGET (rounds25-29 P2) BUILT iter 20, off in the tree: six own root scores
+  in a row within +/-25 cp + halfmove clock > 20 + <= 10 pieces + clock above
+  LOW_CLOCK_V6 -> soft deadline capped at max(0.25 s, 0.8x observed increment);
+  hard untouched. FastEngine persists root_score. ruff/mypy/exact 70/70 + 40/40
+  PASS; no kernel change (bench identical by construction). Smoke-tested: cap
+  engages only with all conditions, each veto works, new-game reset works.
+  drawcap-clocktest-l queued at the tail (solo clocktest gates TM ideas). Bundle
+  filler ONLY (+0..+6 at 120 s): rides in v9.3/v9.4 whose 120 s games gate it.
+- 153-mixnet2 at 160 games +19.6 +/- 47.7 (06:55), checkpoint at 200 ~07:10.
+- Iter 19's NOTES.md update was left uncommitted; committed 06:44 (7ce5b19).
+
+## Running before (6 Sep 06:20, iter 19)
 - 144-caporder FINAL: INCONCLUSIVE at the 600-game cap, +0.6 +/- 23.5 (50.1%,
   +206 =189 -205). Positive point estimate -> a PASS under the human's rule:
   CAPTURE_ORDER joins the v9.3 bundle union (the bundle's own confirming SPRT
@@ -437,7 +454,13 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) 144-caporder FOLDED (iter 19): CAPTURE_ORDER passes into the v9.3 union.
+(0) Fold the egshrink suite verdict (egshrink_suite.log, done ~07:02; relaunched
+detached PID 54076 after iter 19's copy died at 50/400): any band >1.5 cp worse
+than 10.8/17.0/12.0/5.0 vetoes; pass -> ENDGAME_SHRINK joins the v9.3/v9.4
+bundle. Fold 153-mixnet2's checkpoint verdict when it lands (interactive
+session's net; the loop only records it). DRAW_BUDGET (built iter 20, off) needs
+drawcap-clocktest-l PASS, then it is a bundle filler gated by the bundle's 120 s
+games. (1) 144-caporder FOLDED (iter 19): CAPTURE_ORDER passes into the v9.3 union.
 Still to fold: 145-v93fill, 146-cutnode, 147-seequiet (they run after the two
 mixnet gauntlets, ~afternoon). Ship v9.3 from the union of passes PLUS the
 no-gauntlet riders (CAPTURE_ORDER, NMP_V2B, INIT_FOLD, eager signatures):

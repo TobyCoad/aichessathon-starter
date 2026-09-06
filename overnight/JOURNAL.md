@@ -1062,3 +1062,21 @@ then it rides in the v9.3/v9.4 bundle, never a solo slot. State: 144-caporder ne
 
 6 Sep 06:00 153-mixnet2 trained (best epoch 21): SF-val 0.002702 vs 0.005318, Lichess-val
 0.007959 vs 0.004633, suite 13.8 vs 10.8 (better below 9 pieces, worse 9-16). Gauntlet next.
+
+6 Sep 06:55 (loop iter 20) housekeeping plus the last unbuilt filler. Found iter 19's
+egshrink endgame-suite gate DEAD at 50/400 -- its background child was killed when the
+iteration's session ended -- and its NOTES.md update uncommitted; committed the baton
+(7ce5b19) and relaunched the suite fully detached via PowerShell Start-Process (PID
+54076, log overnight/eval/v10/egshrink_suite.log; lesson recorded in NOTES: side jobs
+longer than an iteration must be launched detached). Built DRAW_BUDGET (rounds25-29
+P2), off in the tree: when our last six root scores all sit within +/-25 cp, the
+halfmove clock is past 20, ten or fewer pieces remain and the clock is healthy, the
+soft deadline is capped at max(0.25 s, 0.8x the observed increment) -- round 27 spent
+53% of its clock shuffling through 61 reference-0 moves. FastEngine now persists
+root_score (last completed iteration); no kernel change, so bench is identical by
+construction. ruff/mypy/exact 70/70 + table-on 40/40 PASS; smoke test proved the cap
+engages only with every condition true and resets on a new game. drawcap-clocktest-l
+queued at the queue tail (TM ideas need a solo clocktest); Elo value +0..+6 at 120 s,
+bundle filler only. State: 153-mixnet2 at 160 games +19.6 +/- 47.7 (checkpoint ~07:10),
+suite at 200/400, fills 145/146/147 land this afternoon. Desktop off; GPU with the
+interactive session.
