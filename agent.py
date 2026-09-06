@@ -81,6 +81,11 @@ import chess.syzygy
 import numpy as np
 import numpy.typing as npt
 
+# The clock INIT_ASYNC measures its ready deadline against: as close to the start of
+# `import agent` as anything in this file can be, so the deadline covers the numba
+# compile, the net load and every import above.
+_IMPORT_T0: Final = time.monotonic()
+
 # --------------------------------------------------------------------------------
 # The learned evaluation
 # --------------------------------------------------------------------------------
@@ -1181,6 +1186,22 @@ RAZOR: Final = False
 # Off in the tree so testing/check_fastsearch can still zero ctrl and hold the
 # kernel to the flags-off reference.
 INIT_FOLD: Final = False
+# INIT_ASYNC (the #1 measured risk, 6 Sep): the platform starts a FRESH PROCESS for
+# every ladder game and gives `import agent` a fixed 90 s budget; a game whose import
+# overruns is lost outright ("game ended white by init"), before a move is played.
+# Four platform samples: 74.1 s, >90 s (LOST), 88.1 s, 64.1 s. 89% of that import is
+# numba compiling the search kernel (28.9 s of 32.4 s here, and their box is ~2.1x).
+# With this on, that one compile runs in a daemon thread and import waits for it only
+# until INIT_READY_S from the top of this file; past that, import returns, the runner
+# prints its ready line, and the first get_move joins the thread and charges the wait
+# to its own move budget. A slow first move is survivable -- the clock is 120 s + 0.5 s
+# per side -- where a failed init is a certain loss. When the compile fits inside the
+# deadline (every local run does) this is byte-for-byte the current behaviour.
+INIT_ASYNC: Final = False
+# Seconds from the top of this module at which import gives up waiting. 72 of the
+# platform's 90 leaves 18 s for python start-up, the runner and their scheduling
+# jitter; the samples above say the compile itself usually lands well inside it.
+INIT_READY_S: Final = 72.0
 # How many earlier occurrences of a position make it a draw inside the search.
 _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
@@ -1657,15 +1678,51 @@ _ENGINE = Engine()
 # move, never a lost game.
 FAST_BOARD: Final = True
 _FAST_OK = False
+# INIT_ASYNC's handle on the background compile: the thread while it is still
+# running, None once it has been joined (or was never started).
+_WARM_THREAD: threading.Thread | None = None
+_WARM_FAILED = False
+
+
+def _warm_search(fs: Any) -> None:
+    """Compile the search kernel. Runs on the import thread, or on INIT_ASYNC's."""
+    global _WARM_FAILED
+    try:
+        fs.warm_up(W1, B1, _W2T, B2, W3, B3, KING_ZONES)
+    except Exception:
+        # Same meaning as a synchronous failure: no compiled search this game. The
+        # joining move disables the fast path, which falls back to Engine.
+        _WARM_FAILED = True
+
+
 try:
     if FAST_BOARD and _COMPILED:
         import fastboard as _fb
 
+        # fastboard stays synchronous: FastEngine's own construction below calls into
+        # it, and it is ~3 s of the ~32. The search kernel is the 89%.
         _fb.warm_up()
         if COMPILED_SEARCH:
             import fastsearch as _fs
 
-            _fs.warm_up(W1, B1, _W2T, B2, W3, B3, KING_ZONES)
+            if INIT_ASYNC:
+                _WARM_THREAD = threading.Thread(
+                    target=_warm_search, args=(_fs,), daemon=True, name="warm-search",
+                )
+                _WARM_THREAD.start()
+                _WARM_THREAD.join(max(0.0, INIT_READY_S - (time.monotonic() - _IMPORT_T0)))
+                if _WARM_THREAD.is_alive():
+                    # Hand the ready line to the runner now and finish on move one.
+                    print(f"init-async: ready at {time.monotonic() - _IMPORT_T0:.1f}s "
+                          "with the search kernel still compiling")
+                else:
+                    _WARM_THREAD = None
+                    if _WARM_FAILED:
+                        raise RuntimeError("warm_up failed")
+            else:
+                _warm_search(_fs)
+                if _WARM_FAILED:
+                    raise RuntimeError("warm_up failed")
         _FAST_OK = True
 except Exception:
     _FAST_OK = False
@@ -2783,11 +2840,39 @@ def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     return now + soft, now + hard
 
 
+def _join_warmup(time_left_ms: int) -> int:
+    """Finish INIT_ASYNC's background compile and charge the wait to this move.
+
+    Import returned early so the runner could print its ready line inside the
+    platform's init budget; the clock starts at that line, so whatever the compile
+    still owes is spent here and has to come off the budget this move plans against.
+    Returns the clock we may actually still use.
+    """
+    global _WARM_THREAD, _FAST
+    thread = _WARM_THREAD
+    if thread is None:
+        return time_left_ms
+    started = time.monotonic()
+    thread.join()
+    _WARM_THREAD = None
+    if _WARM_FAILED:
+        _FAST = None  # no compiled search: Engine plays this game
+    try:
+        left = int(time_left_ms) - int((time.monotonic() - started) * 1000.0)
+    except (TypeError, ValueError):
+        return time_left_ms
+    # Never claim more clock than we were given, and never plan against a negative
+    # one: a 200 ms floor returns a move instantly rather than flagging on arithmetic.
+    return max(200, left)
+
+
 def get_move(fen: str, time_left_ms: int) -> str:
     """Return a legal move in UCI notation; the platform's entry point."""
     global _LAST_SPENT_MS
     started = time.monotonic()
     try:
+        if INIT_ASYNC and _WARM_THREAD is not None:
+            time_left_ms = _join_warmup(time_left_ms)
         return _get_move(fen, time_left_ms)
     finally:
         _LAST_SPENT_MS = (time.monotonic() - started) * 1000.0
