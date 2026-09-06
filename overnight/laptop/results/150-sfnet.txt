@@ -1,0 +1,7 @@
+name 150-sfnet
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  150-sfnet  +19 Elo over 200 games
+  +73 =65 -62  score 52.8%  over 200 games
+  terminations: adjudication 2, checkmate 134, fifty_moves 7, insufficient_material 29, stalemate 2, threefold_repetition 26
