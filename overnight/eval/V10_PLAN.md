@@ -43,6 +43,17 @@ IID, more TT replacement, QS checks/evasions, correction history, width 768/1024
 distillation, int8/int16 inference (1.9x slower than float32, measured three times), sparse head,
 shipped numba cache / AOT (segfaults on rebuild; native binaries forbidden), self-play labelling at scale (costs
 the verdict machine), 6-man tablebases, full-month book rescan, HalfKA features.
+Closed 6 Sep by data_sources.md (dataset survey, verified on real bytes -- do not spend a
+night on any of these): `xushawn/test80-bt4-relabel` (our exact month BT4-relabelled; paired
+against our file r = 0.977, median ratio 1.01 -- it would move nothing), T90/T91 corpora
+(~100 Elo worse than equal-sized T80 by their own publisher's matched control, filtering
+costs ~20 more), CCRL/CEGT/Lichess PGN archives (right distribution, but ~11 CPU-hours of
+Stockfish labelling on the one gauntlet machine for 0.6% of the corpus -- after the freeze,
+not before), `dfrc_n5000` (Fischer-random starts teach king-safety and rook priors that never
+occur in our games), `linrock/bullet-training-data` (bulletformat; our decoder cannot read it),
+any `.tar.zst` in the linrock repos (raw lc0 tars, they need the lc0 rescorer first).
+STILL OPEN and now the top net item: `vondele/rescored` ...rescore_SF_n20000.binpack -- see
+NOTES.md backlog 0-NET.
 
 ## Sequencing
 1. Tonight: #1 TIME_V6 and #3 ADJUDICATION built as switches; TIME_V6 to the desktop 120 s

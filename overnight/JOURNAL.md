@@ -1944,3 +1944,61 @@ comparison is `v94-vs-sf12-120s` against a later run at that rung.
 
 The research pause still stands: no v9.5 candidate, no new 40+ game gauntlet beyond what was
 already queued, no email.
+
+## 6 Sep 19:00 -- iteration 39: our "Stockfish data" was never Stockfish data
+
+The box was busy the whole iteration with `v94-vs-sf12-120s`, the only reading we have at the
+platform's real time control, so this was a deliberate zero-CPU hour: no switch, no bench, no
+`check_fastsearch`. Sixteen cores with four game workers on them is not the eight-worker decode
+that stalled iter 38, but a numba compile is not worth perturbing a timing measurement that costs
+an hour and a half of a budget with about ten such runs left in it.
+
+What was on the floor instead was a research report nobody had folded. `overnight/eval/v10/
+data_sources.md` landed at 17:27 and overturns the premise under four days of net work: our
+`test80-2024-02-feb-2tb7p.min-v2.v6.binpack.zst` is not Stockfish self-play. `test80` is Leela
+Chess Zero training run T80; the stored score is Leela's MCTS evaluation, and Stockfish appears in
+that pipeline only as a depth-6 MultiPV-2 discard filter. `2tb7p` is not a size or a depth either
+-- it is two terabytes of seven-piece Syzygy mounted during the rescore, the thinnest tablebase
+variant linrock published. So "SF-val", "the SF share" and "the mixed SF/Lichess net" are all
+misnomers in this repo, including in my own notes. The strength claim survives (those labels do
+correlate 0.86-0.90 with our Stockfish at depth 12) but the kind does not, and the kind is what
+bit us.
+
+It bit us in a way we had already measured without recognising it. Paired on the identical file,
+114,969 positions and zero EPD mismatches, Leela's labels against a Stockfish 20k-node relabel of
+the same positions: median absolute score 92 against 151, so Stockfish is 1.64x louder in quiet
+positions, while above 1145 units the mean is 16,679 against 10,730, so Stockfish is far quieter in
+winning ones. Our two known static errors are quiet +80 cp, net under-confident, and attacking
+-120 cp, net over-confident. Those are exactly the two signs of the label distribution we trained
+on. That is the most satisfying thing I have read this week, because it makes a defect we had been
+attributing to architecture a property of the targets.
+
+The fix is one download and it is on the evaluation axis, the only one we have measured to hold
+more than +50 Elo: `vondele/rescored`, the same T80 corpus relabelled by a Stockfish search at
+20,000 nodes per move, whose labels correlate 0.971 with our own depth-12 reference against our
+current file's 0.861. Five gigabytes by HTTP range is more positions than the 6.9 GB we already
+have, our decoder reads it unmodified, and the report verified that on real bytes. I folded it as
+backlog item 0-NET with the landmine in capitals: the scale is calibrated to Leela units and must
+be re-derived with `--sample` before training -- roughly 0.315, not 0.262 -- because a net trained
+at the wrong scale shouts and every pruning margin reads a shouted eval as agreement, which is the
+152-sfnet failure verbatim. The report's own honesty note is folded too: we score static error
+against Stockfish d16 and this trains on Stockfish labels, so part of any error improvement is
+circular by construction and is not Elo. Only the SPRT counts. Six datasets it closes on measured
+grounds went into V10_PLAN's closed list so nobody re-derives them.
+
+The second thing was smaller and is a correction to my own predecessor. Iter 38 pre-registered
+that if the Stockfish skill rungs are depth-capped, our 8 s score against a rung should come back
+close to our 120 s score. That does not follow: depth-capping fixes the opponent across clocks and
+says nothing about us, and we gain about 3.9 doublings of time between those two controls.
+Equality would require us to be capped too. So I replaced the prediction with an arithmetic one
+that can be falsified rather than narrated: at EBF 2.06 a ply is +33 Elo, 15x time is 3.9 plies is
+about +129 Elo to us, and `v94-vs-sf12-120s` is sitting at +163 Elo, so `p8-sf12` should land near
++33 Elo, about 54-58%, inside the pre-registered band that makes it the screening regime. If it
+comes back near 72% instead, the clock model underwriting every Elo figure in this repo is wrong,
+and that is a bigger finding than the rung. Either way the next iteration reads a number against a
+written prediction.
+
+I left the queue alone on purpose. sf12 at 120 s, then the two 8 s probes, then sf14 is about two
+and a quarter hours; the machine does not idle, and queueing `p8-sf8` or `p8-sf14` now would be
+spending a slot to insure against a prediction I have just committed to in writing. The research
+pause stands: no v9.5 candidate, no email, no new 40-plus-game gauntlet.

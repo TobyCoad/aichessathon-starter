@@ -723,6 +723,110 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 18:55, iter 39) -- `data_sources.md` LANDED AT 17:27 AND WAS NEVER FOLDED. OUR "STOCKFISH DATA" IS NOT STOCKFISH DATA
+
+**THE PREMISE UNDER FOUR DAYS OF NET WORK IS WRONG, AND THE REPORT PROVES IT ON REAL BYTES.**
+`overnight/eval/v10/data_sources.md` (untracked, 21 KB, written 17:27, verified by dataset card +
+HF tree API + 3 MB HTTP range probes decoded with our own `training/binpack_decode.py`; probe
+scripts in `overnight/eval/v10/probe/`). Everything in this NOTES file above that calls
+`data/sf/test80-2024-02-feb-...binpack.zst` "Stockfish self-play" or "SF labels" is WRONG:
+- `test80` is **Leela Chess Zero training run T80**, converted by `linrock/lc0-data-converter`.
+  The stored score is **Leela's MCTS evaluation**; Stockfish only ever ran at depth 6 MultiPV 2
+  as a DISCARD FILTER. There is no Stockfish pass in the T80 pipeline at all.
+- `2tb7p` is not a size or a depth: it is **2 TB of 7-piece Syzygy mounted during the rescore**.
+  Ours is the THINNEST tablebase variant linrock published (`16tb7p` is near-complete).
+- So "SF-val", "the SF share", "the mixed SF/Lichess net" are all misnomers. What we actually
+  built was Leela-labelled T80 vs Lichess. The *strength* claim survives (r = 0.86-0.90 against
+  our own SF d12) but the *kind* does not, and the kind is what bit us.
+
+**AND THE LABEL SHAPE EXPLAINS BOTH ERRORS WE MEASURED, IN THE RIGHT DIRECTION.** Paired on the
+identical file, 114,969 positions, 0 EPD mismatches (Leela original vs SF n20000): median |score|
+92 -> 151 (SF is 1.64x LOUDER in quiet positions) but above |score| 1145 the mean is 16,679 ->
+10,730 (SF is 0.64x, far QUIETER in winning positions). Our own numbers: quiet error **+80 cp**
+(net under-confident) and attacking error **-120 cp** (net over-confident). Leela's compressed
+quiet labels and blown-out winning labels are exactly those two signs. Leela scores also saturate
+at 26,624 where the SF-rescored twins run to 31,999.
+
+**THE CHEAP FIX IS ONE DOWNLOAD, AND IT IS THE EVALUATION AXIS -- THE ONLY ONE MEASURED TO HOLD
+MORE THAN +50 Elo.** `vondele/rescored`, `test80-2023-06-jun-2tb7p.min-v2-rescore_SF_n20000.binpack`:
+the same T80 corpus **relabelled by a Stockfish search at 20,000 nodes/move**. Against our own SF
+d12 control (same script, same n=160, same depth) its labels correlate **r = 0.971** where our
+current file's correlate **r = 0.861**. Our decoder reads it unmodified (verified on real bytes:
+869,654 entries, 0 invalid boards, 0 illegal moves). A 5.0 GB HTTP range is enough (~1.38 B
+positions at the measured 0.2765 entries/byte -- MORE than the 1.03 B we decoded from feb-2024,
+and a smaller download than the 6.9 GB we already have); binpack is `BINP` + uint32 chunks and our
+`chunks()` already returns cleanly on a short final payload, so truncation is safe.
+- **THE LANDMINE, and it is the one that cost us a night already: the scale changes.** Production
+  `--scale 0.262` is calibrated to LEELA units. Same-method ratio puts SF-n20000 at ~**0.315**. It
+  MUST be re-derived with `--sample` against our own SF d12 before training, exactly as the
+  0.45 -> 0.262 correction was. A net trained at the wrong scale shouts, and every pruning margin
+  reads a shouted eval as agreement -- that is the 152-sfnet failure mode verbatim.
+- **STATE THE CIRCULARITY BEFORE READING THE RESULT** (the report does, and it is right): we score
+  static error against Stockfish d16, and this trains on Stockfish labels, so part of any error
+  improvement is guaranteed by construction and is NOT Elo. **Only the SPRT counts.** If the SPRT
+  is flat, the honest reading is that our eval-error metric was measuring label provenance rather
+  than strength, and we stop spending nights on data.
+- **Endgame fallback, if a slot remains:** `official-stockfish/master-binpacks`
+  `wrongIsRight_nodes5000pv2.binpack` (7.32 GB, whole file) as a THIRD mix component -- measured
+  79.2% of positions at <= 16 pieces and 48.5% at <= 10, vs 41.9% / 21.9% in the T80 family. A 1.9x
+  enrichment exactly in the band where our static error is 475 cp, at zero gauntlet CPU.
+- **CLOSED BY THE SAME REPORT, do not spend a night on any of these:** `xushawn/test80-bt4-relabel`
+  (our exact month BT4-relabelled -- paired r = 0.977, median ratio 1.01: it would move nothing);
+  T90/T91 (measured ~100 Elo WORSE than equal-sized T80 by its own publisher, filtering costs ~20
+  more); CCRL/CEGT/Lichess PGNs (right distribution, ~11 CPU-hours of labelling on the one gauntlet
+  machine for 0.6% of the corpus -- after the freeze, not before); `dfrc_n5000` (Fischer-random
+  starts teach king-safety priors that never occur); `linrock/bullet-training-data` (bulletformat,
+  our decoder cannot read it); any `.tar.zst` (raw lc0 tars, need the lc0 rescorer first).
+- **Rules check, done in the report:** every candidate is "positions annotated by an existing
+  engine", which the live rules permit and which is how our current corpus was already built. NO
+  pretrained NNUE is recommended or considered as weights. The recommended file sidesteps the
+  distillation question entirely because its labels come from a Stockfish SEARCH, not from reading
+  a network's output.
+- **SCHEDULING, non-negotiable (iter 38 cost us 72 minutes to this exact mistake):** the download
+  is network-only and free, but the DECODE is 8 workers for ~45-50 min and `busy_gauntlets()`
+  counts it as load. Whoever takes it must check `overnight/laptop/tasks.json` for an unstarted
+  task and start straight AFTER a verdict lands, never just before one.
+=> Backlog item added below. This belongs to the NET LANE (the interactive session owns the GPU);
+   the loop folded it, sized it and will not start it.
+
+**ITER 38's DEPTH-CAP PREDICTION IS WRONG AS WRITTEN -- FIXED HERE BEFORE THE PROBES LAND.**
+It says "if the skill rungs are effectively depth-capped, our 8 s score against a rung will be
+close to our 120 s score against it". That does not follow. Depth-capping fixes the OPPONENT's
+strength across clocks; it says nothing about ours, and WE gain ~3.9 doublings of time going
+8 s -> 120 s. Equality would require US to be capped too. The correct readings of `p8-sf12`
+against `v94-vs-sf12-120s` (same opponent, two clocks):
+- **8 s score well BELOW the 120 s score = the EXPECTED result** and it does NOT weaken the 8 s
+  regime. It means only that the same rung sits lower at 8 s, so the screening rung is chosen by
+  the 8 s numbers themselves -- which is what the 40-70% rule already does. Nothing to re-argue.
+- **8 s score ~= the 120 s score** = either the rung is NOT capped (it gains from the clock as
+  fast as we do), or WE gain nothing from 8 s -> 120 s. The second would be alarming and worth its
+  own investigation, because every Elo estimate in this repo assumes otherwise.
+- **QUANTITATIVE PREDICTION, recorded so the next iteration can falsify it rather than narrate
+  it:** at EBF 2.06 one ply is +33 Elo, and 8 s -> 120 s is 15x = 3.9 doublings ~ +129 Elo to us.
+  `v94-vs-sf12-120s` is +163 Elo (~72%) at 16 games, so **`p8-sf12` should land near +33 Elo,
+  i.e. ~54-58%** -- inside the pre-registered 40-70% band. If it does, sf-skill12 at 8 s is the
+  screening regime and no further probe is needed. If `p8-sf12` comes back near 72%, the ~+129
+  Elo clock model that underwrites every Elo figure we quote is wrong, and THAT is the finding.
+- Mechanism, for whoever wants to check it in the source rather than the games: the rung configs
+  set only `Skill Level` and the adapter hands the engine a real clock (no `depth`/`nodes`/
+  `movetime` key in `opponents/sf-skill*/engine.json`, so `_limit()` falls through to
+  white_clock/black_clock). Stockfish's own Skill implementation is what caps it -- it fixes the
+  played move from a MultiPV set at a depth tied to the level -- so the cap is inside the engine,
+  not in our config. The probe measures it; do not assert it from the config alone.
+
+**QUEUE, unchanged and deliberately so.** `v94-vs-sf12-120s` (running, 16 games, +163 +/- 112,
+~72%) -> `conv3b-clocktest-l` (already has a result file from 17:20, the worker skips it) ->
+`p8-sf10` -> `p8-sf12` -> `v94-vs-sf14-120s`. That is ~2 h 15 m of work; the machine does not idle
+and nothing needs adding. I deliberately did NOT queue `p8-sf8` or `p8-sf14`: the arithmetic above
+predicts `p8-sf12` lands in band, and a probe queued against that prediction is a slot spent to
+save one iteration of latency. sf12 reading ~72% at 120 s also means the 120 s RELEASE rung is
+likely sf14, which is already last in the queue.
+
+**NOT DONE, deliberately:** no engine switch, no bench, no `check_fastsearch`. 16 cores with a
+4-worker 120 s match on them is not the 8-worker decode of iter 38, but the only reading we have
+at the platform's real time control is being taken right now and a numba compile is not worth
+perturbing it. The research pause also stands: no v9.5 candidate, no email, no 40+ game gauntlet.
+
 ## Running now (6 Sep 18:30, iter 38) -- THE QUEUE WAS STALLED FOR 72 MINUTES BY THE NET LANE'S DECODE, AND THE 8 s PROBE IS NOW ON THE MACHINE
 
 **THE MACHINE WAS NOT IDLE, BUT THE GAUNTLET QUEUE WAS DEAD.** The worker announced
@@ -1894,6 +1998,16 @@ read off the live source this iteration; no code was written, the tree is untouc
 
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. SHIP v9.2 when nmp-clocktest-l PASSES (queued right after 150-sfnet): champion
+0-NET (iter 39, from data_sources.md). SF-RELABELLED T80: `vondele/rescored`
+   `test80-2023-06-jun-2tb7p.min-v2-rescore_SF_n20000.binpack`, 5.0 GB range GET.
+   Same corpus we already train on, relabelled by a Stockfish search at 20k nodes:
+   labels correlate r = 0.971 with our own SF d12 vs our current file's 0.861, and the
+   Leela->SF label shift has the right sign for BOTH errors we measured (quiet +80 cp,
+   attacking -120 cp). Decoder verified on real bytes, 0 errors. RE-DERIVE THE SCALE
+   FIRST (~0.315, not 0.262). Cost ~1.5 h wall + 2 GPU h + one 8 s SPRT. Judge on the
+   SPRT ONLY -- static error against SF d16 is partly circular here. Net lane, not the loop.
+   Endgame fallback in the same report: `wrongIsRight_nodes5000pv2.binpack` as a third mix
+   component (79.2% of positions at <= 16 pieces vs 41.9% in T80).
    + NMP_V2 (PROMOTE +26 at 201 games), INIT_FOLD + the fastboard eager
    signatures ride in the zip. Then fold 144-caporder, 145-v93fill, 147-seequiet
    as they land; ship v9.3 from the union of later passes. INIT_FOLD FOLDED-map
@@ -1955,6 +2069,21 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 39) **SF-RELABELLED DATA IS THE TOP NET ITEM AND IT IS SIZED, PRICED AND RULE-CHECKED.**
+`overnight/eval/v10/data_sources.md` (17:27, folded in the iter 39 section) shows our whole "SF
+data" corpus is Leela T80 MCTS labels, never Stockfish, and that the same corpus relabelled by a
+Stockfish search at 20k nodes correlates r = 0.971 against our own SF d12 where ours is 0.861.
+Recipe: 5.0 GB range GET of `vondele/rescored` `...rescore_SF_n20000.binpack` -> **re-derive the
+scale with `--sample` first (~0.315, NOT 0.262 -- this is the step that cost a night)** -> decode
+(~50 min, 8 workers, START IT STRAIGHT AFTER A VERDICT LANDS) -> 2 GPU h -> one 8 s SPRT. Only the
+SPRT counts; the static-error improvement is partly circular by construction and is not Elo. This
+is the NET LANE's (the interactive session owns the GPU); the loop will not start it.
+(0-NEW-b, iter 39) **READ `p8-sf12` AGAINST THE RECORDED PREDICTION, not against iter 38's
+sentence.** Iter 38's "depth-capped => same score at both clocks" does not follow (it ignores that
+WE gain ~3.9 doublings). The prediction now on the record is `p8-sf12` ~54-58% (+33 Elo), from
++163 Elo at 120 s minus ~129 Elo of clock. In band => sf12 at 8 s is the screening regime, done.
+Near 72% => the clock model behind every Elo figure in this repo is wrong, and that is the finding.
+
 (0-NEW, iter 38) **READ `p8-sf10` AND `p8-sf12` FIRST -- they are 6 minutes each and they
 decide the whole testing regime.** Apply the pre-registered rule in the iter 38 section: a
 score of 40-70% makes that rung the 8 s screening regime (600 games, ~80 min, +/- 20 Elo);
