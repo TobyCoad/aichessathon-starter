@@ -334,6 +334,22 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
+## QUEUE FREEZE UNTIL v9.4 SHIPS (session, 6 Sep 10:20) -- LOOP: QUEUE NO GAUNTLETS
+Do not add ANY task with `games` to overnight/laptop/tasks.json until `149-v94wdl` has run.
+Not a variant, not a renamed one, not a "bounded" one. Iteration 5 re-queued the deferred
+147-seequiet as `147b-seequiet`; it started, and it cost twice:
+  (a) it would have held the only gauntlet for ~3 h ahead of the release the human is
+      waiting on, and
+  (b) it SLOWED THE WDL TRAINING 6x. Free RAM fell to 5.3 GB of 31.4; the trainer
+      memory-maps a 4.9 GB shard per epoch, so ten gauntlet processes evicted its page
+      cache and epochs went 115 s -> 734 s (0.63 -> 0.10 M pos/s). A gauntlet and a
+      training run do NOT peacefully share this machine, whatever the CPU count suggests.
+147b-seequiet has been stopped and moved to overnight/laptop/deferred.json.
+overnight/laptop/deferred.json is the holding area: 147-seequiet, 146-cutnode, their
+clocktests, 156-mixnet3 and 147b-seequiet are parked there and should be re-added ONLY
+after the v9.4 gauntlet has finished. Clocktests are fine to run meanwhile (~10 min, and
+they are a release gate); 600-game switch tasks are not.
+
 ## HUMAN'S INSTRUCTION 6 Sep 08:55 -- v9.4 = the search bundle + the WDL net, ONE gauntlet
 READ THIS BEFORE TOUCHING v9.4. The human's words: "fold wdl into the 9.4 release ...
 again only one gauntlet per version. so just fold the wdl gauntlet in as a 9.4 gauntlet

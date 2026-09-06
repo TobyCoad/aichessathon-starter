@@ -9,5 +9,10 @@
   "net": "overnight/nets/156-mixnet3.npz",
   "sed": "",
   "games": 600
+ },
+ {
+  "name": "147b-seequiet",
+  "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
+  "games": 200
  }
 ]
