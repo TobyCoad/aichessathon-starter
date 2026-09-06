@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import math
 import multiprocessing as mp
 import sys
 import time
@@ -54,6 +55,9 @@ NIBBLE_PIECE = {
 }
 SCORE_VLE_BLOCK = 4
 VALUE_NONE = 32002  # Stockfish's 'no score' marker; mates sit just below it
+# training.train.SCALE, repeated rather than imported: importing train pulls torch into
+# every decode worker. The blend below has to use the same squash the loss does.
+WDL_SCALE = 400.0
 
 
 def unsigned_to_signed(r: int) -> int:
@@ -265,16 +269,38 @@ def iter_chunk(chunk: bytes) -> Iterator[tuple[chess.Board, chess.Move | None, i
             at += reader.bytes_used()
 
 
-def decode_chunk(job: tuple[bytes, float, int]) -> tuple[np.ndarray, int, int]:
+def blend_wdl(cp: int, result: int, lam: float) -> int:
+    """Mix the engine's evaluation with how the game actually ended.
+
+    Both are converted to a win probability first -- the same `sigmoid(cp / 400)` the
+    loss squashes through -- because a centipawn average would be dominated by the tail:
+    mixing +900 with a draw in cp space says +450, while in probability space it says
+    the position was much closer to drawn than the score claimed. The blend is then
+    turned back into the effective centipawn score the shard stores, so nothing
+    downstream of the decoder has to know this happened.
+
+    `lam` weights the evaluation: 1.0 is the evaluation alone (the old behaviour,
+    bit-for-bit), 0.0 the game result alone. Both `cp` and `result` are white-relative.
+    """
+    if lam >= 1.0:
+        return cp
+    evaluation = 1.0 / (1.0 + math.exp(-cp / WDL_SCALE))
+    outcome = (result + 1) * 0.5
+    blended = lam * evaluation + (1.0 - lam) * outcome
+    blended = min(1.0 - 1e-6, max(1e-6, blended))
+    return round(WDL_SCALE * math.log(blended / (1.0 - blended)))
+
+
+def decode_chunk(job: tuple[bytes, float, int, float]) -> tuple[np.ndarray, int, int]:
     """One chunk -> filtered RECORD rows. Returns (records, seen, kept)."""
-    chunk, scale, min_ply = job
+    chunk, scale, min_ply, wdl_lambda = job
     out = np.zeros(len(chunk) // 4 + 64, dtype=RECORD)
     kept = 0
     seen = 0
     entries = iter_chunk(chunk)
     while True:
         try:
-            board, move, score, ply, _result = next(entries)
+            board, move, score, ply, result = next(entries)
         except StopIteration:
             break
         except (ValueError, AssertionError, IndexError, KeyError):
@@ -290,6 +316,10 @@ def decode_chunk(job: tuple[bytes, float, int]) -> tuple[np.ndarray, int, int]:
         cp = score if board.turn == chess.WHITE else -score
         cp = round(cp * scale)
         cp = max(-CP_CLAMP, min(CP_CLAMP, cp))
+        if wdl_lambda < 1.0:
+            white_result = result if board.turn == chess.WHITE else -result
+            cp = blend_wdl(cp, white_result, wdl_lambda)
+            cp = max(-CP_CLAMP, min(CP_CLAMP, cp))
         if kept >= len(out):
             out = np.concatenate([out, np.zeros(len(out), dtype=RECORD)])
         out[kept]["idx"][: len(idx)] = idx
@@ -353,6 +383,12 @@ def main() -> None:
         help="internal score -> cp (0.45 from SF17.1 depth 12 made nets 1.7x too loud)",
     )
     parser.add_argument("--min-ply", type=int, default=16)
+    parser.add_argument(
+        "--wdl-lambda",
+        type=float,
+        default=1.0,
+        help="weight on the evaluation vs the game result (1.0 = evaluation only, as before)",
+    )
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
     parser.add_argument("--sample", type=int, default=0, help="print N FENs + raw scores and exit")
     parser.add_argument("--batch", type=int, default=8, help="chunks per worker task")
@@ -363,15 +399,15 @@ def main() -> None:
     out = arguments.out or arguments.source.with_suffix("")
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    def jobs() -> Iterator[tuple[bytes, float, int]]:
+    def jobs() -> Iterator[tuple[bytes, float, int, float]]:
         batch: list[bytes] = []
         for chunk in chunks(arguments.source):
             batch.append(chunk)
             if len(batch) >= arguments.batch:
-                yield b"".join(batch), arguments.scale, arguments.min_ply
+                yield b"".join(batch), arguments.scale, arguments.min_ply, arguments.wdl_lambda
                 batch = []
         if batch:
-            yield b"".join(batch), arguments.scale, arguments.min_ply
+            yield b"".join(batch), arguments.scale, arguments.min_ply, arguments.wdl_lambda
 
     started = time.time()
     seen_total = kept_total = written = shard_index = 0
