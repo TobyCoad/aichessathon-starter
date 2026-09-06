@@ -410,6 +410,38 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   outranks filling the slot. Next iteration should start with razoring: it is the smallest
   of the three and the only one that fits a single iteration.
 
+## Next switch to build -- RAZOR, scoped 6 Sep 09:20 (iter 24) so iter 25 can just write it
+search.md #11, +0..+5 Elo at 120 s, the smallest unbuilt search item. Everything below was
+read off the live source this iteration; no code was written, the tree is untouched.
+- SITE: fastsearch.py, immediately AFTER the reverse-futility block that ends
+  `if standing - RFP_MARGIN * rfp_depth * percent // 100 >= beta: return standing`
+  (~line 870) and BEFORE `futile = False` (~line 872). That ordering matters: RFP is the
+  fail-HIGH shortcut and razoring is the fail-LOW one, and razoring must see the `standing`
+  RFP has already computed rather than calling `evaluate` a second time.
+- SHAPE: at depth <= 3, not in_check, non-PV (`beta - alpha <= 1`), `excluded == 0`, and
+  `abs(alpha) < DISTANCE_THRESHOLD`, if `standing + RAZOR_MARGIN[depth] <= alpha` then run
+  the existing quiescence search at this node; if it comes back `<= alpha`, return it. The
+  point is that a position this far below alpha at depth <= 3 is almost never rescued by a
+  quiet move, so the verification is a qsearch instead of a full subtree.
+- REUSE, do not re-derive: `standing` may still be -INFINITY at that point (RFP only fills
+  it when `percent != 0` and the depth/check guards pass), so razoring needs the SAME
+  fill-in ladder the futility block uses six lines further down -- cached_eval, else
+  sync_acc under C_LAZY_ACC, else evaluate, then write back into cached_eval. Copy that
+  ladder verbatim; do not add a third eval path.
+- CONSTANTS: RAZOR_MARGIN as a module-level tuple indexed by depth, {1: 240, 2: 300,
+  3: 400}-ish cp. Our eval is true-cp (search.md section 4 checked this), so reference-engine
+  margins transfer; tune only if the bench says the tree collapses.
+- CTRL: one new slot C_RAZOR = 51, CTRL_SIZE 51 -> 52. It is a NEW slot, so it stays a live
+  ctrl read and must NOT be added to fastsearch.FOLDED until it has shipped -- INIT_FOLD
+  folds only settled switches, and a folded in-flight slot silently breaks challenger seds.
+- EXACTNESS: with the switch off the block cannot execute, so check_fastsearch stays
+  bit-identical (70/70). Verify anyway before committing.
+- BENCH EXPECTATION: razoring PRUNES, so depth 8 node count should drop. If it does not
+  move at all the guards are wrong (most likely the non-PV test -- at d8 under aspiration
+  the root window is +/-15, so plenty of nodes are non-PV). Unlike SINGULAR_EXT2 this is not
+  depth-gated above 3, so a d8 bench IS a fair read of it.
+- v9.5 bundle filler; never its own gauntlet slot.
+
 ## Running before (6 Sep 08:45, iter 23)
 - Nothing could be started again: 155-mixnet2s is still running (288 games, -7.2 +/- 33.8;
   it was +69.5 +/- 60 at 76 games, so the slope-rescale net is regressing to nothing --
