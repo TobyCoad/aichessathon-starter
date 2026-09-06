@@ -31,7 +31,7 @@ say "decode: $(grep '^done:' overnight/eval/sf-decode-wdl.log)"
 
 if [ ! -f data/mixw/mixw_00.npy ]; then
     mkdir -p data/mixw
-    $PY -u training/merge_mix.py > overnight/eval/wdl-merge.log 2>&1 || fallback "MERGE FAILED"
+    $PY -u -m training.merge_mix > overnight/eval/wdl-merge.log 2>&1 || fallback "MERGE FAILED"
 fi
 say "merge: $(tail -n 2 overnight/eval/wdl-merge.log | tr '\n' ' ')"
 
