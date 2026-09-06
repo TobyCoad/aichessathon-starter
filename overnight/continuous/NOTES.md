@@ -387,6 +387,40 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## 160-v95 STOPPED AT 408 GAMES -- FLAT, CLOSED. SHIP v9.5 AS INIT-ONLY (session, 14:45)
+Trajectory vs the v9.4 champion: 54 games +12.9, 104 +3.3, 154 -4.5, 204 -0.0, 254 -0.0,
+360 +9.7, 408 **+9.4 +/- 28.6, llr -0.06**. Four hundred games and the SPRT has learned
+nothing; the interval is [-19, +38]. It did NOT clear +10 at the 400 checkpoint, so it was
+heading for another 200 games (~1 h 20 m) to answer a question 408 games already answered.
+Stopped and removed from tasks.json; no result file (the workers own those).
+- **SHIP v9.5 = v9.4 + INIT_FOLD + INIT_ASYNC ONLY.** Do NOT include the ADJ_V2 / RAZOR /
+  ROOT_NODES / SINGULAR_EXT2 / DRAW_BUDGET bundle. Reasons: (a) it measures as nothing;
+  (b) by our own power simulation a true -10 change reads like +9 at this sample often
+  enough to matter, so attaching that bet to the init fix is free downside; (c) the init
+  changes alter NO move the engine plays -- INIT_FOLD is bench-identical (1,110,289 nodes
+  fold on and off) and INIT_ASYNC only moves WHEN compilation happens -- so v9.5 needs no
+  strength gauntlet at all, only `initasync-clocktest-l`.
+- The five switches are NOT closed, just unbundled. Re-test them individually or in a
+  smaller bundle later, against sf-skill8 per the new regime.
+- The machine was freed deliberately: the human asked for the sf-skill8 reality check, and
+  an hour of gauntlet spent on a flat bundle serves neither that nor the release.
+
+## WIDTH/SPEED MEASUREMENT -- MY SYNTHETIC BENCH WAS INVALID, DO NOT USE IT
+I benched accumulator widths 256/512/768/1024 using RANDOM weights and got 251/144/100/77
+knps. That is contaminated: the real trained 512 champion measures **218 knps**, not 144.
+Random weights change the search's behaviour (fail-highs, quiescence blowups, cache and
+accumulator-refresh patterns), so the run measured chaos, not width. Discard those numbers.
+- The ONE clean measurement stands: champion 218 knps vs 362 knps with evaluate() short-
+  circuited to simple_eval (material only), i.e. **the net is ~40% of node time**.
+- Derived from that, and assuming eval cost scales linearly in width (the head is 2*acc*32
+  MACs and the accumulator update is linear in acc): 768 costs ~x0.83 node rate, 1024 ~x0.71,
+  i.e. about -9 and -16 Elo at 120 s. The synthetic run hints it could be worse (as low as
+  x0.53 for 1024). HONEST RANGE FOR 1024: -16 to -30 Elo of speed, to be paid for by eval
+  quality. Only a REAL trained wide net settles it -- that is the overnight job.
+- Also closed by measurement today: narrowing to 256 buys only ~+6 Elo of depth for a clearly
+  worse net (dead), and LAZY EVAL is dead too -- removing the net ENTIRELY buys just 1.66x
+  (~+23 Elo at 120 s), so skipping it at some nodes is worth ~+10 for a search rewrite.
+
 ## NEW TESTING REGIME (human's instruction, 6 Sep 14:45): STOP TESTING AGAINST OURSELVES
 "scrap testing against our champion, instead test against stockfish at skill 8 from now on
 ... and play at 120s".
