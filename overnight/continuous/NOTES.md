@@ -772,8 +772,16 @@ Elo and is not self-play. (2) It is the new net's only game evidence, and the sa
 net finished at -17.4 Elo. Forty games spans zero; do NOT quote it as a result, but the sign is
 the one the endgame suite and the static-error probe predicted.
 
-**`182-v95-vs-v94` STARTED 21:08** (600 games, 8 s, `workers: 4`, vs `opponents/v94net`). Its
-200-game checkpoint is the net's first real strength verdict and lands ~22:20. Email it either way.
+**`182-v95-vs-v94` IS CLAIMED BUT BLOCKED, NOT RUNNING.** The worker built its challenger dir at
+21:07 and is now parked in `busy_gauntlets`'s wait loop: the NET LANE started
+`training.binpack_decode data/sf/t80-sf80k-full.binpack --target 800000000 --workers 8
+--wdl-lambda 0.75 --scale 0.2479` (two PIDs, the SF-relabelled corpus from data_sources.md), and
+`binpack_decode` is one of the patterns that loop counts. That is iter 38's recorded failure mode
+happening again, and it is the net lane's call, not ours -- the loop does not kill their work. But
+**the 200-game checkpoint is NOT ~22:20; it is ~50 min of decode plus ~30 min of games, so ~23:00
+at best.** Do not report a verdict as late when it was never started. If the decode is still
+running next iteration, the queue is idle by construction: use the time to build v9.7's bundle
+rather than to poll.
 
 **Gate log for v9.6:** ruff PASS, mypy PASS, check_fastsearch 70/70 exact + 40/40 best move
 (node ratio 1.00), bench d8 1,014,119 nodes = v9.5's exactly (the INIT_FOLD gate), zip 21.7 MB /
@@ -2314,7 +2322,9 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(0-NEW, iter 43) **READ `182-v95-vs-v94`'s 200-GAME CHECKPOINT (~22:20) AND EMAIL IT.** It is the
+(0-NEW, iter 43) **READ `182-v95-vs-v94`'s 200-GAME CHECKPOINT (~23:00, NOT 22:20 -- the net
+lane's binpack_decode has the worker parked in the busy_gauntlets wait loop; see the iter 43
+section) AND EMAIL IT.** It is the
 only strength evidence v9.5/v9.6's net will ever get against v9.4, and the human has BOTH zips in
 his Downloads folder. PROMOTE or INCONCLUSIVE-positive: confirm the upload. REJECT with the llr
 crossing the bound: tell him to upload v9.4's net instead -- the search half of v9.6 is exact and
