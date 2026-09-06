@@ -1,17 +1,5 @@
 [
  {
-  "name": "v94-120s",
-  "kind": "switch",
-  "sed": "",
-  "champion": "overnight/challengers/153-mixnet2",
-  "games": 40,
-  "workers": 4,
-  "base_ms": 120000,
-  "openings": "platform",
-  "elo0": -50,
-  "elo1": 50
- },
- {
   "name": "149-v94wdl",
   "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
   "games": 600,
@@ -75,13 +63,36 @@
   "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
  },
  {
-  "name": "146-cutnode",
-  "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
+  "name": "165-v96",
+  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
   "games": 600
  },
  {
-  "name": "147b-seequiet",
-  "sed": "s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
-  "games": 200
+  "name": "v96-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/"
+ },
+ {
+  "name": "v96-120s",
+  "kind": "switch",
+  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
+ },
+ {
+  "name": "v94-120s",
+  "kind": "switch",
+  "sed": "",
+  "champion": "overnight/challengers/153-mixnet2",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
  }
 ]

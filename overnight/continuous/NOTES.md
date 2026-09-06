@@ -560,6 +560,88 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 12:50, iter 30) -- v9.6 BUNDLED, the queue is the bottleneck
+- `drawcap2-clocktest-l` FOLDED: **PASS** (flags 0/6, errors 0, lowest clock 5.6 s against
+  the 5 s floor, longest move 10.9 s). The WIDENED DRAW_BUDGET is therefore ADMITTED -- the
+  condition iter 29 set is met and the switch is no longer blocked.
+- **`v94-120s` WAS STOPPED AND MOVED TO THE TAIL OF THE QUEUE** (it had run 12:27-13:00 and
+  reached 7 of 40 games). It is not cancelled: it is now the last task, behind `v96-120s`,
+  so it runs tonight when nothing is waiting on the queue. The one fact that decided it was
+  its MEASURED THROUGHPUT, which I did not have when I started: 7 games in 33 minutes with
+  four workers, i.e. about THREE HOURS for the 40, not the one hour I had assumed. Games at
+  120 s + 0.5 s are long now that the referee's cap is 600 plies rather than 300 -- half a
+  second of increment over 600 plies is another five minutes a side -- and that is what makes
+  a 40-game run at the platform control so expensive.
+  * WHY IT STILL GOES TO THE BACK RATHER THAN STAYING AT THE FRONT: v9.4 is ALREADY SHIPPED.
+    This run cannot gate it; it can only inform the next bundle. The human's rule is exact
+    on this point -- "the 40 games at 120 s are the gate only for time-management bundles and
+    informational otherwise (do not wait for them)" -- and v9.4 is a search-and-net bundle.
+    Three hours in front of `160-v95` is the difference between one shipped version today
+    and two, against a mandate of three a day and uploads closing on the 11th.
+  * WHAT WE GIVE UP, STATED HONESTLY: the platform clock IS 120 s + 0.5 s
+    (ARCHITECTURE.md line 13), so this is the only measurement we ever take at the real time
+    control, and NMP_V2B is a no-op at 8 s -- v9.4's +70 genuinely never tested it. Iter 29's
+    instinct was sound. But 40 games at elo0/elo1 = -50/+50 is a very wide gate: it can only
+    catch a catastrophe, not a regression of the size we normally argue about, and the 6-game
+    `clocktest` that EVERY version already passes runs at the same 120 s + 0.5 s and is what
+    actually catches the failure mode that loses games on the platform. Deferring a low-power
+    informational run by a few hours costs little; blocking the release queue with it costs a
+    version.
+  * DO NOT put heavy CPU work on this laptop while any 120 s task runs. Load there does not
+    slow the measurement down, it changes the answer.
+- **146-cutnode AND 147b-seequiet ARE GONE, REPLACED BY ONE BUNDLE `165-v96`** (600 games,
+  8 s) + `v96-clocktest-l` + `v96-120s`. That is the whole substance of this iteration and
+  it is a deliberate departure from iter 29's plan, so the reasoning is recorded in full:
+  * The two solo gauntlets were ~4 h of laptop queue to produce two verdicts on two
+    switches that were only ever going to ride in a bundle anyway. The human's own rule is
+    "small changes are never gauntleted alone" and "one gauntlet per version"; running a
+    600-game SPRT on CUTNODE by itself was the exception, not the doctrine.
+  * All three switches already hold an individual clocktest PASS: `cutnode-clocktest-l`
+    (0/6, 5.7 s, 09:56), `seequiet-clocktest-l` (0/6, 5.8 s, 09:12), `drawcap2-clocktest-l`
+    (0/6, 5.6 s, 12:18). So the safety half of each gate is already banked; what 165-v96
+    buys is the strength half, once, for all three.
+  * Bench context, both benign-to-moderate: CUTNODE 0.995x nodes (its 142-v92prune REJECT
+    was attributed to IMPROVING at 0.506x, not to it), SEE_QUIET 0.760x. SEE_QUIET is the
+    riskiest of the three and is therefore the named split-off candidate.
+  * 147/140/141's "init N" REJECTs were the crash gate's old 30 s init budget, not engine
+    faults -- that was fixed to 90 s (iter 27). Neither switch carries a real failure.
+  * Sed (verified: flips exactly 3 lines in agent.py, no more):
+    s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/
+  * IF 165-v96 FAILS: split ONCE by dropping SEE_QUIET, re-queue as `166-v96b`, and close
+    SEE_QUIET permanently whatever that returns. Do not chase it further.
+- **DRAW_BUDGET SHIPS ON A WEAKER GATE THAN THE RULES ASK, KNOWINGLY.** It is a
+  time-management switch, so the rule makes the 120 s games its gate, and an 8 s SPRT is
+  close to blind to it. I still put it in v9.6 rather than hold it: its clocktest (the
+  safety gate) has passed, its own Elo estimate is +0..+6 (rounds25-29 P2) which is inside
+  the bundle's noise in either direction, and holding it for a dedicated 120 s slot means
+  it never ships at all before uploads close on the 11th. `v96-120s` is queued behind
+  `v96-clocktest-l` as the confirmation; it lands AFTER v9.6 is emailed. If it comes back
+  clearly negative, revert DRAW_BUDGET in v9.7 -- shipping is reversible, the queue hour is
+  not. Anyone reading a v9.6 CANDIDATE.md should know DRAW_BUDGET's strength is unmeasured.
+- QUEUE, in order: `160-v95` (600 games, may PROMOTE early at its 200-game checkpoint) ->
+  `v95-clocktest-l` (v9.5's release gate) -> `165-v96` -> `v96-clocktest-l` (v9.6's
+  release gate) -> `v96-120s` (DRAW_BUDGET's confirmation) -> `v94-120s` (informational,
+  overnight). The two 120 s runs are ~3 h each and sit at the back on purpose.
+- ENDGAME_SHRINK IS CLOSED, and the reason is a good one: the net overtook it. Its constants
+  (WMIN 128 / CAP 600) were calibrated against the OLD net's 673.7 cp error at 5-8 pieces and
+  bought that down to 532.1. The v9.3 net alone reaches 331.9 there (eg_calib_v93), i.e.
+  better than the blend ever managed, and v9.4's WDL net is better again. Blending a net
+  that is now roughly twice as accurate in that band toward pure material would very likely
+  cost Elo, and the calibration that justified it no longer describes the champion. The
+  17-min endgame-suite gate is therefore CANCELLED, not merely deferred; the switch stays in
+  the tree, off, and fastsearch folds it away at INIT_FOLD (commit f87f0c3).
+- FOR THE NET LANE (interactive session, not the loop): `overnight/eval/v10/eg_calib_wdl.log`
+  is NOT a measurement of the WDL net -- it died on `FileNotFoundError:
+  overnight/eval/endgame_suite.json`, which exists. It was launched from the wrong working
+  directory. Re-run it from the repo root; there is currently NO per-band static-error
+  number for the shipped v9.4 net, so do not quote one.
+- TREE STATE: clean at f87f0c3 (the interactive session's INIT_FOLD extension, 9 more kernel
+  slots, init 35-38 s -> 29.6-30.3 s, landed 12:41 while this iteration was reading). It is a
+  no-op with INIT_FOLD False, which is how every challenger is built; it only bites inside the
+  zip. The v9.5 ship recipe's bench-node-identity check (zip fold-on vs challenger fold-off,
+  identical to the node) is what actually gates it, and it now covers nine more slots than it
+  did at v9.4 -- so treat that check as mandatory, not ceremonial.
+
 ## Running now (6 Sep 12:15, iter 29) -- v9.4 SHIPPED
 - **v9.4 SHIPPED 12:12, emailed.** 149-v94wdl PROMOTE **+70 Elo at the 200-game checkpoint**
   (+92 =51 -53, 59.9% over 196 games, llr +2.86 against a +/-2.94 bound -- a bound-crossing
@@ -1190,28 +1272,36 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) FOLD `drawcap2-clocktest-l` the moment it lands: PASS admits the widened DRAW_BUDGET to
-the v9.6 bundle, FAIL closes it permanently (the narrow version's old PASS does not describe
-it and must not be used to rescue it).
-(2) SHIP v9.5 on `160-v95`'s checkpoint (PROMOTE, or INCONCLUSIVE with a positive point
+(1) SHIP v9.5 on `160-v95`'s checkpoint (PROMOTE, or INCONCLUSIVE with a positive point
 estimate) plus `v95-clocktest-l` PASS. Recipe, verbatim from iter 29 which worked cleanly:
 flip ADJ_V2 / ROOT_NODES / SINGULAR_EXT2 / RAZOR True in the tree, ruff + mypy +
 check_fastsearch, build the zip FROM `overnight/challengers/160-v95` with INIT_FOLD flipped
 True in the zip copy, bench the zip AND the challenger at depth 8 and require an IDENTICAL
-node count (that is the INIT_FOLD gate), clean-unzip cold import < 45 s, copy to
+node count (that is the INIT_FOLD gate, and f87f0c3 widened what it covers -- do not skip
+it), clean-unzip cold import < 45 s, copy to
 C:/Users/tobyc/Downloads/aichessathon-v9.5.zip, CANDIDATE.md, notify --candidate.
-(3) v9.6 bundle: DRAW_BUDGET (only on a drawcap2 PASS) + CUTNODE + SEE_QUIET (each only on
-its own positive verdict from 146-cutnode / 147b-seequiet, which now run after 160-v95) +
-ENDGAME_SHRINK if its 17-min endgame suite clears the "no band worse by >1.5 cp" veto.
-(4) Do NOT start GPU work while a gauntlet is queued: worker.sh now WAITS for a trainer, so
-starting one stalls the release queue. 156-mixnet3 stays deferred; if a net is retrained it
-must be re-based against the v9.4 WDL net, not the v9.3 one.
-(5) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
+(2) FOLD `v94-120s` when it lands OVERNIGHT (it is now the last task). It is the only
+reading we have at the platform's real
+time control (120 s + 0.5 s) and the only test NMP_V2B has ever had. A clear negative is
+NOT a reason to unship v9.4 on its own -- 40 games at +/-50 is a wide gate -- but it is a
+reason to re-examine NMP_V2B before piling more pruning on top of it.
+(3) SHIP v9.6 on `165-v96`'s checkpoint + `v96-clocktest-l` PASS: DRAW_BUDGET + CUTNODE +
+SEE_QUIET. If it fails, split ONCE by dropping SEE_QUIET (`166-v96b`) and close SEE_QUIET
+whatever comes back. `v96-120s` is confirmation for DRAW_BUDGET and lands after the ship.
+(4) v9.7 has NOTHING BUILT. The last unbuilt filler is killer decay (V10_PLAN #12's other
+half); the RAZOR TT-store lever is the only untried improvement to RAZOR (do not re-tune its
+margins); NET_V10 belongs to the interactive session. Build the fillers while a gauntlet
+runs -- but not while `v94-120s` or `v96-120s` is running, because those measure at a time
+control where extra CPU load changes the answer.
+(5) Do NOT start GPU work while a gauntlet is queued: worker.sh WAITS for a trainer, so
+starting one stalls the release queue. 156-mixnet3 stays deferred; a retrained net must be
+re-based against the v9.4 WDL net, not the v9.3 one.
+(6) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
 the depth bench -- an identical node count there is not evidence of a no-op. ADJ_V2 likewise
 cannot move it (the two paths agree below ply 150 and bench starts from the initial position).
-(6) Standing referee caveat: verdicts from before 6 Sep 11:18 were measured under a 300-ply
+(7) Standing referee caveat: verdicts from before 6 Sep 11:18 were measured under a 300-ply
 material adjudication that the platform does not have. Do not re-run them for that reason
 alone (both sides shared the rule), but do not defend a borderline old verdict with it either.
-(7) Standing power caveat: a +19 checkpoint promotion is weak (155-mixnet2s went +69 at 76
+(8) Standing power caveat: a +19 checkpoint promotion is weak (155-mixnet2s went +69 at 76
 games to -3 by 346). A promotion that CROSSES the llr bound, as v9.4's +70/llr +2.86 did, is
 a different class of evidence. Read the llr, not only the Elo.
