@@ -82,16 +82,23 @@ run_task() {
     if [ -n "$net" ]; then
         mkdir -p overnight/nets
         if [ "$net" != "overnight/nets/$name.npz" ]; then
-            cp "$net" "overnight/nets/$name.npz" || { say "net $net missing"; return 1; }
+            cp "$net" "overnight/nets/$name.npz" || { say "net $net missing"; sleep 300; return 1; }
         fi
         net="overnight/nets/$name.npz"
+        # Check equality BEFORE rebuilding the dir: this bailout is a `return 1`, and with the
+        # check below the rm -rf + syzygy copy it spun ~15 times a minute for 10 minutes on
+        # 6 Sep when the net lane shipped 180-sf100's net into the tree with its task still
+        # queued. Sleep so a bad task costs one slot, not the whole queue.
+        cmp -s "$net" weights/net.npz && {
+            say "net task $name: the net equals the tree net -- nothing to test (sleeping 300 s; fix or remove the task)"
+            sleep 300; return 1
+        }
     fi
     rm -rf "$d"; mkdir -p "$d/weights"
     cp agent.py fastboard.py fastsearch.py "$d/"
     cp weights/net.npz weights/book.bin "$d/weights/"; cp -r weights/syzygy "$d/weights/"
     if [ -n "$net" ]; then
         cp "$net" "$d/weights/net.npz"   # a task may test a different net
-        cmp -s "$net" weights/net.npz && { say "net task $name: the net equals the tree net -- nothing to test"; return 1; }
     fi
     local book; book=$(field "$task" book "")
     if [ -n "$book" ] && ! cp "$book" "$d/weights/book.bin"; then

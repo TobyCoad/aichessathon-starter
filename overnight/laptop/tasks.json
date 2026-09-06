@@ -1,20 +1,19 @@
 [
  {
-  "name": "v94-vs-sf12-120s",
-  "kind": "switch",
-  "sed": "",
-  "champion": "opponents/sf-skill12",
-  "games": 40,
-  "workers": 4,
-  "base_ms": 120000,
-  "openings": "platform",
-  "elo0": -200,
-  "elo1": 200
+  "name": "v95net-clocktest-l",
+  "kind": "clocktest",
+  "sed": ""
  },
  {
-  "name": "conv3b-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
+  "name": "180-sf100",
+  "kind": "switch",
+  "sed": "",
+  "champion": "opponents/v94net",
+  "games": 600,
+  "workers": 4,
+  "base_ms": 8000,
+  "elo0": 0,
+  "elo1": 20
  },
  {
   "name": "p8-sf10",
@@ -41,7 +40,7 @@
   "elo1": 200
  },
  {
-  "name": "v94-vs-sf14-120s",
+  "name": "v95-vs-sf14-120s",
   "kind": "switch",
   "sed": "",
   "champion": "opponents/sf-skill14",

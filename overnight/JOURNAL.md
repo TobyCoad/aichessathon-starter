@@ -2051,3 +2051,45 @@ the behavioural signature of the same defect the slope measurement quantifies: w
 returns nearly the same number for every move, the search has nothing to choose between. No new
 failure mode, no time-management switch -- buying those moves more time would only buy more
 confident wrong moves.
+
+## 6 Sep 20:00 -- iteration 41: the machine was spinning, and v9.5 went out with its gates unstarted
+
+The laptop had not played a game since 19:48. From 19:49 the worker ran the task `180-sf100`
+ninety-five times without starting a gauntlet: a net task whose net equals the tree's bails out
+with `return 1` and no sleep, so the scheduler hands it straight back, and the bailout sat after
+the `rm -rf` and the syzygy copy, so each of those ninety-five passes built and destroyed a 27 MB
+challenger directory. The trigger was innocuous -- the net lane promoted 180-sf100's net into
+`weights/net.npz` at 19:41 and left the task that tested it in the queue -- and this is the third
+time a queue stall has cost us a slot today. I moved the equality check above the directory
+rebuild and gave both no-sleep bailouts a five-minute sleep, so a bad task now costs one slot
+rather than the whole night, but the real fix is the discipline: promoting a net into the tree and
+removing that net's queued task are one action, not two.
+
+The stall mattered more than the wasted CPU, because of what was not running underneath it. v9.5
+was committed, zipped, written up and emailed at 19:41 with the note "the 8 s SPRT is running,
+checkpoint ~21:00". It was not running. It was the task that was spinning. So the human has a zip
+in his Downloads folder, built on a net-only change, whose entire evidence is an offline endgame
+suite and a static-error measurement -- and our own notes describe that suite as a veto on
+catastrophes rather than a ranking signal. Both gates are on the machine now. The clocktest went
+first because it is nine minutes and because it had been skipped on a false equivalence: a
+`v95-clocktest-l` did pass at 15:01, but that was a different v9.5 (v9.4 plus INIT_ASYNC), and
+swapping the net changes nps and therefore the time manager, so the pass does not transfer. The
+SPRT needed re-pointing rather than repairing: with the new net already in the tree there is no
+way to express it as a `net` field, so I built `opponents/v94net` -- the tree's search with
+v9.4's 157-wdlnet weights, md5 confirmed -- and the run is now challenger-tree against that, 600
+games at 8 s, identical search on both sides. Checkpoint around 21:00. The version numbers also
+collided: NOTES had planned v9.5 as INIT_FOLD plus INIT_ASYNC since quarter to three. The net has
+the number, since it is the one that shipped; the init work is v9.6.
+
+The killed `p8-sf10` left twenty games behind, which I copied out of the results directory before
+the re-run overwrites it. 47.5%, plus or minus 133 Elo, against sf-skill10 at 8 s with the v9.4
+net. On its own it decides nothing, but set beside yesterday evening's 75.0% against the stronger
+sf-skill12 at 120 s it says something clean: weaker opponent, short clock, worse score. That is
+the +129 Elo of clock from the previous iteration appearing with the right sign and at least the
+right size, so the clock model survives its first contact with data. `p8-sf12`, predicted at
+55-63%, is still the test that could falsify it, and it is still queued behind the two v9.5 gates
+where it belongs.
+
+I built nothing this iteration and that was deliberate. The tree's code is byte-identical to
+v9.4 -- only the weights moved -- and a clock measurement was on the machine the whole time, so
+any numba compile of mine would have corrupted it.

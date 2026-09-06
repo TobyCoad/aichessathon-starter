@@ -251,6 +251,13 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
+- **v9.5 (6 Sep 19:41, emailed by the net lane) = v9.4 + the sf100 net** (321 M positions of
+  engine self-play with Stockfish n20000 labels, no human data; scale 0.2584; md5 9e2b0006).
+  Search byte-identical to v9.4. Endgame suite 11.4 -> 7.5 cp (best any net has recorded),
+  attack bias -158 -> +11, import 36.0 s from a clean unzip. **NO GAME EVIDENCE YET:** its 8 s
+  SPRT (`180-sf100` vs `opponents/v94net`) and its clocktest (`v95net-clocktest-l`) only started
+  at 19:57 -- see iter 41. If either fails, the candidate in the human's Downloads folder is
+  wrong and he must be told; v9.4 remains the last fully-gated build.
 - **v9.4 (6 Sep 12:12, emailed) = v9.3 + CAPTURE_ORDER + QS_TT + ASP_WIDE + NMP_V2B + the
   WDL-target net (157-wdlnet, md5 1f4be882).** 149-v94wdl PROMOTE +70 at the 200-game
   checkpoint (59.9%, llr +2.86), clocktest PASS 0/6 lowest 5.7 s, d8 bench 1,110,289 nodes
@@ -722,6 +729,58 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
  3. Only then gauntlet it, and only against a 600-ply referee.
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
+
+## Running now (6 Sep 20:00, iter 41) -- THE QUEUE WAS DEAD FOR 12 MINUTES AND v9.5 WENT OUT WITH ITS SPRT NEVER STARTED
+
+**THE LAPTOP WAS SPINNING, NOT WORKING.** At 19:48 `p8-sf10` was killed at 20 games ("produced
+no verdict"), and from 19:49 to 19:57 the worker executed the task `180-sf100` **95 times**
+without playing a single game. Root cause, in `overnight/worker.sh`: a net task whose net equals
+the tree net bails out with `return 1` and **no sleep**, so `next_task` hands it straight back --
+and the bailout sat *after* `rm -rf "$d"` + the full `weights/syzygy` copy, so each pass rebuilt
+and destroyed a 27 MB challenger dir. The net lane shipped 180-sf100's net into `weights/net.npz`
+at 19:41 while its task was still queued; that is all it took.
+- FIXED (this iteration, `overnight/worker.sh`): the equality check moved *above* the dir
+  rebuild, and both no-sleep bailouts (`net ... missing`, net-equals-tree) now `sleep 300`. A bad
+  task now costs one slot, not the queue. `bash -n` clean.
+- **STANDING RULE, third time this has bitten us (iter 38 lost 72 min, this lost 12):** when the
+  net lane promotes a net into the tree, it must in the same breath REMOVE or RE-POINT the queued
+  task that tested it. A task's `net` field describes a net that is *not* the tree's.
+
+**v9.5 IS SHIPPED, EMAILED AND UNVALIDATED, AND ITS SPRT HAD NOT RUN AT ALL.** d215e3a (19:41)
+put the sf100 net in the tree, wrote CANDIDATE.md and built the zip; the note says "the 8 s SPRT
+is running, checkpoint ~21:00". It was not running -- it was the task that was spinning. Both
+gates are on the machine now:
+- `v95net-clocktest-l` (started 19:57, ~9 min): **mandatory and it had been skipped.** The
+  earlier `v95-clocktest-l` PASS (15:01) was a DIFFERENT v9.5 (= v9.4 + INIT_ASYNC); a net swap
+  changes nps and therefore the time manager, so it does not transfer.
+- `180-sf100` re-pointed: challenger = the tree (v9.5 net), champion = **`opponents/v94net`**, a
+  new opponent dir = the tree's agent/fastboard/fastsearch + `overnight/nets/157-wdlnet.npz`
+  (md5 1f4be882 = v9.4's net). 600 games at 8 s, elo0 0 / elo1 20, checkpoint at 200 (~21:00).
+  Search is identical on both sides, so this is a clean net-vs-net A/B. **Use this pattern
+  whenever the new net is already in the tree** -- do not try to express it with a `net` field.
+
+**VERSION NUMBERING COLLIDED. v9.5 IS THE NET, NOT INIT_ASYNC.** NOTES has planned since 14:45
+that v9.5 = v9.4 + INIT_FOLD + INIT_ASYNC; the net lane used the number for the retrain. The net
+wins (it is shipped and emailed). **INIT_FOLD + INIT_ASYNC is now v9.6** and INIT_ASYNC is still
+False in the tree. Do not ship two different v9.5s.
+
+**`p8-sf10` PARTIAL, PRESERVED IN `overnight/eval/p8-sf10-partial-1925.log` (the re-run will
+overwrite the results log).** 20 games, **-17.4 +/- 133.0 Elo = 47.5%** vs `opponents/sf-skill10`
+at 8 s with the **v9.4** net, clean 24/24 vs random in stage 1. Two readings:
+- It is inside the pre-registered 40-70% band, so **sf-skill10 at 8 s is a live candidate for the
+  screening rung** -- but 20 games is +/- 133 Elo and it was killed, so it decides nothing yet.
+  Re-queued (it now measures the v9.5 net, which is the build we care about).
+- **It strengthens the clock model rather than falsifying it.** We score ~47.5% at 8 s against
+  sf-skill10 and 75.0% at 120 s against sf-skill12 -- a *weaker* opponent at the short clock and a
+  *stronger* one at the long clock, with the scores the wrong way round. That is the ~+129 Elo of
+  clock from iter 40 showing up with the predicted sign and at least the predicted size. `p8-sf12`
+  (still queued, predicted 55-63%) remains the falsification test; nothing about it has moved.
+
+**NOT DONE, deliberately:** no engine switch, no bench, no `check_fastsearch` -- the tree's code
+is byte-identical to v9.4 and only `weights/net.npz` moved, and a clocktest was on the machine
+for the whole iteration, so any numba compile of mine would have corrupted a timing measurement.
+The research pause still holds for SEARCH switches; restarting the net's own SPRT is not a new
+gauntlet, it is the run the candidate was emailed against.
 
 ## Running now (6 Sep 19:30, iter 40) -- sf12 LANDED AT 75% AND OUR STATIC EVAL HAS FLIPPED SIGN BETWEEN NET GENERATIONS
 
@@ -2159,6 +2218,18 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 41) **READ `v95net-clocktest-l` AND `180-sf100` BEFORE ANYTHING ELSE -- v9.5 IS IN
+THE HUMAN'S DOWNLOADS FOLDER WITH ZERO GAME EVIDENCE.** Clocktest PASS is mandatory; the SPRT's
+200-game checkpoint lands ~21:00. If the clocktest FAILS or the SPRT rejects, email the human
+immediately (`notify --candidate` with a corrected CANDIDATE.md) -- he uploads by hand and a bad
+zip on the ladder costs real games. If both pass, add the numbers to CANDIDATE.md and re-notify:
+the candidate he has was sent with the gates still running.
+(0-NEW-b, iter 41) **v9.6 = INIT_FOLD + INIT_ASYNC** (the number moved; see iter 41). Both are
+still False in the tree.
+(0-NEW-c, iter 41) `overnight/worker.sh` no longer hot-spins on a bad task, but the discipline is
+the fix: **when the net lane puts a net in the tree, delete or re-point that net's queued task in
+the same commit.**
+
 (0-NEW, iter 39) **SF-RELABELLED DATA IS THE TOP NET ITEM AND IT IS SIZED, PRICED AND RULE-CHECKED.**
 `overnight/eval/v10/data_sources.md` (17:27, folded in the iter 39 section) shows our whole "SF
 data" corpus is Leela T80 MCTS labels, never Stockfish, and that the same corpus relabelled by a
