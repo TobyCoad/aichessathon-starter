@@ -1493,3 +1493,37 @@ descended from the live gauntlet: pool parent, eight workers, a harness runner u
 an engine under that. A raw process count is not evidence of orphans -- parentage is. 149-v94wdl
 is at 120 games, +70 with llr +1.61, and its first checkpoint lands around 12:01; the release
 follows the checkpoint line, not the trend.
+
+## 6 Sep 2026, 12:15 -- iteration 29: v9.4 shipped, the biggest jump since v8.5
+149-v94wdl came back PROMOTE +70 Elo at its 200-game checkpoint -- +92 =51 -53, 59.9% over 196
+games, llr +2.86 against a +/-2.94 bound. That last number matters more than the Elo: this is a
+bound-crossing result rather than a checkpoint that happened to be above +10 when the gauntlet
+looked, and the estimate had sat between +63 and +70 for the previous twenty checkpoints. It is
+the four search switches (CAPTURE_ORDER, QS_TT, ASP_WIDE, NMP_V2B) and the WDL-target net tested
+as one bundle, exactly as the human asked -- one gauntlet per version.
+
+The release gate followed: v94wdl-clocktest-l PASS (flags 0/6, errors 0, lowest clock 5.7 s
+against the 5 s floor, longest move 11.9 s). Tree flipped, net copied in, ruff + mypy clean,
+check_fastsearch 70/70 exact and 40/40 agreement. The zip was built from the tested challenger
+dir, never from the tree, with INIT_FOLD flipped True in the zip copy.
+
+Two measurements from this build are worth keeping. First, INIT_FOLD is exact in the shipped
+artefact and not merely by construction: the zip (fold on) and the challenger (fold off) both
+bench 1,110,289 nodes at depth 8, identical to the node, so only speed can have changed -- this
+is the first version to ship with the fold on, and that identity is what makes it safe. Second,
+1,110,289 nodes against v9.3's 1,445,087 is 23% fewer nodes for the same depth, the largest
+single-version node reduction we have measured; the ordering and pruning switches are doing
+real work rather than trading nodes for noise. Clean-unzip cold import was 38.1 s with the
+clocktest's four workers still on the machine, so the honest idle figure is nearer 34 s against
+a 45 s local gate.
+
+Two deliberate departures from the previous iteration's plan, both in service of the
+three-versions-a-day mandate with uploads closing on the 11th. v9.5 (ADJ_V2 + ROOT_NODES +
+SINGULAR_EXT2 + RAZOR) was queued ahead of 146-cutnode and 147b-seequiet, which together are
+about four hours of gauntlet standing between us and the next shipped version; CUTNODE and
+SEE_QUIET lose nothing by riding in v9.6 instead. And DRAW_BUDGET was left OUT of v9.5, because
+the widened version may only ship on a drawcap2-clocktest-l PASS and that clocktest had not run
+yet -- including it would have staked a three-hour gauntlet on a switch that might then be
+disallowed. Finally, worker.sh's busy_gauntlets regex now matches train.py and merge_mix, so a
+trainer blocks the gauntlet queue rather than quietly starving it; that is intended, but it
+means a stalled-looking queue should be checked for a training process before anything else.

@@ -1100,7 +1100,7 @@ NMP_V2: Final = True
 # ply + 3*null_depth//4 inside the verification subtree (Stockfish's
 # nmpMinPly zugzwang guard). Cheap at 8 s (fires only at depth >= 10) and
 # protects exactly the deep nodes where a wrong null cutoff poisons the tree.
-NMP_V2B: Final = False
+NMP_V2B: Final = True
 # CAPTURE_ORDER (V10_PLAN #7): rescore non-promotion captures after score_moves.
 # SEE-losing captures drop below every quiet (band -(1 << 21) + see*16);
 # winning/equal captures keep the MVV-LVA band; both get a capture-history
@@ -1108,13 +1108,13 @@ NMP_V2B: Final = False
 # buffer, indexed (attacker_piece*64 + to)*6 + victim%6 -- safe because
 # CONT_HIST is closed/rejected (both on together raises at init). Gravity
 # bonus on a capture cutoff, decayed >>= 1 per move under HYGIENE.
-CAPTURE_ORDER: Final = False
+CAPTURE_ORDER: Final = True
 # QS_TT (V10_PLAN #9): probe and store the main transposition table in
 # quiescence. A hit of any depth cuts (exact returns; lower >= beta, upper <=
 # alpha); stores are depth 0 / move 0 bounds at the stand-pat cutoff, the
 # capture-loop cutoff and the final return, and never evict a same-key or
 # current-age entry of depth > 0 (main-search entries keep their hash moves).
-QS_TT: Final = False
+QS_TT: Final = True
 # SEE_QUIET (the SEE-pruning follow-up to SEE_MAIN): skip a late quiet move at
 # depth <= 6 when static exchange on its destination square loses more than
 # 30 * depth^2 (the moved piece hangs). Guards: not in check, not the node's
@@ -1143,7 +1143,7 @@ ENDGAME_SHRINK_CAP: Final = 600
 # jump to +/-INFINITY on the third fail; full-width only after ten fails as a
 # termination backstop. Cheap re-searches near the score replace one expensive
 # full-width pass when the root swings.
-ASP_WIDE: Final = False
+ASP_WIDE: Final = True
 # ROOT_NODES (V10_PLAN #12, root-move improvements): from the second iteration
 # order the root moves after the front move by how many nodes their subtree cost
 # on the previous iteration (most first), with the previous score as the

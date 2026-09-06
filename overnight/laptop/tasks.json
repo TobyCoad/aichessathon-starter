@@ -53,6 +53,16 @@
   "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
  },
  {
+  "name": "160-v95",
+  "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/",
+  "games": 600
+ },
+ {
+  "name": "v95-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
+ },
+ {
   "name": "146-cutnode",
   "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
   "games": 600

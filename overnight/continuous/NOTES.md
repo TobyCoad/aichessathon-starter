@@ -251,7 +251,12 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
-- ADJ_V2 built 6 Sep 11:45, OFF (iter 28) -- v9.5 bundle. See "Running now (iter 28)".
+- **v9.4 (6 Sep 12:12, emailed) = v9.3 + CAPTURE_ORDER + QS_TT + ASP_WIDE + NMP_V2B + the
+  WDL-target net (157-wdlnet, md5 1f4be882).** 149-v94wdl PROMOTE +70 at the 200-game
+  checkpoint (59.9%, llr +2.86), clocktest PASS 0/6 lowest 5.7 s, d8 bench 1,110,289 nodes
+  (-23% vs v9.3), clean-unzip import 38.1 s under load. First version shipped with
+  INIT_FOLD True (node-identical to fold-off). Every challenger is judged vs v9.4 now.
+- ADJ_V2 built 6 Sep 11:45, OFF (iter 28) -- now queued inside 160-v95. See "Running now (iter 29)".
 - v9.3 (6 Sep 07:15, emailed) = v9.2 + the mixed SF/Lichess net (153-mixnet2, PROMOTE +19 at
   200, md5 45f73c3f, genuine). weights/net.npz in the tree IS this net now. Every net task
   from here is judged against it; 155-mixnet2s (output x1.31) runs next.
@@ -499,6 +504,52 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
  3. Only then gauntlet it, and only against a 600-ply referee.
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
+
+## Running now (6 Sep 12:15, iter 29) -- v9.4 SHIPPED
+- **v9.4 SHIPPED 12:12, emailed.** 149-v94wdl PROMOTE **+70 Elo at the 200-game checkpoint**
+  (+92 =51 -53, 59.9% over 196 games, llr +2.86 against a +/-2.94 bound -- a bound-crossing
+  result, not a checkpoint squeak; the estimate sat between +63 and +70 for the previous 20
+  checkpoints). `v94wdl-clocktest-l` PASS: flags 0/6, errors 0, lowest clock 5.7 s, longest
+  move 11.9 s. The four switches (CAPTURE_ORDER / QS_TT / ASP_WIDE / NMP_V2B) are True in the
+  tree and `weights/net.npz` is now the WDL net (md5 1f4be882). ruff + mypy clean,
+  check_fastsearch 70/70 exact + 40/40 PASS after the flip.
+- ZIP: built from the TESTED challenger `overnight/challengers/149-v94wdl` with INIT_FOLD
+  flipped True in the zip copy. 21.7 MB zip, 28.0 MB unpacked, 75 entries.
+  C:/Users/tobyc/Downloads/aichessathon-v9.4.zip + submission-v94.zip in the repo root.
+  Clean-unzip cold import 38.1 s measured WITH the clocktest's four workers on the machine
+  (pessimistic; idle is ~34 s). Under the 45 s local gate.
+- **INIT_FOLD PROVED EXACT IN THE SHIPPED ARTEFACT**, not just by construction: the zip build
+  (fold ON) and the tested challenger (fold OFF) both bench **1,110,289 nodes at depth 8**,
+  identical to the node. 233 knps (under load) vs 249 knps. This is the first version that
+  ships with INIT_FOLD True -- if a cold-start problem ever appears on the platform, this is
+  the switch to suspect first, and the node identity means only speed can have changed.
+- BENCH CONTEXT: 1,110,289 nodes at depth 8 vs v9.3's 1,445,087 -- **23% fewer nodes for the
+  same depth**. That is the four ordering/pruning switches, and it is the largest single-version
+  node reduction we have measured.
+- **v9.5 QUEUED AS 160-v95** (600 games, 8 s) + `v95-clocktest-l`, inserted AFTER
+  `drawcap2-clocktest-l` and AHEAD of 146-cutnode/147b-seequiet. Sed:
+  s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/
+- **WHY DRAW_BUDGET IS NOT IN v9.5** (a deliberate change from iter 28's plan): the widened
+  DRAW_BUDGET may only ship on a `drawcap2-clocktest-l` PASS, and that clocktest had not run
+  when the bundle had to be queued. Including it would have risked a 3 h gauntlet on a switch
+  that might then be disallowed. It moves to v9.6 with CUTNODE / SEE_QUIET.
+- **WHY 146-cutnode AND 147b-seequiet WERE PUSHED BEHIND v9.5** (also a change from iter 28):
+  those two are ~4 h of gauntlet between us and the next shipped version, and the mandate is
+  three versions a day with uploads closing 11 Sep. v9.5's four switches are all built,
+  checked and waiting; CUTNODE and SEE_QUIET lose nothing by being folded into v9.6 instead.
+  One gauntlet per version still holds.
+- worker.sh's `busy_gauntlets` regex now also matches `train.py|merge_mix` (Next step item 2,
+  done). A trainer will now BLOCK the gauntlet queue -- that is intended (iter's measurement:
+  a gauntlet and a trainer together took epochs from 115 s to 734 s), but remember it when a
+  queue looks stalled: check for a training process before assuming the worker is wedged.
+- NEXT STEP, in order: (1) fold `drawcap2-clocktest-l` when it lands -- PASS lets DRAW_BUDGET
+  into v9.6, FAIL closes the widened version for good; (2) ship v9.5 on 160-v95's checkpoint
+  + `v95-clocktest-l` PASS, same recipe as this iteration (flip the four switches, exact check,
+  zip FROM `overnight/challengers/160-v95` with INIT_FOLD True, clean-unzip import, CANDIDATE,
+  notify); (3) v9.6 = DRAW_BUDGET (if drawcap2 passed) + CUTNODE + SEE_QUIET (each only on its
+  own positive verdict) + ENDGAME_SHRINK if its 17-min endgame suite clears the >1.5 cp veto;
+  (4) the RAZOR TT-store lever is still the only untried improvement to RAZOR -- do not re-tune
+  its margins.
 
 ## Running now (6 Sep 11:45, iter 28)
 - ADJ_V2 BUILT (commit 2105724, OFF in the tree) -- the engine half of the 600-ply finding,
@@ -1084,29 +1135,28 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) v9.4 IS STILL THE ONLY THING THAT MATTERS. 149-v94wdl is RUNNING (started 11:01, gate
-first, 600 games). Fold its checkpoint: PROMOTE, or INCONCLUSIVE with a positive point
-estimate, plus `v94wdl-clocktest-l` PASS = ship v9.4 -- flip CAPTURE_ORDER / QS_TT /
-ASP_WIDE / NMP_V2B True AND copy overnight/nets/157-wdlnet.npz into weights/, re-run the
-exactness check, zip FROM the tested challenger with INIT_FOLD flipped True in the zip copy,
-clean-unzip cold import < 45 s, d8 bench nodes, CANDIDATE.md, notify. If it REJECTS, read
-the ply-cap caveat in "Running now (11:20)" first: drop CAPTURE_ORDER (the marginal one,
-+0.6 +/- 23.5 solo) and re-queue the other three once.
-(2) THE MOMENT v9.4 HAS SHIPPED: add `train.py|merge_mix` to worker.sh's busy_gauntlets
-regex (held back on purpose -- it would block the release gauntlet if a trainer started).
-(3) THEN BUILD ADJ_V2 (step 2 of the "PLY CAP IS 600" spec, now unblocked because the
-referee is fixed): cap 600 everywhere ADJUDICATION_PLY is read, the `late` ramp re-based to
-`(game_ply - 300) / 300`, ADJ_BEHIND_LATE reconsidered from scratch under "the cap is a
-draw" rather than re-tuned, and the ADJ_WINDOW fifty-move plan moved from plies 220-300 to
-520-600. It can finally be judged honestly: every gauntlet started after 11:18 today plays
-the 600-ply draw. Off in the tree, one switch, agent.py only.
-(4) v9.5 bundle: RAZOR + ROOT_NODES + SINGULAR_EXT2 + DRAW_BUDGET (widened; ships only if
-drawcap2-clocktest-l PASSes -- the old narrow PASS does not describe it) + whatever
-146-cutnode / 147b-seequiet return. ADJ_V2 joins it only with its own verdict.
-(5) Do NOT start GPU work or queue net tasks; 156-mixnet3 stays deferred until v9.4 is out
-and can be re-based against the new champion net.
-(6) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
-the depth bench -- an identical node count there is not evidence of a no-op.
-(7) Standing referee caveat: verdicts from before 6 Sep 11:18 were measured under a 300-ply
+(1) FOLD `drawcap2-clocktest-l` the moment it lands: PASS admits the widened DRAW_BUDGET to
+the v9.6 bundle, FAIL closes it permanently (the narrow version's old PASS does not describe
+it and must not be used to rescue it).
+(2) SHIP v9.5 on `160-v95`'s checkpoint (PROMOTE, or INCONCLUSIVE with a positive point
+estimate) plus `v95-clocktest-l` PASS. Recipe, verbatim from iter 29 which worked cleanly:
+flip ADJ_V2 / ROOT_NODES / SINGULAR_EXT2 / RAZOR True in the tree, ruff + mypy +
+check_fastsearch, build the zip FROM `overnight/challengers/160-v95` with INIT_FOLD flipped
+True in the zip copy, bench the zip AND the challenger at depth 8 and require an IDENTICAL
+node count (that is the INIT_FOLD gate), clean-unzip cold import < 45 s, copy to
+C:/Users/tobyc/Downloads/aichessathon-v9.5.zip, CANDIDATE.md, notify --candidate.
+(3) v9.6 bundle: DRAW_BUDGET (only on a drawcap2 PASS) + CUTNODE + SEE_QUIET (each only on
+its own positive verdict from 146-cutnode / 147b-seequiet, which now run after 160-v95) +
+ENDGAME_SHRINK if its 17-min endgame suite clears the "no band worse by >1.5 cp" veto.
+(4) Do NOT start GPU work while a gauntlet is queued: worker.sh now WAITS for a trainer, so
+starting one stalls the release queue. 156-mixnet3 stays deferred; if a net is retrained it
+must be re-based against the v9.4 WDL net, not the v9.3 one.
+(5) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
+the depth bench -- an identical node count there is not evidence of a no-op. ADJ_V2 likewise
+cannot move it (the two paths agree below ply 150 and bench starts from the initial position).
+(6) Standing referee caveat: verdicts from before 6 Sep 11:18 were measured under a 300-ply
 material adjudication that the platform does not have. Do not re-run them for that reason
 alone (both sides shared the rule), but do not defend a borderline old verdict with it either.
+(7) Standing power caveat: a +19 checkpoint promotion is weak (155-mixnet2s went +69 at 76
+games to -3 by 346). A promotion that CROSSES the llr bound, as v9.4's +70/llr +2.86 did, is
+a different class of evidence. Read the llr, not only the Elo.
