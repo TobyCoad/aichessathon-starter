@@ -1,0 +1,114 @@
+stage 1: crash gate, 143-nmp vs random
+  clean over 24 games, 100% vs random
+
+stage 2: SPRT[0, 20], challenger vs champion
+  note: 300 pairs over 119 openings, 2.5 repeats each -- the SPRT will read more confident than the evidence warrants
+      2 games  .... llr +0.00 [-2.94, 2.94] after 1 pairs, elo +0.0 +/- inf
+      5 games  .... llr -0.03 [-2.94, 2.94] after 2 pairs, elo -88.7 +/- 2488.7
+      7 games  .... llr -0.06 [-2.94, 2.94] after 3 pairs, elo -58.5 +/- 358.2
+      9 games  .... llr -0.15 [-2.94, 2.94] after 4 pairs, elo -88.7 +/- 228.8
+     12 games  .... llr -0.20 [-2.94, 2.94] after 5 pairs, elo -70.4 +/- 177.9
+     13 games  .... llr -0.35 [-2.94, 2.94] after 6 pairs, elo -88.7 +/- 148.2
+     14 games  .... llr -0.41 [-2.94, 2.94] after 7 pairs, elo -75.6 +/- 127.1
+     17 games  .... llr -0.26 [-2.94, 2.94] after 8 pairs, elo -43.7 +/- 126.4
+     18 games  .... llr -0.31 [-2.94, 2.94] after 9 pairs, elo -38.8 +/- 111.5
+     21 games  .... llr -0.18 [-2.94, 2.94] after 10 pairs, elo -17.4 +/- 109.2
+     22 games  .... llr +0.03 [-2.94, 2.94] after 11 pairs, elo +15.8 +/- 123.7
+     25 games  .... llr -0.06 [-2.94, 2.94] after 12 pairs, elo -0.0 +/- 114.9
+     27 games  .... llr -0.07 [-2.94, 2.94] after 13 pairs, elo -0.0 +/- 105.1
+     28 games  .... llr +0.02 [-2.94, 2.94] after 14 pairs, elo +12.4 +/- 101.4
+     30 games  .... llr +0.19 [-2.94, 2.94] after 15 pairs, elo +34.9 +/- 108.2
+     33 games  .... llr +0.28 [-2.94, 2.94] after 16 pairs, elo +43.7 +/- 103.8
+     35 games  .... llr +0.38 [-2.94, 2.94] after 17 pairs, elo +51.5 +/- 99.7
+     36 games  .... llr +0.52 [-2.94, 2.94] after 18 pairs, elo +68.4 +/- 103.9
+     40 games  .... llr +0.63 [-2.94, 2.94] after 19 pairs, elo +74.3 +/- 99.7
+     41 games  .... llr +0.75 [-2.94, 2.94] after 20 pairs, elo +79.5 +/- 95.8
+     42 games  .... llr +0.77 [-2.94, 2.94] after 21 pairs, elo +75.6 +/- 90.3
+     44 games  .... llr +0.80 [-2.94, 2.94] after 22 pairs, elo +72.1 +/- 85.5
+     46 games  .... llr +0.95 [-2.94, 2.94] after 23 pairs, elo +84.7 +/- 88.1
+     48 games  .... llr +1.08 [-2.94, 2.94] after 24 pairs, elo +88.7 +/- 85.2
+     50 games  .... llr +1.11 [-2.94, 2.94] after 25 pairs, elo +85.0 +/- 81.2
+     52 games  .... llr +1.14 [-2.94, 2.94] after 26 pairs, elo +81.6 +/- 77.5
+     54 games  .... llr +1.17 [-2.94, 2.94] after 27 pairs, elo +78.5 +/- 74.2
+     56 games  .... llr +1.20 [-2.94, 2.94] after 28 pairs, elo +75.6 +/- 71.2
+     58 games  .... llr +1.23 [-2.94, 2.94] after 29 pairs, elo +72.9 +/- 68.4
+     61 games  .... llr +1.26 [-2.94, 2.94] after 30 pairs, elo +70.4 +/- 65.8
+     62 games  .... llr +1.29 [-2.94, 2.94] after 31 pairs, elo +68.1 +/- 63.5
+     64 games  .... llr +1.44 [-2.94, 2.94] after 32 pairs, elo +71.6 +/- 62.2
+     66 games  .... llr +1.00 [-2.94, 2.94] after 33 pairs, elo +58.5 +/- 64.9
+     68 games  .... llr +0.87 [-2.94, 2.94] after 34 pairs, elo +51.5 +/- 63.9
+     70 games  .... llr +0.74 [-2.94, 2.94] after 35 pairs, elo +44.9 +/- 62.9
+     72 games  .... llr +0.76 [-2.94, 2.94] after 36 pairs, elo +43.7 +/- 61.0
+     74 games  .... llr +0.77 [-2.94, 2.94] after 37 pairs, elo +42.5 +/- 59.2
+     76 games  .... llr +0.79 [-2.94, 2.94] after 38 pairs, elo +41.3 +/- 57.5
+     78 games  .... llr +0.80 [-2.94, 2.94] after 39 pairs, elo +40.3 +/- 56.0
+     81 games  .... llr +0.92 [-2.94, 2.94] after 40 pairs, elo +43.7 +/- 55.1
+     83 games  .... llr +1.10 [-2.94, 2.94] after 41 pairs, elo +51.2 +/- 56.4
+     84 games  .... llr +1.11 [-2.94, 2.94] after 42 pairs, elo +50.0 +/- 55.0
+     86 games  .... llr +1.13 [-2.94, 2.94] after 43 pairs, elo +48.8 +/- 53.6
+     88 games  .... llr +1.26 [-2.94, 2.94] after 44 pairs, elo +51.7 +/- 52.9
+     91 games  .... llr +1.28 [-2.94, 2.94] after 45 pairs, elo +50.5 +/- 51.6
+     92 games  .... llr +1.13 [-2.94, 2.94] after 46 pairs, elo +45.6 +/- 51.2
+     94 games  .... llr +1.15 [-2.94, 2.94] after 47 pairs, elo +44.6 +/- 50.0
+     96 games  .... llr +1.27 [-2.94, 2.94] after 48 pairs, elo +47.3 +/- 49.4
+     98 games  .... llr +1.40 [-2.94, 2.94] after 49 pairs, elo +50.0 +/- 48.8
+    100 games  .... llr +1.42 [-2.94, 2.94] after 50 pairs, elo +49.0 +/- 47.8
+    102 games  .... llr +1.56 [-2.94, 2.94] after 51 pairs, elo +51.5 +/- 47.2
+    104 games  .... llr +1.58 [-2.94, 2.94] after 52 pairs, elo +50.5 +/- 46.3
+    106 games  .... llr +1.75 [-2.94, 2.94] after 53 pairs, elo +56.2 +/- 47.2
+    108 games  .... llr +1.37 [-2.94, 2.94] after 54 pairs, elo +48.6 +/- 48.4
+    110 games  .... llr +1.39 [-2.94, 2.94] after 55 pairs, elo +47.7 +/- 47.5
+    112 games  .... llr +1.51 [-2.94, 2.94] after 56 pairs, elo +50.0 +/- 46.9
+    114 games  .... llr +1.18 [-2.94, 2.94] after 57 pairs, elo +42.9 +/- 47.9
+    117 games  .... llr +1.05 [-2.94, 2.94] after 58 pairs, elo +39.1 +/- 47.5
+    118 games  .... llr +1.07 [-2.94, 2.94] after 59 pairs, elo +38.4 +/- 46.6
+    120 games  .... llr +1.08 [-2.94, 2.94] after 60 pairs, elo +37.8 +/- 45.8
+    122 games  .... llr +1.25 [-2.94, 2.94] after 61 pairs, elo +42.9 +/- 46.5
+    125 games  .... llr +1.27 [-2.94, 2.94] after 62 pairs, elo +42.2 +/- 45.7
+    126 games  .... llr +1.14 [-2.94, 2.94] after 63 pairs, elo +38.8 +/- 45.3
+    128 games  .... llr +1.25 [-2.94, 2.94] after 64 pairs, elo +40.9 +/- 44.9
+    131 games  .... llr +1.26 [-2.94, 2.94] after 65 pairs, elo +40.3 +/- 44.2
+    132 games  .... llr +1.38 [-2.94, 2.94] after 66 pairs, elo +42.3 +/- 43.8
+    134 games  .... llr +1.25 [-2.94, 2.94] after 67 pairs, elo +39.1 +/- 43.5
+    137 games  .... llr +1.37 [-2.94, 2.94] after 68 pairs, elo +41.1 +/- 43.1
+    138 games  .... llr +1.48 [-2.94, 2.94] after 69 pairs, elo +43.0 +/- 42.7
+    140 games  .... llr +1.49 [-2.94, 2.94] after 70 pairs, elo +42.4 +/- 42.1
+    142 games  .... llr +1.51 [-2.94, 2.94] after 71 pairs, elo +41.8 +/- 41.5
+    144 games  .... llr +1.20 [-2.94, 2.94] after 72 pairs, elo +36.3 +/- 42.1
+    146 games  .... llr +1.31 [-2.94, 2.94] after 73 pairs, elo +38.2 +/- 41.8
+    148 games  .... llr +1.32 [-2.94, 2.94] after 74 pairs, elo +37.7 +/- 41.2
+    150 games  .... llr +1.33 [-2.94, 2.94] after 75 pairs, elo +37.2 +/- 40.6
+    152 games  .... llr +1.34 [-2.94, 2.94] after 76 pairs, elo +36.7 +/- 40.0
+    154 games  .... llr +1.21 [-2.94, 2.94] after 77 pairs, elo +33.9 +/- 39.8
+    156 games  .... llr +1.33 [-2.94, 2.94] after 78 pairs, elo +35.8 +/- 39.5
+    158 games  .... llr +1.34 [-2.94, 2.94] after 79 pairs, elo +35.3 +/- 39.0
+    160 games  .... llr +1.35 [-2.94, 2.94] after 80 pairs, elo +34.9 +/- 38.5
+    162 games  .... llr +1.47 [-2.94, 2.94] after 81 pairs, elo +36.6 +/- 38.2
+    165 games  .... llr +1.59 [-2.94, 2.94] after 82 pairs, elo +38.3 +/- 38.0
+    166 games  .... llr +1.28 [-2.94, 2.94] after 83 pairs, elo +33.6 +/- 38.5
+    168 games  .... llr +1.39 [-2.94, 2.94] after 84 pairs, elo +35.3 +/- 38.2
+    170 games  .... llr +1.40 [-2.94, 2.94] after 85 pairs, elo +34.9 +/- 37.8
+    172 games  .... llr +1.58 [-2.94, 2.94] after 86 pairs, elo +38.5 +/- 38.2
+    175 games  .... llr +1.46 [-2.94, 2.94] after 87 pairs, elo +36.1 +/- 38.0
+    176 games  .... llr +1.33 [-2.94, 2.94] after 88 pairs, elo +33.7 +/- 37.7
+    179 games  .... llr +1.34 [-2.94, 2.94] after 89 pairs, elo +33.3 +/- 37.3
+    180 games  .... llr +1.35 [-2.94, 2.94] after 90 pairs, elo +32.9 +/- 36.9
+    182 games  .... llr +1.22 [-2.94, 2.94] after 91 pairs, elo +30.6 +/- 36.7
+    184 games  .... llr +1.10 [-2.94, 2.94] after 92 pairs, elo +28.4 +/- 36.5
+    186 games  .... llr +0.97 [-2.94, 2.94] after 93 pairs, elo +26.2 +/- 36.3
+    188 games  .... llr +1.08 [-2.94, 2.94] after 94 pairs, elo +27.8 +/- 36.1
+    190 games  .... llr +1.09 [-2.94, 2.94] after 95 pairs, elo +27.5 +/- 35.7
+    192 games  .... llr +1.09 [-2.94, 2.94] after 96 pairs, elo +27.2 +/- 35.3
+    194 games  .... llr +1.10 [-2.94, 2.94] after 97 pairs, elo +26.9 +/- 34.9
+    196 games  .... llr +1.10 [-2.94, 2.94] after 98 pairs, elo +26.6 +/- 34.6
+    199 games  .... llr +0.98 [-2.94, 2.94] after 99 pairs, elo +24.6 +/- 34.4
+    201 games  .... llr +1.09 [-2.94, 2.94] after 100 pairs, elo +26.1 +/- 34.2
+  checkpoint 201: +26 Elo, trending positive -> PROMOTE early
+
+C:\dev\aichessathon\starter\overnight\challengers\143-nmp vs C:\dev\aichessathon\starter
+  +76 =63 -62  score 53.5%  over 201 games
+  PASS llr +1.09 [-2.94, 2.94] after 100 pairs, elo +26.1 +/- 34.2
+  mean game length 140 plies
+  terminations: adjudication 5, checkmate 134, fifty_moves 5, insufficient_material 25, stalemate 1, threefold_repetition 31
+
+PROMOTE  143-nmp  +26 Elo over 201 games

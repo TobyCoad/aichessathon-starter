@@ -1,0 +1,7 @@
+name 143-nmp
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+PROMOTE  143-nmp  +26 Elo over 201 games
+  +76 =63 -62  score 53.5%  over 201 games
+  terminations: adjudication 5, checkmate 134, fifty_moves 5, insufficient_material 25, stalemate 1, threefold_repetition 31
