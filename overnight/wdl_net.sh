@@ -1,71 +1,44 @@
 #!/bin/bash
-# 157-wdlnet -- the next version's net, one idea tested at full size (no pilots).
-# Two changes from the v9.3 recipe, both training-only (no engine file is touched):
-#   1. WDL-blended targets on the Stockfish half (lambda 0.75), so the net learns which
-#      positions actually got converted. Our platform losses are all "winning but not
-#      converted" and the eval's sign disagrees with the game result on 18.6% of
-#      decisive positions -- that is the signal we were throwing away.
-#   2. A TRUE 50/50 Stockfish:Lichess mix by POSITION COUNT. The v9.3 net alternated
-#      whole shards and Lichess shards are exactly 2x the size of Stockfish shards, so
-#      the "1:1" mix was really 33.3% Stockfish -- and alternating whole shards made the
-#      validation oscillate by whichever distribution came last.
-# Warm start: the current champion. Judged by the gauntlet, with eg_calib's per-band
-# static error as the offline read (val loss is a weak instrument here).
+# v9.4 = the v9.4 search bundle + the WDL net, tested as ONE gauntlet (the human's call,
+# 6 Sep 08:55: "fold wdl into the 9.4 release ... only one gauntlet per version").
+#
+# The net's two changes from v9.3, both training-only (no engine file is touched):
+#   1. WDL-blended targets on the Stockfish half (lambda 0.75): the eval mixed with how the
+#      game actually ended. On decisive games the eval sign disagrees with the outcome on
+#      18.6% of kept positions -- the "winning but not converted" signal our losses are made of.
+#   2. A TRUE 50/50 Stockfish:Lichess mix by POSITION COUNT. v9.3 alternated whole shards and
+#      Lichess shards are exactly 2x the size, so its "1:1" was really 33.3% Stockfish.
+#
+# QUALITY GUARD: if the net regresses any per-band static error against v9.3 by more than
+# 10%, it is dropped and v9.4 is queued as the search bundle alone -- one gauntlet either way.
 #   bash.exe -lc "exec bash overnight/wdl_net.sh"
 cd "$(dirname "$0")/.." || exit 1
+ROOT="$(pwd -P)"
 PY=./.venv/Scripts/python.exe
 LOG=overnight/eval/night3.log
+SEDV94='s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/'
 say() { echo "$(date '+%H:%M') wdlnet $*" >> "$LOG"; }
 
-# The decoder writes the validation split last, then prints "done:" -- that line is the
-# completion gate (Git bash has no pgrep).
-while ! grep -q "^done:" overnight/eval/sf-decode-wdl.log 2>/dev/null; do sleep 60; done
+while ! grep -q "^done:" overnight/eval/sf-decode-wdl.log 2>/dev/null; do sleep 30; done
 say "decode: $(grep '^done:' overnight/eval/sf-decode-wdl.log)"
 
-# --- merged 50/50 shards + a validation set that matches the training distribution ---
-if [ ! -f data/mixw/mixw_01.npy ]; then
+if [ ! -f data/mixw/mixw_00.npy ]; then
     mkdir -p data/mixw
-    $PY -u - > overnight/eval/wdl-merge.log 2>&1 <<'EOF' || { say "MERGE FAILED"; exit 1; }
-import sys; sys.path.insert(0, ".")
-import numpy as np
-from numpy.lib.format import open_memmap
-from training.pack import RECORD
-SF = ["data/sfw/feb24w_00.npy", "data/sfw/feb24w_01.npy"]
-LIC = ["data/positions_w512-150m.npy", "data/positions_2025_02.npy"]
-CHUNK = 4_000_000
-for k, (sf_p, lic_p) in enumerate(zip(SF, LIC, strict=True)):
-    sf = np.load(sf_p, mmap_mode="r")
-    lic = np.load(lic_p, mmap_mode="r")
-    half = min(len(sf), len(lic))          # equal counts: this is what makes it 50/50
-    out = open_memmap(f"data/mixw/mixw_{k:02d}.npy", mode="w+", dtype=RECORD, shape=(2 * half,))
-    for src, base in ((sf, 0), (lic, half)):
-        for i in range(0, half, CHUNK):
-            j = min(i + CHUNK, half)
-            out[base + i : base + j] = src[i:j]
-    out.flush(); del out
-    print(f"mixw_{k:02d}: {half:,} Stockfish + {half:,} Lichess = {2*half:,}", flush=True)
-# Validation must match what we train toward, or early stopping penalises the WDL shift.
-lic = np.load("data/validation_w512-150m.npy", mmap_mode="r")
-sfv = np.load("data/sfw/feb24w_val.npy", mmap_mode="r")
-n = min(500_000, len(lic), len(sfv))
-np.save("data/mixvalw.npy", np.concatenate([np.array(lic[:n]), np.array(sfv[:n])]))
-print(f"mixvalw: {n:,} Lichess + {n:,} Stockfish-WDL", flush=True)
-EOF
+    $PY -u training/merge_mix.py > overnight/eval/wdl-merge.log 2>&1 || { say "MERGE FAILED"; exit 1; }
 fi
-say "merge: $(tail -n 3 overnight/eval/wdl-merge.log | tr '\n' ' ')"
+say "merge: $(tail -n 2 overnight/eval/wdl-merge.log | tr '\n' ' ')"
 
-# --- train ---
 if [ ! -f training/checkpoints/net_w512-b8-kz16-wdl.json ]; then
     $PY -u training/train.py \
-        --data data/mixw/mixw_00.npy data/mixw/mixw_01.npy \
+        --data data/mixw/mixw_*.npy \
         --val data/mixvalw.npy \
         --resume training/checkpoints/net_w512-b8-kz16-mix2.pt \
         --accumulator 512 --buckets 8 --king-zones 16 \
-        --lr 1e-4 --epochs 10 --patience 4 --warmup-epochs 1 --skip-sanity \
+        --lr 1e-4 --epochs 12 --patience 4 --warmup-epochs 1 --skip-sanity \
         --out training/checkpoints/net_w512-b8-kz16-wdl.pt \
         > overnight/eval/train-wdl.log 2>&1 || { say "TRAIN FAILED"; exit 1; }
 fi
-say "train done: $(grep -E 'restored|wrote.*json' overnight/eval/train-wdl.log | tail -n 2 | tr '\n' ' ')"
+say "train: $(grep -E 'restored|wrote.*json' overnight/eval/train-wdl.log | tail -n 2 | tr '\n' ' ')"
 
 d=overnight/challengers/157-wdlnet
 if [ ! -f overnight/eval/suite-157-wdlnet.log ]; then
@@ -86,43 +59,21 @@ if [ ! -f overnight/eval/suite-157-wdlnet.log ]; then
 fi
 say "suite: $(grep -E 'mean loss' overnight/eval/suite-157-wdlnet.log | tail -n 1)"
 
-# per-band static error -- the instrument that caught the v9.3 net halving the 5-8 band
-$PY -u -m testing.eg_calib --agent "$d" > overnight/eval/v10/eg_calib_wdl.log 2>&1 || true
-say "bands: $(grep -A 4 'static |eval' overnight/eval/v10/eg_calib_wdl.log | tr '\n' ' ' | cut -c1-200)"
+# eg_calib does `import agent`, so it must run INSIDE the challenger dir; PYTHONPATH keeps
+# `testing` importable from the repo root.
+( cd "$d" && PYTHONPATH="$ROOT" "$ROOT/.venv/Scripts/python.exe" -u -m testing.eg_calib ) \
+    > overnight/eval/v10/eg_calib_wdl.log 2>&1 || true
+say "bands: $(grep -E 'net +[0-9]' overnight/eval/v10/eg_calib_wdl.log | head -4 | tr '\n' ' ')"
 
-# slope on Lichess targets (diagnostic only -- 155-mixnet2s showed correcting it buys nothing)
-$PY -u - > overnight/eval/slope-wdl.log 2>&1 <<'EOF'
-import sys, torch; sys.path.insert(0, ".")
-from pathlib import Path
-from training.train import load_checkpoint, Batches, _records, SCALE
-dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-net = load_checkpoint(Path("training/checkpoints/net_w512-b8-kz16-wdl.pt"), 8, 16).to(dev).eval()
-for label, p in (("lichess", "data/validation_w512-150m.npy"), ("sf_wdl", "data/sfw/feb24w_val.npy")):
-    recs = _records(Path(p), 300_000); g = torch.Generator(); g.manual_seed(1)
-    num = den = 0.0
-    with torch.no_grad():
-        for w, b, m, s, t in Batches(recs, 16384, dev).epoch(g):
-            t = t / SCALE; pr = net(w, b, m, s)
-            num += float((pr * t).sum()); den += float((t * t).sum())
-    print(f"slope on {label}: {num/den:.4f}", flush=True)
-EOF
-say "slope: $(tr '\n' ' ' < overnight/eval/slope-wdl.log)"
-
-# --- stage OUTSIDE the challenger dir (the 150-sfnet self-play bug) and queue one task ---
 mkdir -p overnight/nets
 cp "$d/weights/net.npz" overnight/nets/157-wdlnet.npz
-if [ "$(md5sum < overnight/nets/157-wdlnet.npz)" = "$(md5sum < weights/net.npz)" ]; then
-    say "ABORT -- identical to the tree net; not queued"; exit 1
+if cmp -s overnight/nets/157-wdlnet.npz weights/net.npz; then
+    say "ABORT -- the WDL net is identical to the tree net"; exit 1
 fi
-$PY - <<'EOF'
-import json
-p = "overnight/laptop/tasks.json"; t = json.load(open(p))
-if not any(x["name"] == "157-wdlnet" for x in t):
-    t.append({"name": "157-wdlnet", "net": "overnight/nets/157-wdlnet.npz", "sed": "", "games": 600})
-    json.dump(t, open(p, "w"), indent=1)
-EOF
-git add overnight/laptop/tasks.json overnight/eval/*wdl*.log overnight/eval/suite-157-wdlnet.log \
-    overnight/eval/v10/eg_calib_wdl.log overnight/wdl_net.sh 2>/dev/null
-git -c user.name=wdlnet -c user.email=wdl@local commit -q -m "157-wdlnet: WDL-blended targets + true 50/50 mix, trained and queued" && \
+
+VERDICT=$($PY training/queue_v94.py "$SEDV94")
+say "$VERDICT"
+git add overnight/laptop/tasks.json overnight/eval/ overnight/wdl_net.sh training/merge_mix.py training/queue_v94.py 2>/dev/null
+git -c user.name=wdlnet -c user.email=wdl@local commit -q -m "157-wdlnet trained; v9.4 queued as ONE combined gauntlet (search bundle + WDL net)" && \
     (git pull -q --rebase --autostash origin main >/dev/null 2>&1; git push -q origin main >/dev/null 2>&1)
-say "done -- 157-wdlnet queued for the laptop worker"
+say "done -- 149-v94wdl is the single v9.4 gauntlet; the loop ships on its verdict"
