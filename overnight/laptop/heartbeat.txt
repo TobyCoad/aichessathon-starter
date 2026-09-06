@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 10:16
-task 147b-seequiet
-progress      48 games  .... llr -0.50 [-2.94, 2.94] after 24 pairs, elo -36.3 +/- 84.9
+time 2026-09-06 11:11
+task 149-v94wdl
+progress      21 games  .... llr +0.18 [-2.94, 2.94] after 10 pairs, elo +52.5 +/- 156.4
