@@ -118,6 +118,31 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   challenger dir, per the 150-sfnet bug) -> queues 156-mixnet3 (600 games, 8 s) and
   aborts if the net is byte-identical to the tree's. Judge on the GAMES; per the loop's
   method note the 400-position suite is a gross-regression veto only.
+- NET_V10 (V10_PLAN #4) TRAINING SIDE BUILT 6 Sep 07:50 (session), committed; NO engine
+  file touched, so the loop's search work is unaffected. features.py + train.py only:
+  mirrored king zones (`--mirror`), the endgame-dense 12-head BUCKET_MAP_12, and a warm
+  start for each. Unmirrored path verified BIT-IDENTICAL (mix2 reproduces lichess
+  0.007959 / sf 0.002702 exactly), ruff + mypy PASS.
+- TWO MEASUREMENTS THAT CHANGE THE #4 PLAN (both new, both cheap to re-check):
+  (a) network.md assumed the mirror warm start "lands near 0.00466", i.e. free. It does
+  NOT: symmetrising mix2 scores lichess 0.012573 / sf 0.006235, 58% behind its own
+  unmirrored start. So mirroring is a real retrain, not a top-up.
+  (b) But the reason is that the champion is NOT left-right symmetric: it scores a
+  position and its file-mirrored twin 56.2 cp apart on average (median 37.3, p90 130.4)
+  against a mean |eval| of 388 cp. Our feature set has NO castling-rights features, so
+  reflection is a TRUE symmetry of everything the net can see -- that 56 cp is learned
+  noise, and mirroring removes it while doubling data per zone. (a) is the cost of
+  fixing (b), not evidence against it.
+  => Do NOT bundle #1 and #2 as network.md recommended. The 12-head rebalance warm-starts
+  flat (lichess 0.007935 vs 0.007959, the only drift being piece count 20 changing band)
+  and needs 3 small engine edits (agent._bucket, export.py, check_nnue); mirroring needs
+  the 9-file hot-path surgery and a full retrain. Sequence: 12 heads first, mirroring
+  behind a CHEAP PILOT (4 epochs, ~25 min GPU) that has to show the trajectory heading
+  below 0.007959 before it earns 2.5 GPU h and a gauntlet slot.
+- ENGINE-FILE WINDOW NEEDED (loop please note): shipping either half needs edits to
+  agent.py (`_bucket`, and for mirroring the accumulator) + training/export.py. The
+  session will NOT touch agent.py/fastboard.py/fastsearch.py without announcing a window
+  here first, to avoid colliding with the loop's switch builds.
 - LAUNCH GOTCHA (cost 3 attempts): PowerShell Start-Process on Git bash needs a LOGIN
   shell -- `bash.exe -lc "cd /c/dev/aichessathon/starter && exec bash <script>"`. Without
   -l the child has no PATH, so dirname/date are not found and the job dies silently in
