@@ -334,6 +334,30 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
+## HUMAN'S INSTRUCTION 6 Sep 08:55 -- v9.4 = the search bundle + the WDL net, ONE gauntlet
+READ THIS BEFORE TOUCHING v9.4. The human's words: "fold wdl into the 9.4 release ...
+again only one gauntlet per version. so just fold the wdl gauntlet in as a 9.4 gauntlet
+before release". He is awaiting the v9.4 email and wants it expedited without losing quality.
+- `148-v94all` and `v94all-clocktest-l` have been PULLED from overnight/laptop/tasks.json by
+  the session so the worker cannot start a search-only v9.4. DO NOT re-queue them on their
+  own and DO NOT ship v9.4 on a search-only verdict.
+- The session will queue ONE combined task `149-v94wdl` (sed = the same four switches,
+  net = overnight/nets/157-wdlnet.npz) plus `v94wdl-clocktest-l` as soon as the WDL net
+  passes its offline checks. The saved sed, verbatim:
+  s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/
+- Ship rule for v9.4: 149-v94wdl PROMOTE at its checkpoint + v94wdl-clocktest-l PASS ->
+  flip the four switches AND copy the net into the tree, exact check, zip FROM the tested
+  challenger with INIT_FOLD flipped True, clean-unzip import < 45 s, CANDIDATE.md, notify.
+- QUALITY GUARD the session applies before queuing: the WDL net must not regress the
+  per-band static error (eg_calib) against the v9.3 net's 331.9 / 262.6 / 184.4 cp. If it
+  does, the net is dropped and v9.4 goes back to being the search bundle alone -- one
+  gauntlet either way.
+- 155-mixnet2s STOPPED by the session at 346 games (-3.0 +/- 29.0, llr -1.19): it could not
+  promote and was holding the only gauntlet for another ~1.3 h. Removed from tasks.json so
+  it will not re-run; no result file was written (workers own those). VERDICT: the x1.31
+  output-slope rescale is worth NOTHING in games (+69 at 76 games decayed to -3 by 346) --
+  SLOPE RESCALE CLOSED. Measure slope as a diagnostic, never ship a rescale.
+
 ## Running now (6 Sep 08:45, iter 23)
 - Nothing could be started again: 155-mixnet2s is still running (288 games, -7.2 +/- 33.8;
   it was +69.5 +/- 60 at 76 games, so the slope-rescale net is regressing to nothing --
