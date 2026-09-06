@@ -1,0 +1,5 @@
+name v94wdl-clocktest-l
+kind clocktest
+host tobys-laptop
+flags 0/6  errors 0  lowest clock 5.7s  longest move 11.9s
+PASS

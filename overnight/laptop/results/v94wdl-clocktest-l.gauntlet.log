@@ -1,0 +1,16 @@
+v94wdl-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+   153 plies  1/2-1/2       lowest clock    5.8s  longest move  11.9s  at ply 30   42.4s  used w   149s b   149s
+compiled board: on
+   176 plies  0-1           lowest clock    5.8s  longest move   9.5s  at ply 30   55.8s  used w   152s b   151s
+compiled board: on
+   172 plies  1/2-1/2       lowest clock    5.9s  longest move   8.6s  at ply 30   61.4s  used w   152s b   152s
+compiled board: on
+   171 plies  1/2-1/2       lowest clock    5.7s  longest move  10.2s  at ply 30   65.3s  used w   156s b   156s
+compiled board: on
+   138 plies  1-0           lowest clock    6.5s  longest move   9.9s  at ply 30   63.1s  used w   143s b   144s
+compiled board: on
+   184 plies  1/2-1/2       lowest clock    5.7s  longest move   9.0s  at ply 30   56.2s  used w   160s b   160s
+
+flags 0/6  errors 0  lowest clock 5.7s  longest move 11.9s
+PASS
