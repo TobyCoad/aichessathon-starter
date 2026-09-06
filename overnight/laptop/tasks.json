@@ -17,6 +17,11 @@
   "elo1": 200
  },
  {
+  "name": "conv3b-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/"
+ },
+ {
   "name": "170-conv-vs-sf8-120s",
   "kind": "switch",
   "sed": "s/^CONVERT_BUDGET: Final = False$/CONVERT_BUDGET: Final = True/; s/^WIN_FOCUS: Final = False$/WIN_FOCUS: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/",

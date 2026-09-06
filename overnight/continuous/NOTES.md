@@ -662,6 +662,63 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 16:40, iter 36) -- THE CONVERSION BUNDLE IS ON THE MACHINE, AND IT IS THE FIRST NON-SELF-PLAY TEST WE HAVE EVER RUN
+The laptop was IDLE when this iteration started: the queue held only clocktests, all of
+them already answered, and `v94-120s` had been stopped by the pause. Iter 35 and
+opponent_profile.md both end on the same sentence -- the gap is conversion of won
+positions and the three switches that address it have never been played for points. So
+that is what is queued, against sf-skill8 at 120 s per the human's regime, not against
+ourselves.
+- **QUEUED (committed 95e58d0, the worker took the first task at 16:40):**
+  1. `conv3-clocktest-l` -- CONVERT_BUDGET + WIN_FOCUS + DRAW_BUDGET together. Each has
+     passed a clocktest (convert 5.7 s / 13.7 s, drawcap2 5.6 s / 10.9 s, winfocus+convert
+     5.5 s / 11.4 s) but never all three at once, and all three move deadlines in the same
+     direction. ~10 min.
+  2. `v94-vs-sf8-120s` -- the CHAMPION vs `opponents/sf-skill8`, 60 games, 120 s, platform
+     openings. This is the baseline the new regime needs and it has never run (it was
+     queued at 14:45 and then parked by the pause). It is reusable: every future build is
+     compared against this one number, so the cost is paid once. ~80 min.
+  3. `170-conv-vs-sf8-120s` -- the same 60 games with the three conversion switches ON.
+     ~80 min. Both finish tonight.
+- **HOW TO READ THEM, stated before the numbers arrive so nobody reads them hopefully.**
+  Two separate 60-game scores against a fixed opponent is a WEAK discriminator: roughly
+  +/- 90-100 Elo each, and conversion.md's own ceiling for CONVERT_BUDGET is +0..+15. This
+  pair CANNOT confirm the bundle. What it can do is (a) give us the first absolute
+  strength measurement against a non-self opponent, (b) tell us whether sf-skill8 is the
+  right rung (if the champion scores above ~75%, move the regime to sf-skill10), and
+  (c) catch a REGRESSION, which is the real risk of switches that spend clock on our own
+  possibly-wrong root score. Judge the bundle on the score DIFFERENCE plus the decided-game
+  breakdown (wins from won positions is the mechanism), and treat anything inside +/- 8%
+  as "no signal, keep it as a rider".
+- **INSTRUMENTATION BUILT (agent.py only, off unless an env var names a file).** conversion.md
+  gate 4 says the firing rate of CONVERT_BUDGET is unmeasurable, and it still was. Now
+  `AICH_CONV_LOG=<path>` makes each fired extension append `fire N score S soft X hard Y
+  clock C`. Default "" so every queued run is byte-identical to the tree; ruff + mypy PASS.
+  NEXT ITERATION: after the two 120 s runs finish, replay six clocktest games with the var
+  set and report fires per game. If it fires ~0 times the bundle is inert and the flat
+  result means nothing; if it fires 3-5 times a game, as conversion.md predicts, then a flat
+  result is real evidence.
+- **NOT DONE, and deliberately.** No v9.5 candidate (the pause forbids it and nothing has
+  changed to lift it); no new pruning switch (opponent_profile says the search is not where
+  we lose); no gauntlet vs our own champion (the human scrapped self-play verdicts).
+- `engine_ceiling.md` STILL HAS NOT LANDED (net_architecture.md 15:22 and opponent_profile.md
+  15:56 both did). No agent process is alive on the box, so it appears to have died without
+  writing. If its question still matters, re-brief it -- but note opponent_profile already
+  answered the headline: on matched positions our move quality equals the leader's, so the
+  ordering/branching-factor question it was asked is no longer the top lever.
+- **`conv3-clocktest-l` FAILED 16:41 AND THE FAILURE IS MINE, NOT THE SWITCHES'.** 6/6 games
+  died with `SyntaxError: unterminated f-string` at agent.py:2828 -- the worker copied the
+  tree during the ~60 s in which my instrumentation edit was mid-fix. THE LESSON, and it is a
+  rule now: **the worker rebuilds a challenger from the working tree at task start, so the
+  tree must never be syntactically invalid for even a minute.** Edit to a scratch file or
+  make the whole edit in one write; do not queue a task and then edit agent.py. Re-queued as
+  `conv3b-clocktest-l` after the baseline (results files are the worker's, so the FAIL row
+  stands and the retry gets a new name). `v94-vs-sf8-120s`, which started at 16:41, was
+  checked: its challenger dir has the FIXED agent.py and its crash gate is clean.
+- NEXT STEP: read `conv3b-clocktest-l` (PASS is mandatory before believing anything from
+  task 3), then the two sf8 scores, then run the firing-rate replay. If the champion scores
+  >75% vs sf-skill8, re-queue the pair against sf-skill10 before drawing any conclusion.
+
 ## Running now (6 Sep 16:25, iter 35) -- SEARCH_SPLIT IS CLOSED AFTER BLOCK C: B AND E BOTH MEASURE ZERO
 I built block B and then, when it failed, block E. Both were exact and both bought
 NOTHING. **SEARCH_SPLIT is closed; do not spend another iteration on blocks A or D.**

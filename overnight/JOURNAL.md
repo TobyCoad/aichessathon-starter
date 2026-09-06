@@ -1820,3 +1820,42 @@ they are when losing. The entire +501 Elo gap sits in won positions, +14.6 cp pe
 three switches built for precisely that -- CONVERT_BUDGET, DRAW_BUDGET and the session's
 uncommitted WIN_FOCUS -- and not one of them has ever been played for points. That is the
 next bundle, and it should go ahead of the pruning bundle sitting in held.json.
+
+## 6 Sep 16:35-17:05 (iter 36) -- the machine was idle, so the conversion bundle finally got
+played for points, against something that is not us
+
+I found the laptop doing nothing. The queue held ten clocktests and every one of them
+already had a result file; the only real work, v94-120s, had been stopped by the research
+pause at eight games. That is the worst state the loop can be in, and it had been in it for
+twenty minutes.
+
+What to put on it was not a hard call, because iter 35's journal entry and
+opponent_profile.md end on the same sentence. We are not losing on search: on 280 contested
+positions we and the leader match Stockfish d16 at the same 52.9%, and replayed through our
+engine their own positions cost us +0.0 cp a move in level positions and -16.3 when losing.
+The entire +501 Elo sits in won positions, +14.6 cp a move at +300..+800 and +49.1 above
++800. We have three switches built for exactly that -- CONVERT_BUDGET, DRAW_BUDGET and the
+session's WIN_FOCUS -- and between them they have six passing clocktests and zero games.
+
+So: a combined clocktest of all three (each has passed alone or in pairs, none has passed as
+a trio, and all three push deadlines the same way), then the champion against
+opponents/sf-skill8 for sixty games at 120 s, then the same sixty with the three switches on.
+The middle one is the baseline the human's new regime has needed since 14:45 and never got,
+and it is worth paying for once because every future build is read against it.
+
+I wrote down how to read the pair before it produces any numbers, because I do not trust
+myself to do that afterwards. Sixty games against a fixed opponent is +/- 90-odd Elo, and
+conversion.md's own ceiling for CONVERT_BUDGET is +0..+15. The pair cannot confirm the
+bundle. It can tell us our absolute strength for the first time, tell us whether sf-skill8
+is even the right rung, and catch a regression -- which is the honest risk here, since these
+switches spend clock on the strength of our own root score and claim 7 of conversion.md says
+that score is often 150-200 cp optimistic.
+
+The one thing I built is the smallest useful thing: conversion.md's gate 4 asks for the
+firing rate of the extension and says it is currently unmeasurable. It still was. Now
+AICH_CONV_LOG names a file and every fired extension appends a line to it. Default empty, so
+every queued run stays byte-identical to the tree, and ruff and mypy pass. It matters
+because of what happens when the sixty games come back flat, which is the likeliest outcome:
+without the firing rate, flat means nothing at all, and with it, flat either means the switch
+never fires (drop it) or means it fires several times a game and buys nothing (close it).
+That distinction is the whole value of the run.

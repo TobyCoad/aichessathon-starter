@@ -1282,6 +1282,10 @@ _CONV_MOVES: Final = 2          # consecutive own searches inside the band
 _CONV_MULT: Final = 2.0         # multiplies BOTH soft and hard
 _CONV_MIN_CLOCK: Final = 20.0   # seconds left below which we never extend
 _CONV_MAX_FRACTION: Final = 0.16  # never more than this share of the clock on one move
+# Firing-rate instrumentation (conversion.md gate 4: the rate was unmeasurable). Off
+# unless AICH_CONV_LOG names a file; a fired extension appends one line to it.
+_CONV_LOG: Final = os.environ.get("AICH_CONV_LOG", "")
+_CONV_FIRES: Final[list[int]] = [0]
 _DRAW_SCORES: list[int] = []    # our root scores this game, newest last
 _DRAW_LAST_PLY: int = -1
 # ADJUDICATION: chess ply of the game's first request, and the last ply seen
@@ -2816,6 +2820,13 @@ def _convert_budget(time_left_ms: int, soft: float, hard: float) -> tuple[float,
         cap = now + remaining * _CONV_MAX_FRACTION
         soft = min(now + (soft - now) * _CONV_MULT, cap)
         hard = min(max(soft, now + (hard - now) * _CONV_MULT), cap)
+        if _CONV_LOG:
+            _CONV_FIRES[0] += 1
+            with open(_CONV_LOG, "a", encoding="utf-8") as handle:
+                handle.write(
+                    f"fire {_CONV_FIRES[0]} score {_DRAW_SCORES[-1]} "
+                    f"soft {soft - now:.2f} hard {hard - now:.2f} clock {remaining:.1f}\n"
+                )
     return soft, hard
 
 
