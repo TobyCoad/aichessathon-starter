@@ -20,3 +20,15 @@ overnight/night*/
 overnight/night*.out
 overnight/pgn/
 overnight/nets/
+# runtime and history artefacts (kept locally, never committed)
+submission-*.zip
+_clock.out
+overnight/champion_backup_*/
+overnight/eval/*.log
+overnight/eval/*.json
+overnight/continuous/*.log
+overnight/laptop/worker.log
+overnight/challengers/
+overnight/postmortem/
+overnight/pgn/
+overnight/eval/*.sh

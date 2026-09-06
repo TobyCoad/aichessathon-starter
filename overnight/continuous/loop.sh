@@ -23,7 +23,7 @@ while true; do
     say "iteration $run"
     git stash push -q -m loop-pull >/dev/null 2>&1; git pull --rebase origin main >/dev/null 2>&1 || say "pull failed"; git stash pop -q >/dev/null 2>&1
     $PY -m testing.fetch_games --team "make_no_mistakes" > overnight/continuous/fetch.log 2>&1 || true
-    timeout 45m "$CLAUDE" --print --model fable --dangerously-skip-permissions --max-turns 80 \
+    timeout 45m "$CLAUDE" --print --model opus --dangerously-skip-permissions --max-turns 80 \
         "$(cat overnight/continuous/PROMPT.md)" > "overnight/continuous/iter-$run.log" 2>&1
     code=$?
     if [ $code -ne 0 ]; then

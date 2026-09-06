@@ -66,3 +66,8 @@ log to the dashboard; that log is the authority. The harness exists so local gam
 
 Python 3.12, type-annotated, ruff and mypy strict clean. Keep `agent.py` readable: it is the
 thing a judge reads if your games get flagged, and the thing you have to explain at the final.
+
+## Handover (6 Sep 2026)
+
+A new model picking this project up starts with `README-HANDOVER.md` (state, the
+recursive improvement loop, shipping + email, the Stockfish-data net line, lessons).
