@@ -14,7 +14,15 @@ from pathlib import Path
 
 # The v9.3 net measured by testing.eg_calib (overnight/eval/v10/eg_calib_v93.log).
 BASELINE = {"5- 8": 331.9, "9-12": 262.6, "13-16": 184.4}
-TOLERANCE = 1.10
+# CATASTROPHE CHECK ONLY -- deliberately loose, and here is why. eg_calib scores the net
+# against endgame_suite.json, whose positions are labelled with Stockfish at a fixed depth:
+# pure EVALUATION labels. A WDL-trained net predicts a blend of the evaluation and the game
+# outcome, so it is *supposed* to deviate from them -- measured on the shards, WDL moved the
+# training targets by a mean of 766 cp at 2-8 pieces. A 10% gate would reject the net for
+# precisely the behaviour we are trying to introduce. Correctness is already covered by
+# check_nnue (the exported net reproduces the torch model exactly); this only catches a net
+# that is grossly broken, and the gauntlet remains the real judge.
+TOLERANCE = 2.5
 NET = "overnight/nets/157-wdlnet.npz"
 TASKS = Path("overnight/laptop/tasks.json")
 CALIB = Path("overnight/eval/v10/eg_calib_wdl.log")
