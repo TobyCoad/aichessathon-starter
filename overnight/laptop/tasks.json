@@ -68,6 +68,18 @@
   "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
  },
  {
+  "name": "v94-vs-sf8-120s",
+  "kind": "switch",
+  "sed": "",
+  "champion": "opponents/sf-skill8",
+  "games": 60,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -200,
+  "elo1": 200
+ },
+ {
   "name": "165-v96",
   "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
   "games": 600

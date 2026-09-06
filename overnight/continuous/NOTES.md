@@ -387,6 +387,33 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## NEW TESTING REGIME (human's instruction, 6 Sep 14:45): STOP TESTING AGAINST OURSELVES
+"scrap testing against our champion, instead test against stockfish at skill 8 from now on
+... and play at 120s".
+WHY THIS MATTERS, not just an instruction: EVERY verdict since 3 Sep has been self-play at
+8 s -- v8, v8.5, v9, v9.1, v9.2, v9.3, v9.4 were all measured only against our own previous
+build. Self-play cannot see a SHARED blind spot: if our net misjudges a structure, both
+sides misjudge it identically and no game ever punishes it. That is a live candidate
+explanation for why our gauntlet Elo keeps rising while the ladder position does not.
+The opponent pool has been sitting unused since 2-3 Sep: opponents/sf-skill6, sf-skill8,
+sf-skill10, weiss-d4, weiss-d6, weiss-d8, plus baselines/{random,greedy,minimax}.
+- FIRST TASK QUEUED: `v94-vs-sf8-120s` -- the current champion vs opponents/sf-skill8, 60
+  games at 120 s on platform openings. It runs after the two clocktests that gate v9.5.
+- HOW TO READ THESE RUNS -- IMPORTANT: with an EXTERNAL champion the gauntlet's PROMOTE /
+  REJECT labels are MEANINGLESS for us; "PROMOTE" would only mean "beats sf-skill8 by >= 10
+  Elo". Use the SCORE and the elo +/- margin as a MEASUREMENT of the build, and compare
+  builds by their scores against the same fixed opponent. Do not flip switches in the tree
+  on a PROMOTE from one of these.
+- STATISTICAL COST, state it honestly: comparing two builds via their separate scores against
+  a fixed opponent has roughly twice the variance of a direct head-to-head, and 120 s games
+  cost ~5.2 min each (60 games / 4 workers ~ 78 min). We can afford perhaps two such runs a
+  day. So: use them as the RELEASE gate and the reality check, and keep any cheap screening
+  clearly labelled as screening.
+- CALIBRATION WARNING: on 2-3 Sep a much weaker build scored 53.3% then 58.0% vs sf-skill10
+  at 120 s and 88.3% vs weiss-d8. We have gained a lot since, so sf-skill8 may sit near our
+  ceiling. IF WE SCORE ABOVE ~75% vs sf-skill8, MOVE UP TO sf-skill10 (or higher): a score
+  near the ceiling compresses Elo differences and makes the test insensitive.
+
 ## INIT TIME IS THE #1 RISK -- IT IS COSTING US GAMES, NOT JUST UPLOADS (6 Sep 12:45)
 The v9.4 upload FAILED first time: "no ready line within the 90 s init budget". The retry
 validated, but at **88.1 s of the 90 s budget** on one smoke game. Four platform samples:
