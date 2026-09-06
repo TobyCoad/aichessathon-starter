@@ -111,3 +111,49 @@ be bisected.
   the split work.
 - `quiesce` (4.2 s inference on 10,578 lines) is the second-largest function and the
   same treatment would apply to it later; do `search` first.
+
+## 5. Block C, worked out exactly (do this one first)
+
+Read at 14:31, iter 33, so the next iteration does not have to re-derive it. `search`
+lines 1059-1141 split as follows.
+
+STAYS in `search` (the early return has to happen there):
+
+    mv = moves[ply]
+    n = fb.gen_legal(bb, sq, meta, mv, False)
+    if n == 0:
+        return -MATE + ply if in_check else 0
+    sc = scores[ply]
+
+MOVES OUT, verbatim, as lines 1064-1117 (`history2 = ...` through the end of the
+CAPTURE_ORDER rescore loop):
+
+    @njit(cache=False, nogil=True)
+    def order_node(bb, sq, meta, undo, mv, n, sc, hash_move, k0, k1,
+                   butterfly, counter, conthist1, ctrl):
+        ...                      # fills sc in place
+        return base, ch_base     # int64 pair
+
+Call site: `base, ch_base = order_node(bb, sq, meta, undo, mv, n, sc, hash_move,
+killers[ply, 0], killers[ply, 1], butterfly, counter, conthist1, ctrl)`.
+
+LIVE-OUT ANALYSIS (grepped over 1118-1394, the rest of `search`):
+  - `base`     used at 1154, 1192, 1305, 1310  -> must be returned.
+  - `ch_base`  used at 1155-1156, 1194-1195, 1317, 1324, 1331 -> must be returned.
+  - `counter_move` is NOT used after 1117 -> stays local to the helper, do not return it.
+  - `history2`, `conthist_on`, `capture_order` ARE used later (1193, 1217, 1219, 1299,
+    1335) but are one-line fold ternaries over `ctrl`. RECOMPUTE them in `search` rather
+    than returning them: it keeps the INIT_FOLD constant-folding working at both sites
+    and costs a couple of IR nodes, against a tuple return that would cost more.
+  - Everything else the block touches (`mv`, `sc`, `killers`, `butterfly`, `counter`,
+    `conthist1`) is an array mutated in place, so it needs no return.
+  - Module globals it reads (`MVV`, `CAPTURE_BONUS`, `_FOLD`, the `_F_*` constants) are
+    visible from any njit function in the module -- no plumbing needed.
+
+Give the helper `nogil=True` to match `search`. Name it `order_node`, NOT `order_moves`:
+`fb.order_moves` already exists and is a different thing.
+
+Gate this one commit on: ruff, mypy, `python -m testing.check_fastsearch --depth 4
+--random 30` (70/70 + 40/40), `python -m testing.bench --agent <dir> --depth 8` returning
+**1,110,289 nodes exactly** with knps within noise of the champion's, and `initprof.py`
+re-run to record `search`'s new inference seconds against the 23.5 s baseline.
