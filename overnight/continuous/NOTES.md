@@ -745,6 +745,14 @@ build moves the score to ~93%, which 60 games cannot see.
   probe only has to separate 50% from 90%, and 24 games does that (SE ~10%); spending 60
   games on a rung we may discard is the same mistake again. NEXT ITERATION picks the rung
   whose score is nearest 50-65% and runs the real comparisons there.
+- **CONCURRENT EDIT, 17:33: another session independently reached the same conclusion** and
+  prepended its own `v94-vs-sf12-120s` at **40 games** ahead of my 24-game one. Two entries
+  with the SAME NAME is a live hazard, because `next_task` skips any task whose `<name>.txt`
+  already exists -- so the second would have been silently dead. I kept THEIRS (40 games is
+  strictly more information for 52 min instead of 31) and dropped my duplicate. Queue is now
+  `v94-vs-sf12-120s` (40) -> `conv3b-clocktest-l` (already running, so it self-clears) ->
+  `v94-vs-sf14-120s` (24). RULE WORTH KEEPING: never queue a task under a name that is
+  already in tasks.json; the result file is the key, and a duplicate name is a no-op.
 - Calibration to expect: an OLDER, much weaker build scored 53.3%/58.0% vs sf-skill10 at
   120 s (2-3 Sep). We are ~+380 over skill8, so skill12 is the first guess and skill14 the
   backup. If skill14 also comes back above 75%, add sf-skill16 and probe again -- do not
