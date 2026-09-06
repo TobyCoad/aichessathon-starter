@@ -1075,6 +1075,15 @@ ADJ_BEHIND_LATE_V2: Final = 100  # cp; a draw is worth a pawn, never a rook
 # subtree or the previous search are noise in move ordering.
 HISTORY2_FIX: Final = True
 KILLER_CLEAR: Final = True
+# KILLER_SHIFT (V10_PLAN #12's last unbuilt filler, agent.py only -- no kernel
+# change, so it costs nothing at init). KILLER_CLEAR throws the whole killer
+# table away between root moves. But the tree does not move: it shifts down by
+# exactly two plies (our move, then theirs), so the previous search's killers at
+# ply p are this search's killers at ply p - 2, at the same distance from the
+# same leaves. Shifting instead of clearing keeps that and still drops the two
+# stale ply rows at the bottom. Needs KILLER_CLEAR (it replaces its between-move
+# half; the ply + 2 clear on node entry is the kernel's and is untouched).
+KILLER_SHIFT: Final = False
 # CONT_HIST (v10 search.md 3.1): 1-ply continuation history. A 768x768 int32
 # table indexed by (previous move's piece*64+to, this quiet's piece*64+to),
 # added to the quiet ordering score, the LMR history term (continuous
@@ -2208,6 +2217,8 @@ class FastEngine:
             ctrl[_fs.C_NMP_V2B] = 1 if NMP_V2B else 0
             if CAPTURE_ORDER and CONT_HIST:
                 raise RuntimeError("CAPTURE_ORDER and CONT_HIST share the conthist1 buffer")
+            if KILLER_SHIFT and not KILLER_CLEAR:
+                raise RuntimeError("KILLER_SHIFT replaces KILLER_CLEAR's between-move clear")
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
             ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
             ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
@@ -2224,7 +2235,14 @@ class FastEngine:
                             f"but fastsearch folded it as {fold_value}"
                         )
             if KILLER_CLEAR:
-                self.killers2[:] = 0  # killers from the previous search are noise
+                if KILLER_SHIFT:
+                    # The root advanced two plies: killers[p] belonged to what is
+                    # now ply p - 2. Move them there and zero the two rows that
+                    # have no predecessor.
+                    self.killers2[:-2] = self.killers2[2:]
+                    self.killers2[-2:] = 0
+                else:
+                    self.killers2[:] = 0  # killers from the previous search are noise
             ctrl[_fs.C_HMC_DRAW] = 100
             if ADJUDICATION:
                 match_ply = _match_ply(board)

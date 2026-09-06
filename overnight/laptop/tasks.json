@@ -58,14 +58,14 @@
   "games": 600
  },
  {
-  "name": "v95-clocktest-l",
-  "kind": "clocktest",
-  "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
- },
- {
   "name": "initasync-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^INIT_ASYNC: Final = False$/INIT_ASYNC: Final = True/; s/^INIT_READY_S: Final = 72.0$/INIT_READY_S: Final = 0.0/"
+ },
+ {
+  "name": "v95-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/"
  },
  {
   "name": "165-v96",
