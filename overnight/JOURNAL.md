@@ -1641,3 +1641,29 @@ is a no-op at 8 s, it cannot show up in a gauntlet, and it must not be counted t
 bundle's Elo. It rides in v9.7 for free once its clocktest passes. And it does not make init
 faster -- shrinking the kernel and cutting warm_up's specialisations are still the levers for
 that, and they are still unassigned.
+
+**6 Sep 14:10 (iteration 32).** Nothing was shippable: `160-v95` took its 200-game
+checkpoint at -1.8 and so is playing the further 200, putting v9.5's verdict at 400 games
+(~15:00). Two things instead. First, `initasync-clocktest-l` was moved ahead of
+`v95-clocktest-l` in the laptop queue. INIT_ASYNC's gate is a ten-minute clocktest and init
+is the #1 measured risk -- the four platform samples are 74.1 s, over 90 s (that game was
+lost outright), 88.1 s and 64.1 s against a 90 s budget -- so ten minutes of v9.5's release
+buys folding it into the same flip instead of holding it for v9.7 tonight. It ships the way
+INIT_FOLD does, flipped True in the zip copy rather than in the tested challenger, which is
+defensible here because when the compile fits inside the deadline the thread is joined
+inside import and the behaviour is today's to the byte; its clocktest at `INIT_READY_S` 0.0
+spills the entire compile into move one and is harsher than any platform case. If
+`160-v95` rejects, v9.5 = v9.4 + INIT_ASYNC is still worth shipping: it changes no move,
+it converts a lost game into a slow first move. While reading that code I confirmed the
+`print` it adds is safe -- harness/runner.py dups fd 1 to stderr before importing agent and
+writes the protocol on a saved duplicate, so agent stdout can never reach the ready line.
+Second, `KILLER_SHIFT` was built, off in the tree: V10_PLAN #12's last unbuilt filler.
+Between root moves KILLER_CLEAR throws the killer table away, but the tree does not move,
+it shifts down two plies, so the previous search's killers at ply p are this search's at
+ply p - 2, at the same distance from the same leaves; shift instead of clear and zero the
+two rows with no predecessor. agent.py only, deliberately: NOTES' rule against adding kernel
+switches without measuring init now rules out kernel fillers before the freeze. ruff, mypy
+and check_fastsearch (70/70 exact, 40/40 table-on) all pass. It goes into v9.7, never a
+solo slot. One honest caveat recorded with it: `testing.bench` runs unrelated positions
+through one engine instance, so any node difference it shows for this switch is an artefact
+of carrying killers between positions that never follow each other in a game.

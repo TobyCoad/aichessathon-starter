@@ -564,6 +564,56 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 14:10, iter 32) -- INIT_ASYNC PULLED FORWARD; KILLER_SHIFT BUILT
+Nothing could ship this iteration: `160-v95` took its 200-game checkpoint in the middle
+band (-1.8 at 196) and is playing the further 200, so v9.5's verdict lands at 400 games,
+around 15:00 (measured rate ~3.5 games/min). Two things were done instead.
+- **`initasync-clocktest-l` MOVED AHEAD OF `v95-clocktest-l`** in overnight/laptop/tasks.json.
+  Reason: INIT_ASYNC's gate is a 10-minute clocktest, and NOTES calls init the #1 risk --
+  four platform samples 74.1 / >90 (GAME LOST) / 88.1 / 64.1 s against a 90 s budget. Ten
+  minutes of v9.5's release is a cheap price for being able to fold INIT_ASYNC into the
+  SAME flip instead of holding it for v9.7 tonight.
+  * HOW IT SHIPS: exactly like INIT_FOLD -- agent.py-only, flipped True in the ZIP COPY at
+    build time, not in the tested challenger. That is defensible for this switch and only
+    this class of switch: when the compile fits inside the deadline (every local run does,
+    48.0 s even under gauntlet load) the thread is joined inside import, `_WARM_THREAD` is
+    None, and behaviour is today's to the byte -- the only per-move addition is one
+    `is not None` test. Node counts cannot move. Its clocktest at `INIT_READY_S` 0.0 is the
+    real gate and is strictly harsher than any platform case.
+  * IF `160-v95` REJECTS, SHIP v9.5 = v9.4 + INIT_ASYNC ANYWAY (assuming the clocktest
+    passes). It changes no move the engine plays; it converts a lost game into a slow first
+    move. On the sample above that is worth more than any search bundle we have shipped.
+  * VERIFIED while reading the code: the extra `print` is safe. harness/runner.py dups fd 1
+    to stderr BEFORE importing agent (runner.py:7-8) and writes the protocol on a saved
+    duplicate, so agent stdout can never reach the ready-line stream.
+- **`KILLER_SHIFT` BUILT, OFF in the tree (commit 93e3cc5), agent.py ONLY.** V10_PLAN #12's
+  last unbuilt filler. KILLER_CLEAR throws the whole killer table away between root moves;
+  the tree does not move, it shifts down two plies (our move, then theirs), so the previous
+  search's killers at ply p are this search's at ply p - 2 -- same distance from the same
+  leaves. `self.killers2[:-2] = self.killers2[2:]` then zero the last two rows. Raises if
+  KILLER_SHIFT is on without KILLER_CLEAR (it replaces its between-move half; the kernel's
+  ply + 2 clear on node entry is untouched).
+  * NO KERNEL CHANGE, so it adds NOTHING to compile time -- which is why this filler was
+    chosen over any kernel-side one. NOTES' rule "do not add new switches to the kernel
+    without measuring init" now effectively rules out kernel fillers before the freeze.
+  * GATES: ruff PASS, mypy PASS, check_fastsearch 70/70 exact + 40/40 table-on PASS.
+  * BENCH CAVEAT, read it before quoting a number: `testing.bench` runs 
+    UNRELATED positions through ONE engine instance, so the shift path does execute there
+    but carries killers between positions that never follow each other in a game. Any node
+    difference the depth-8 bench shows is therefore an artefact of the instrument, not a
+    property of the switch; it is neither evidence for nor against. The switch is
+    ordering-only and cannot change the result of a search, only its cost.
+  * WHERE IT GOES: v9.7's bundle, never a solo slot (+0..5 by V10_PLAN's own estimate).
+- QUEUE now: `160-v95` (216 games, +3.2 at 14:08; decides at 400) -> `initasync-clocktest-l`
+  -> `v95-clocktest-l` -> `165-v96` -> `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
+- NEXT STEP, in order: (1) fold `initasync-clocktest-l`; (2) ship v9.5 on `160-v95`'s 400-game
+  checkpoint + `v95-clocktest-l` PASS, WITH INIT_ASYNC flipped True in the zip copy alongside
+  INIT_FOLD (bench-node identity check still mandatory); (3) v9.6 on `165-v96`; (4) v9.7 =
+  KILLER_SHIFT + whatever survives the v96 split. v9.7 still needs a second switch: every
+  ranked V10_PLAN item is built, closed or shipped, so the next real idea has to come from a
+  postmortem or from ProbCut (NOT in the closed list, but it is a kernel change and therefore
+  an init cost -- price it against the 90 s budget before building it).
+
 ## Running now (6 Sep 13:35, iter 31) -- INIT_ASYNC BUILT: the init cliff becomes a slow move
 Everything was queued and the laptop was busy with `160-v95`, so this iteration built rather
 than tested, and it built the item NOTES already calls the #1 risk: we lose whole games to
@@ -1325,6 +1375,10 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0) SUPERSEDED IN PART BY ITER 32: `initasync-clocktest-l` now runs BEFORE `v95-clocktest-l`,
+and v9.5's zip flips INIT_ASYNC True alongside INIT_FOLD if that clocktest passes. v9.5's
+verdict is `160-v95`'s 400-game checkpoint, not the 200 (it landed in the middle band).
+If `160-v95` rejects, still ship v9.5 = v9.4 + INIT_ASYNC.
 (1) SHIP v9.5 on `160-v95`'s checkpoint (PROMOTE, or INCONCLUSIVE with a positive point
 estimate) plus `v95-clocktest-l` PASS. Recipe, verbatim from iter 29 which worked cleanly:
 flip ADJ_V2 / ROOT_NODES / SINGULAR_EXT2 / RAZOR True in the tree, ruff + mypy +
@@ -1341,8 +1395,8 @@ reason to re-examine NMP_V2B before piling more pruning on top of it.
 (3) SHIP v9.6 on `165-v96`'s checkpoint + `v96-clocktest-l` PASS: DRAW_BUDGET + CUTNODE +
 SEE_QUIET. If it fails, split ONCE by dropping SEE_QUIET (`166-v96b`) and close SEE_QUIET
 whatever comes back. `v96-120s` is confirmation for DRAW_BUDGET and lands after the ship.
-(4) v9.7 has NOTHING BUILT. The last unbuilt filler is killer decay (V10_PLAN #12's other
-half); the RAZOR TT-store lever is the only untried improvement to RAZOR (do not re-tune its
+(4) v9.7 now has KILLER_SHIFT (iter 32, killer decay = V10_PLAN #12's other half, agent.py
+only, off in the tree). It still needs a second switch; the RAZOR TT-store lever is the only untried improvement to RAZOR (do not re-tune its
 margins); NET_V10 belongs to the interactive session. Build the fillers while a gauntlet
 runs -- but not while `v94-120s` or `v96-120s` is running, because those measure at a time
 control where extra CPU load changes the answer.
