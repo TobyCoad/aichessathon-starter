@@ -80,7 +80,10 @@ run_task() {
     # stage it first, because the dir is rebuilt from the tree below. (150-sfnet was tested
     # against itself because of exactly this.)
     if [ -n "$net" ]; then
-        mkdir -p overnight/nets; cp "$net" "overnight/nets/$name.npz" || { say "net $net missing"; return 1; }
+        mkdir -p overnight/nets
+        if [ "$net" != "overnight/nets/$name.npz" ]; then
+            cp "$net" "overnight/nets/$name.npz" || { say "net $net missing"; return 1; }
+        fi
         net="overnight/nets/$name.npz"
     fi
     rm -rf "$d"; mkdir -p "$d/weights"
