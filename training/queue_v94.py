@@ -35,16 +35,21 @@ def bands() -> dict[str, float]:
 
 def main() -> None:
     sed = sys.argv[1]
-    measured = bands()
-    if len(measured) == len(BASELINE):
-        worse = [b for b in BASELINE if measured[b] > BASELINE[b] * TOLERANCE]
-        keep = not worse
-        detail = ", ".join(f"{b} {measured[b]:.1f} vs {BASELINE[b]:.1f}" for b in BASELINE)
-        why = detail + ("" if keep else f" -- REGRESSED at {worse}, net dropped")
+    if "--no-net" in sys.argv[2:]:
+        # The net never arrived (decode or training failed). Ship the search bundle rather
+        # than block the release, and say so plainly.
+        keep, why = False, "forced search-only: the WDL net did not arrive"
     else:
-        # The instrument failed, not the net. The gauntlet is the real gate.
-        keep = True
-        why = "eg_calib produced no bands; keeping the net and letting the gauntlet judge"
+        measured = bands()
+        if len(measured) == len(BASELINE):
+            worse = [b for b in BASELINE if measured[b] > BASELINE[b] * TOLERANCE]
+            keep = not worse
+            detail = ", ".join(f"{b} {measured[b]:.1f} vs {BASELINE[b]:.1f}" for b in BASELINE)
+            why = detail + ("" if keep else f" -- REGRESSED at {worse}, net dropped")
+        else:
+            # The instrument failed, not the net. The gauntlet is the real gate.
+            keep = True
+            why = "eg_calib produced no bands; keeping the net and letting the gauntlet judge"
 
     task: dict[str, object] = {"name": "149-v94wdl", "sed": sed, "games": 600}
     clock: dict[str, object] = {"name": "v94wdl-clocktest-l", "kind": "clocktest", "sed": sed}
@@ -54,8 +59,8 @@ def main() -> None:
     tasks = json.loads(TASKS.read_text())
     names = {t["name"] for t in tasks}
     # Insert at the FRONT: the worker takes the first task without a result, and anything
-    # queued while the net trained (156-mixnet3, say) would otherwise take the machine for an
-    # hour ahead of the release the human is waiting on.
+    # queued while the net trained (156-mixnet3, say) would otherwise take the machine for
+    # an hour ahead of the release the human is waiting on.
     for entry in reversed([task, clock]):
         if entry["name"] not in names:
             tasks.insert(0, entry)
