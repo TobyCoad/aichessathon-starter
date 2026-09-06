@@ -1,5 +1,17 @@
 [
  {
+  "name": "v94-120s",
+  "kind": "switch",
+  "sed": "",
+  "champion": "overnight/challengers/153-mixnet2",
+  "games": 40,
+  "workers": 4,
+  "base_ms": 120000,
+  "openings": "platform",
+  "elo0": -50,
+  "elo1": 50
+ },
+ {
   "name": "149-v94wdl",
   "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
   "games": 600,

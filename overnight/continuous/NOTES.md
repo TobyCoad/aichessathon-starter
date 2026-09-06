@@ -387,6 +387,32 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## v9.4 SHIPPED AND UPLOADED 6 Sep 12:13 -- queue freeze LIFTED
+The human uploaded v9.4 for the next round and is away until ~15:00. Independent checks
+before he uploaded: clocktest PASS (0/6 flags, lowest clock 5.7 s vs a 5 s floor); the zip
+was UNZIPPED AND RUN, not just built (cold import 37.4 s, plays e2e4, sane K+P endgame
+move); agent/fastboard/fastsearch byte-identical to the tested challenger apart from the
+INIT_FOLD line; net md5 1f4be882; 27 MB unpacked.
+- NOTE FOR THE LOOP: CANDIDATE.md asserted "Clock test: PASS -- CLOCKTEST_LINE" while the
+  clocktest was STILL RUNNING. It did pass, so no harm, but do not write a gate's verdict
+  before the gate reports; fill the placeholder from the result file.
+
+## v94-120s QUEUED AT THE FRONT (session, 12:15) -- the biggest hole in our evidence
+v9.2, v9.3 and v9.4 all shipped on 8 s evidence alone; the platform plays 120 s + 0.5 s.
+Specifically, NMP_V2B is a NO-OP at 8 s -- its own bench is bit-identical to the champion at
+depth 8 and 10 and differs by 0.009% only at depth 11, and an 8 s search reaches ~depth 8-10.
+So the +70 verdict says NOTHING about a switch we just shipped. `v94-120s` plays the tree
+(v9.4) against overnight/challengers/153-mixnet2 (the v9.3 build, md5 45f73c3f) for 40 games
+at 120 s on platform openings, ~50 min. At 40 games the margin is ~+/-88 Elo, so it is a
+SMOKE TEST, not a verdict: it answers "does anything in the 8 s-only stack actively break at
+real time control", not "is v9.4 +12 or +35". If it comes back clearly negative, isolate
+NMP_V2B first and have a corrected build ready before 15:00; if it is flat or positive,
+leave it and carry on with v9.5.
+- GPU IS IDLE ON PURPOSE until v94-120s finishes: the loop has now added `train.py|merge_mix`
+  to worker.sh's busy_gauntlets regex, so starting a trainer would block every gauntlet
+  including this one. Sequence, do not overlap. The next net (a Stockfish-share probe at 67%
+  on the existing WDL shards, no new decode needed) starts when v94-120s reports.
+
 ## QUEUE FREEZE UNTIL v9.4 SHIPS (session, 6 Sep 10:20) -- LOOP: QUEUE NO GAUNTLETS
 Do not add ANY task with `games` to overnight/laptop/tasks.json until `149-v94wdl` has run.
 Not a variant, not a renamed one, not a "bounded" one. Iteration 5 re-queued the deferred
