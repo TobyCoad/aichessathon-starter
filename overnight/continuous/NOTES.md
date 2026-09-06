@@ -415,6 +415,10 @@ which dwarfs the +70 Elo v9.4 just bought. TREAT INIT AS THE TOP v9.5 ITEM.
   deleting closed switches outright rather than folding them.
 - DO NOT add new switches to the kernel without measuring init. Every unfolded boolean costs
   compile time in both directions; fold each one as soon as its verdict lands.
+- ADDRESSED 6 Sep 13:35 (iter 31), pending its clocktest: `INIT_ASYNC` moves the compile off
+  the critical path to the ready line, so an overrun becomes a slow first move instead of a
+  lost game. See "Running now (iter 31)". It does not make init FASTER -- (a)/(b)/(c) below
+  are still the levers for that -- it makes overrunning survivable.
 
 ## v9.4 SHIPPED AND UPLOADED 6 Sep 12:13 -- queue freeze LIFTED
 The human uploaded v9.4 for the next round and is away until ~15:00. Independent checks
@@ -559,6 +563,55 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
  3. Only then gauntlet it, and only against a 600-ply referee.
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
+
+## Running now (6 Sep 13:35, iter 31) -- INIT_ASYNC BUILT: the init cliff becomes a slow move
+Everything was queued and the laptop was busy with `160-v95`, so this iteration built rather
+than tested, and it built the item NOTES already calls the #1 risk: we lose whole games to
+`import agent` overrunning the platform's 90 s budget (samples 74.1, >90 LOST, 88.1, 64.1 s),
+and 89% of that import is numba compiling the search kernel.
+- **`INIT_ASYNC` (agent.py only, OFF in the tree, commit b8cc0d8).** The search-kernel compile
+  runs on a daemon thread; import waits for it only until `INIT_READY_S` (72.0 s) measured from
+  `_IMPORT_T0` at the top of agent.py. Past that deadline import RETURNS, harness/runner.py
+  prints its `{"ready": true}` line -- which is exactly what the platform's init budget is
+  measured to (harness/sandbox.py:48) -- and the first `get_move` joins the thread and
+  SUBTRACTS the wait from the `time_left_ms` it plans against (`_join_warmup`, floor 200 ms).
+  A slow first move is survivable at 120 s + 0.5 s; a failed init is a certain loss.
+- WHY IT IS SAFE TO SHIP WITHOUT AN SPRT: when the compile fits inside the deadline -- which
+  every local run does, 48.0 s even under gauntlet load -- the thread is joined inside import,
+  `_WARM_THREAD` is None and the behaviour is today's, to the byte. The only per-move addition
+  is one `is not None` test. Nothing in the search changed, so node counts cannot move.
+  MEASURED both ways: forced worst case (`INIT_READY_S` 0.0) import 5.9 s, ready line out, move
+  one `d2d4` after a 47 s join with the fast path intact, move two instant; ship config (72.0)
+  import 48.0 s under load, thread joined inside import. ruff + mypy clean, check_fastsearch
+  70/70 exact + 40/40 PASS (no kernel touched, so exactness is by construction).
+  BENCH depth 8: **1,110,289 nodes**, 222 knps under gauntlet load -- identical to the node
+  to the v9.4 champion's 1,110,289, which is the expected result and the check that says so.
+- ITS GATE IS A CLOCKTEST, NOT A GAUNTLET, and it is queued as `initasync-clocktest-l` with
+  the sed forcing `INIT_READY_S` to **0.0** -- i.e. the ENTIRE compile spilled into move one,
+  strictly harsher than any platform case (with the 72 s deadline the realistic spill is
+  0-25 s). PASS = the mechanism survives its own worst case; FAIL = raise the deadline or cap
+  the spill, and it tells us something real either way. It sits AFTER `v95-clocktest-l` on
+  purpose so it cannot delay v9.5's release, and it is ~10 min.
+- INIT_ASYNC IS A NO-OP AT 8 s LOCALLY, so it can ride in any bundle for free once its
+  clocktest passes: fold it into **v9.7** (or into v9.6's flip if 165-v96 has not started).
+  Its value is entirely on the platform and is invisible to our own SPRTs -- do not expect a
+  gauntlet to show it, and do not count it toward a bundle's Elo.
+- WHY 72.0 AND NOT LOWER: the budget is 90 s; 72 leaves ~15-18 s for python start-up, the
+  runner and their scheduling jitter, and our own idle import is ~30 s (~63 s at their 2.1x),
+  so the typical game still compiles fully inside import and pays nothing. Lower the deadline
+  only if the platform shows a fresh init failure.
+- STILL OPEN on the init line (unchanged, and now second in priority behind proving this):
+  cutting the number of njit specialisations warm_up forces, and deleting closed switches from
+  the kernel outright rather than folding them.
+- QUEUE now: `160-v95` (98 games, +7 at 13:30 -- it has drifted down from +43 at 73 and the
+  200-game checkpoint decides) -> `v95-clocktest-l` -> `initasync-clocktest-l` -> `165-v96` ->
+  `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
+- NEXT STEP, in order: (1) ship v9.5 on `160-v95`'s checkpoint + `v95-clocktest-l` PASS (recipe
+  unchanged: flip ADJ_V2/ROOT_NODES/SINGULAR_EXT2/RAZOR, exact check, zip FROM
+  `overnight/challengers/160-v95` with INIT_FOLD True, bench-node identity fold-on vs fold-off,
+  clean-unzip import, CANDIDATE.md, notify); (2) fold `initasync-clocktest-l` -- PASS puts
+  INIT_ASYNC into the next flip; (3) v9.6 on `165-v96`; (4) v9.7 = INIT_ASYNC + whatever
+  survives the v96 split.
 
 ## Running now (6 Sep 12:50, iter 30) -- v9.6 BUNDLED, the queue is the bottleneck
 - `drawcap2-clocktest-l` FOLDED: **PASS** (flags 0/6, errors 0, lowest clock 5.6 s against

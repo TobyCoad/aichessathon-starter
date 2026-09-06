@@ -1597,3 +1597,47 @@ That is a no-op in every challenger, because challengers are built with INIT_FOL
 it only bites inside the zip -- which makes the v9.5 ship recipe's bench-node-identity check
 between the folded zip and the unfolded challenger the thing that actually gates it. It now
 covers nine more slots than it did when v9.4 shipped. It is not ceremonial.
+
+## 6 Sep 2026, iteration 31 -- the init cliff, made survivable
+
+Every machine was busy and every slot was spoken for when I started: `160-v95` had the only
+gauntlet, and behind it sat v9.5's clocktest, `165-v96`, its clocktest and two 120 s runs.
+That is the case the prompt calls "nothing can progress", and the instruction is to improve
+the research side. I built instead, because there is one item in NOTES.md that is already
+researched, already named the #1 risk, and had nobody assigned to it: init time.
+
+The number that matters is not the 30 s local import. It is that the platform starts a fresh
+process for every ladder game, gives `import agent` a 90 s budget, and loses the game outright
+if that budget is missed -- and our four platform samples are 74.1 s, over 90 (LOST), 88.1 s
+and 64.1 s. We are not near that cliff, we are on it, and a quarter of our games may be ending
+before a move is played. That dwarfs the +70 Elo v9.4 bought.
+
+Every lever discussed so far has been about making init FASTER: INIT_FOLD took it from 38 s to
+30 s, eager signatures took fastboard from 7 s to 4 s, NUMBA_OPT turned out not to be a lever
+at all. All of them buy margin against a cliff we can still fall off, because the platform's
+spread on identical code was 64 to over 90 seconds. `INIT_ASYNC` does something different: it
+moves the cliff. The ready line the platform's budget is measured against (harness/sandbox.py
+waits for it; harness/runner.py prints it the moment `import agent` returns) no longer waits on
+the numba compile. The compile runs on a daemon thread, import waits for it only until 72 s
+from the top of agent.py, and if it is not done by then import returns anyway. The first
+`get_move` joins the thread and subtracts the wait from the clock it plans against. A first
+move that takes 25 seconds out of 120 is expensive; a failed init is a certain loss. That is
+the whole trade, and it only ever fires in the games we were losing anyway.
+
+Two things make it cheap to be wrong about. First, when the compile fits inside the deadline
+-- which every local run does, 48.0 s even with a gauntlet on the machine -- the thread is
+joined inside import, the handle is None, and the behaviour is today's to the byte; the only
+per-move addition is one `is not None` test, and nothing in the search changed, so node counts
+cannot move. Second, its gate is a clocktest rather than a gauntlet, and I queued it with the
+deadline forced to **zero** -- the entire compile spilled into move one, harsher than anything
+the platform can do to us. Forced that way it imports in 5.9 s, emits ready, plays `d2d4` after
+a 47 s join with the fast path intact, and answers the next move instantly. If six games at
+120 s survive that, the mechanism is proved at its worst; if they do not, the answer is a
+higher deadline or a capped spill, and I would rather learn it from a ten-minute clocktest than
+from the ladder.
+
+What I want the next iteration to be honest about: INIT_ASYNC is invisible to our own SPRTs. It
+is a no-op at 8 s, it cannot show up in a gauntlet, and it must not be counted toward any
+bundle's Elo. It rides in v9.7 for free once its clocktest passes. And it does not make init
+faster -- shrinking the kernel and cutting warm_up's specialisations are still the levers for
+that, and they are still unassigned.
