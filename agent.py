@@ -1158,6 +1158,20 @@ RESERVE_FRACTION_V6: Final = 0.06
 LOW_CLOCK_V6: Final = 12.0
 _STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
 _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
+# DRAW_BUDGET (rounds25-29 P2): round 27 spent 63.5 s -- 53% of the game clock --
+# on 61 moves whose reference evaluation was exactly 0. Once the root score has
+# hugged the draw score for six of our searches in a row, the halfmove clock is
+# past 20 and ten or fewer pieces remain, thinking harder does not change the
+# move: cap the soft budget near the observed increment and bank the clock for
+# a game that comes alive later. The hard deadline is never touched.
+DRAW_BUDGET: Final = False
+_DRAW_BAND: Final = 25          # |root score| that counts as holding the draw, cp
+_DRAW_MOVES: Final = 6          # consecutive own searches inside the band
+_DRAW_HMC: Final = 20           # halfmove clock that proves no progress either way
+_DRAW_PIECES: Final = 10
+_DRAW_CAP_FLOOR: Final = 0.25   # seconds, when the increment is still unobserved
+_DRAW_SCORES: list[int] = []    # our root scores this game, newest last
+_DRAW_LAST_PLY: int = -1
 # ADJUDICATION: chess ply of the game's first request, and the last ply seen
 # (a ply that goes backwards means a new game in the same process).
 _MATCH_BASE_PLY: int = -1
@@ -1631,6 +1645,7 @@ class FastEngine:
         "quiets",
         "rep_keys",
         "root_best",
+        "root_score",
         "root_side",
         "scores",
         "scores2",
@@ -1670,6 +1685,7 @@ class FastEngine:
         self.ctrl = np.zeros(_fs.CTRL_SIZE if COMPILED_SEARCH else 32, dtype=np.int64)
         self.rep_keys = np.zeros(0, dtype=np.uint64)
         self.root_best = 0
+        self.root_score = -INFINITY  # last completed iteration's score (DRAW_BUDGET)
         self.hint = 0  # a book move to search first and verify
         self.first_score = -INFINITY
         if COMPILED_SEARCH:
@@ -2303,6 +2319,9 @@ class FastEngine:
         ):
             best = hint
         self.root_best = best
+        # The last completed iteration's verdict; -INFINITY when depth 3 never
+        # finished, which keeps DRAW_BUDGET's band test safely false.
+        self.root_score = int(previous_score)
         return best
 
     def play(self, board: chess.Board, soft_limit: float, hard_limit: float) -> chess.Move:
@@ -2559,6 +2578,31 @@ def _match_ply(board: chess.Board) -> int:
     return ply - _MATCH_BASE_PLY + 1
 
 
+def _note_draw_score(board: chess.Board, score: int) -> None:
+    """Record this game's root scores; a ply that goes backwards is a new game."""
+    global _DRAW_LAST_PLY
+    ply = 2 * (board.fullmove_number - 1) + (0 if board.turn == chess.WHITE else 1)
+    if ply <= _DRAW_LAST_PLY:
+        del _DRAW_SCORES[:]
+    _DRAW_LAST_PLY = ply
+    _DRAW_SCORES.append(score)
+    del _DRAW_SCORES[:-_DRAW_MOVES]
+
+
+def _draw_budget_soft(board: chess.Board, time_left_ms: int, soft: float) -> float:
+    """DRAW_BUDGET: the capped soft deadline for a proven-drawn shuffle, else `soft`."""
+    if (
+        len(_DRAW_SCORES) >= _DRAW_MOVES
+        and all(abs(s) <= _DRAW_BAND for s in _DRAW_SCORES)
+        and board.halfmove_clock > _DRAW_HMC
+        and chess.popcount(board.occupied) <= _DRAW_PIECES
+        and time_left_ms / 1000.0 > LOW_CLOCK_V6
+    ):
+        cap = max(_DRAW_CAP_FLOOR, 0.8 * _observed_increment())
+        return min(soft, time.monotonic() + cap)
+    return soft
+
+
 def _observed_increment() -> float:
     """The increment in seconds as seen between our calls; 0 until two samples."""
     if len(_INC_SAMPLES) < 2:
@@ -2735,6 +2779,8 @@ def _get_move(fen: str, time_left_ms: int) -> str:
         # hands this move to the python-chess engine instead.
         try:
             soft, hard = _budget(board, time_left_ms)
+            if DRAW_BUDGET:
+                soft = _draw_budget_soft(board, time_left_ms, soft)
             _FAST.hint = _fb.move_from_chess(opening) if opening is not None else 0
             global _SEARCHED_MOVES
             _SEARCHED_MOVES += 1
@@ -2742,6 +2788,8 @@ def _get_move(fen: str, time_left_ms: int) -> str:
                 fixed = 1.0 if _PONDER_LAST_NODES >= 100_000 else 3.0
                 soft = hard = time.monotonic() + fixed
             candidate = _FAST.play(board, soft, hard)
+            if DRAW_BUDGET:
+                _note_draw_score(board, int(_FAST.root_score))
             if candidate in board.legal_moves:
                 move = candidate
         except Exception:
