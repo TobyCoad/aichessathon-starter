@@ -392,7 +392,34 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   output-slope rescale is worth NOTHING in games (+69 at 76 games decayed to -3 by 346) --
   SLOPE RESCALE CLOSED. Measure slope as a diagnostic, never ship a rescale.
 
-## Running now (6 Sep 09:15, iter 24)
+## Running now (6 Sep 10:10, iter 25)
+- THE LAPTOP WAS IDLE and 147-seequiet's REJECT IS NOT AN ENGINE VERDICT. Both fixed.
+  (a) The worker finished the withdrawn 149-v94wdl at 09:40 and then had NOTHING pending:
+  every entry in tasks.json already had a result file, and the two live items were sitting
+  in deferred.json. The machine sat idle while the human waits on v9.4. Re-queued
+  `cutnode-clocktest-l` (started 09:48, ~10 min) then `147b-seequiet` (200 games, ~1 h).
+  Both fit in front of the WDL net: training is at epoch 3/12 with ~9 x 320 s left, so
+  149-v94wdl cannot queue before ~10:45 plus its suite/eg_calib. IF 149-v94wdl IS WAITING
+  AND 147b-seequiet IS STILL RUNNING, KILL 147b (remove from tasks.json, kill its python,
+  reap_orphans) -- v9.4 outranks it, exactly as the session did to 155-mixnet2s.
+  (b) 147-seequiet REJECTed at 09:22 on the CRASH GATE: "failed 7/24 games (init 7)", i.e.
+  seven init TIMEOUTS, while the 8-worker WDL binpack decode had the machine. That is the
+  same infra failure as 140/141-v92prune, which NOTES already records as INFRA not engine.
+  SEE_QUIET IS NOT CLOSED and its clocktest already PASSED (seequiet-clocktest-l 09:03,
+  0/6, lowest 5.8 s). 147b-seequiet is the honest re-run.
+  (c) ROOT CAUSE, worth a fix: worker.sh's `busy_gauntlets` guard (line 45) matches
+  `testing.gauntlet|testing.clocktest|binpack_decode|endgame_suite` but NOT `train.py` or
+  `merge_mix`. A decode that has already ended does not protect the gauntlet that starts
+  while training still holds the CPU. Adding train/merge to that regex is correct but was
+  NOT done this iteration on purpose: it would have made the worker idle for the next hour
+  instead of running the two tasks above. Do it once v9.4 has shipped.
+- WDL training (session-owned, do not touch): epoch 3/12 at 10:05, val 0.006199 and falling
+  slowly (0.006226 -> 0.006219 -> 0.006199). Remember the recorded rule: a WDL val loss is
+  NEVER comparable with a plain one; eg_calib per-band and the gauntlet are the reads.
+- RAZOR built (see its section above). The tree is green: ruff, mypy, check_fastsearch
+  70/70 + 40/40 all PASS with RAZOR off, and nothing is half-done.
+
+## Running before (6 Sep 09:15, iter 24)
 - THE ONE THING THIS ITERATION CHANGED: the laptop queue can no longer take the machine
   ahead of the v9.4 release. The session's queue_v94.py inserts 149-v94wdl at index 0, but
   insertion cannot preempt a task the worker has ALREADY STARTED, and 147-seequiet /
@@ -464,7 +491,31 @@ net.** Do not open a work item off this game. Four things worth carrying:
    re-read of the platform rules, not a build -- but if the cap is not real, the bias is
    paying a cost for nothing and should be measured before v9.5 freezes.
 
-## Next switch to build -- RAZOR, scoped 6 Sep 09:20 (iter 24) so iter 25 can just write it
+## RAZOR -- BUILT 6 Sep 10:05 (iter 25), off in the tree. Bundle filler, never a solo slot
+Written exactly to the scoping below (site, shape, eval ladder, guards all as specified);
+C_RAZOR = 51, CTRL_SIZE 51 -> 52, NOT in fastsearch.FOLDED (in-flight slot). ruff/mypy PASS,
+check_fastsearch 70/70 exact + 40/40 best-move agreement PASS. Scratch challenger in
+overnight/challengers/razor (sed: s/^RAZOR: Final = False/RAZOR: Final = True/).
+- THE SCOPED MARGINS WERE WRONG BY 2x AND MADE IT A LOSS. Depth-8 bench, champion
+  1,511,432 nodes: RAZOR_MARGIN 240/300/400 gives 1,572,671 (1.041x -- nodes UP), 500/700/900
+  gives 1,489,958 (0.986x), 700/1000/1400 gives 1,516,189 (1.003x). Tuned to 500/700/900 in
+  the tree. Node counts at fixed depth are deterministic, so those three are exact
+  comparisons; the knps figures alongside them (232-330) are worthless today because the WDL
+  training was on the GPU throughout -- do not quote them.
+- WHY TIGHT MARGINS LOSE, and the next lever: when the verification qsearch comes back
+  ABOVE alpha we have paid for it and still search the whole subtree, and because the razor
+  return is taken before the node's TT store, a fired-and-failed razor also throws away a
+  depth-1..3 entry the parent would have reused. That second cost is why even the WIDE
+  700/1000/1400 setting is a hair worse than the champion instead of converging to it.
+  THE ONE UNTRIED IMPROVEMENT: store the fail-low to the main TT before returning `razored`
+  (the store at the end of the function is inline, not a helper -- it is real kernel surgery,
+  not a one-liner). If a later iteration wants more than 1.4% out of this, that is the lever;
+  do not just re-tune the margins, that curve has been measured.
+- VERDICT TO EXPECT: 1.4% fewer nodes at fixed depth is a weak read. It rides in the v9.5
+  bundle with ROOT_NODES / SINGULAR_EXT2 / DRAW_BUDGET and the bundle's SPRT decides; it does
+  not earn a gauntlet of its own, and if v9.5 fails it is the second switch to drop.
+
+## Original RAZOR scoping (6 Sep 09:20, iter 24) -- kept for the reasoning, now built
 search.md #11, +0..+5 Elo at 120 s, the smallest unbuilt search item. Everything below was
 read off the live source this iteration; no code was written, the tree is untouched.
 - SITE: fastsearch.py, immediately AFTER the reverse-futility block that ends
@@ -788,23 +839,23 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
-(1) FOLD 148-v94all when its 200-game checkpoint lands (it starts when 155-mixnet2s
-finishes). PROMOTE or INCONCLUSIVE-positive + v94all-clocktest-l PASS = ship v9.4:
-flip CAPTURE_ORDER / QS_TT / ASP_WIDE / NMP_V2B True in the tree, re-run the exactness
-check, build the zip from overnight/challengers/148-v94all with INIT_FOLD also flipped
-True in the zip copy, verify the clean-unzip cold import < 45 s and the d8 bench nodes,
-write CANDIDATE.md, notify. If it REJECTS, drop CAPTURE_ORDER and re-queue the other
-three once (the one allowed split), then close CAPTURE_ORDER.
-(2) Then fold drawcap-clocktest-l (unblocks DRAW_BUDGET as a v9.5 filler), 147-seequiet
-(SEE_QUIET, 0.76x nodes -- the most interesting untested switch left) and 146-cutnode
-(after which IMPROVING and CUTNODE are closed for good).
-(3) ENDGAME_SHRINK is CLOSED (see "Running now"); do not spend another suite slot on it.
-Rounds 25-29 postmortems are DONE. Do NOT start GPU work -- the SF/mix net chain and
-155-mixnet2s belong to the interactive session; the loop only folds their results.
-(4) ROOT_NODES is now built (iter 22) and joins the v9.5 bundle with DRAW_BUDGET.
-If everything is queued and the laptop is busy again, the last unbuilt filler is killer
-decay (V10_PLAN #12) and the postmortem peak_eval counter (rounds25-29 P3) is
-analysis-side; otherwise read the newest platform post-mortems and add any new failure
-mode to the backlog with an Elo estimate. Remember the bench caveat recorded in
-"Running now": root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move the
-bench number -- do not read an identical node count as "the switch is a no-op".
+(1) v9.4 IS THE ONLY THING THAT MATTERS UNTIL IT SHIPS. When the session's chain inserts
+`149-v94wdl` at the front of overnight/laptop/tasks.json, make sure nothing is running ahead
+of it (kill 147b-seequiet if it is). Fold its checkpoint: PROMOTE, or INCONCLUSIVE with a
+positive point estimate, plus `v94wdl-clocktest-l` PASS = ship v9.4 -- flip CAPTURE_ORDER /
+QS_TT / ASP_WIDE / NMP_V2B True AND copy overnight/nets/157-wdlnet.npz into weights/, re-run
+the exactness check, zip FROM the tested challenger with INIT_FOLD flipped True in the zip
+copy, clean-unzip cold import < 45 s, d8 bench nodes, CANDIDATE.md, notify. If it REJECTS,
+drop CAPTURE_ORDER (the marginal one, +0.6 +/- 23.5 solo) and re-queue the other three once.
+(2) FOLD 147b-seequiet and cutnode-clocktest-l when they land. SEE_QUIET at 0.76x nodes is
+still the most interesting untested switch; CUTNODE is benign at 0.995x and 146-cutnode
+(deferred.json) is its one allowed requeue after v9.4.
+(3) v9.5 bundle is now RAZOR + ROOT_NODES + SINGULAR_EXT2 + DRAW_BUDGET (narrow guards only;
+a widened DRAW_BUDGET cannot inherit drawcap-clocktest-l's PASS and needs its clocktest
+re-run). Build order for anything more: ProbCut (search.md #8, 4-6 h) then root PVS/LMR (#16).
+(4) AFTER v9.4 SHIPS: add `train.py|merge_mix` to worker.sh's busy_gauntlets regex (see
+"Running now" (c)) so no more gauntlet slots die to init timeouts under GPU training.
+(5) Do NOT start GPU work or queue net tasks -- the WDL and mixnet3 chains are the
+interactive session's. 156-mixnet3 stays in deferred.json until v9.4 is out.
+(6) Standing bench caveat: root-loop switches (ROOT_ORDER, ASP_WIDE, ROOT_NODES) cannot move
+the depth bench -- an identical node count there is not evidence of a no-op.

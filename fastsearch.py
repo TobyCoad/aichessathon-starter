@@ -50,6 +50,10 @@ NMP_REDUCTION = 2
 NMP_VERIFY_DEPTH = 10
 MAX_PLY = 72  # agent.MAX_PLY: the check-extension limit
 FUTILITY_MARGIN = np.array([0, 150, 300], dtype=np.int64)
+RAZOR_MAX_DEPTH = 3
+# RAZOR (search.md #11): indexed by depth, cp below alpha at which a node is
+# assumed unrescuable by a quiet move and verified with a quiescence search.
+RAZOR_MARGIN = np.array([0, 500, 700, 900], dtype=np.int64)
 POLL_MASK = 255
 
 TT_BITS = 22
@@ -220,6 +224,8 @@ C_EG_CAP = 49
 # cap) are unchanged; the double arm additionally needs two spare slots under
 # SINGULAR_EXT_CAP so a line cannot extend further than it can today.
 C_SING_EXT2 = 50
+# RAZOR: fail-low shortcut at depth <= RAZOR_MAX_DEPTH (see agent.RAZOR).
+C_RAZOR = 51
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -227,7 +233,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 51
+CTRL_SIZE = 52
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -869,6 +875,32 @@ def search(
         rfp_depth = depth - improving if ctrl[C_IMPROVING] != 0 else depth
         if standing - RFP_MARGIN * rfp_depth * percent // 100 >= beta:
             return standing
+
+    if (
+        ctrl[C_RAZOR] != 0
+        and percent != 0
+        and depth <= RAZOR_MAX_DEPTH
+        and not in_check
+        and excluded == 0
+        and beta - alpha <= 1
+        and abs(alpha) < DISTANCE_THRESHOLD
+    ):
+        if standing == -INFINITY:
+            if cached_eval != NO_EVAL:
+                standing = cached_eval
+            else:
+                if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
+                    sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
+                standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
+                cached_eval = standing
+        if standing + RAZOR_MARGIN[depth] * percent // 100 <= alpha:
+            razored = quiesce(
+                bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline, alpha, beta, 0, ply,
+                scratch, ec_key, ec_val, exts, tt_key, tt_data,
+            )
+            if razored <= alpha:
+                return razored
 
     futile = False
     if (

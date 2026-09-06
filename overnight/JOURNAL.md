@@ -1282,3 +1282,51 @@ But DRAW_BUDGET passed drawcap-clocktest-l this morning with the NARROW guards. 
 makes it fire far more often, so a widened DRAW_BUDGET cannot inherit that PASS and needs its
 clocktest re-run before it ships. I wrote that next to the item so a later iteration does not
 carry the tick across a change that invalidates it.
+
+6 Sep 10:10 (loop iter 25) Two things were wrong when I started and both were quiet failures
+rather than loud ones. The laptop worker had finished the withdrawn 149-v94wdl at 09:40 and
+then had nothing at all to run: every entry in tasks.json already carried a result file and
+the two live items had been moved into deferred.json to keep them from blocking v9.4. So the
+machine the human is waiting on sat idle. And 147-seequiet's REJECT, which the queue had
+recorded twenty minutes earlier, is not an engine verdict: it failed the crash gate 7/24 on
+init timeouts while the 8-worker WDL binpack decode had the CPU, the same infra failure
+NOTES already records for 140/141-v92prune. SEE_QUIET is the most interesting untested
+switch left at 0.76x nodes and its clocktest had already passed; closing it on that would
+have been a real loss. I re-queued cutnode-clocktest-l (ten minutes, started 09:48) and
+147b-seequiet behind it, both sized to finish before the WDL net can possibly queue, with an
+explicit instruction to kill 147b if 149-v94wdl is ever waiting on it.
+
+The root cause is one regex. worker.sh's busy_gauntlets guard waits for testing.gauntlet,
+testing.clocktest, binpack_decode and endgame_suite, but not for train.py or merge_mix, so a
+gauntlet will happily start into a GPU training run that is still holding the CPU. Adding
+those two is right and I deliberately did not do it: it would have idled the worker for the
+next hour instead of running the two tasks above. It is written into "Next step" as the
+first thing to do once v9.4 is out.
+
+Then I built RAZOR, which iteration 24 had scoped down to the line. The site, the shape, the
+reuse of reverse futility's standing eval and its fill-in ladder, and the guards were all
+exactly as scoped and went in first time -- ruff, mypy and check_fastsearch 70/70 exact plus
+40/40 best-move agreement all pass with the switch off. What the scoping got wrong was the
+one thing it could not know without measuring: the margins. At the specified 240/300/400 the
+depth-8 bench goes to 1,572,671 nodes against the champion's 1,511,432 -- razoring made the
+tree four percent BIGGER. Widening to 500/700/900 gives 1,489,958, a 1.4% saving, and
+widening further to 700/1000/1400 goes back to 1,516,189, slightly worse than not having it.
+I settled the tree at 500/700/900. Node counts at fixed depth are deterministic so those
+three are exact comparisons; the knps figures next to them are worthless today because the
+WDL training was on the GPU throughout, and I have said so in NOTES rather than let a later
+iteration quote them.
+
+The non-monotone shape is the interesting part, because it says the cost is not just the
+wasted verification qsearch. If it were, a very wide margin would fire rarely and converge
+to the champion from above; instead 700/1000/1400 stays measurably worse. The reason is that
+the razor return is taken before the node's TT store, so a razor that fires and then fails
+verification also throws away a depth-1..3 entry the parent would have reused. Storing that
+fail-low before returning is the one untried lever and it is genuine kernel surgery, not a
+one-liner, because the main store at the end of the function is inline. I recorded it as the
+thing to try next and recorded equally plainly that re-tuning the margins is not: that curve
+has now been measured at three points and 500/700/900 is the top of it.
+
+So RAZOR is a weak switch on the evidence I have -- 1.4% fewer nodes at fixed depth is close
+to nothing -- and I have said so rather than dressing it up. It rides in the v9.5 bundle with
+ROOT_NODES, SINGULAR_EXT2 and DRAW_BUDGET, it does not get a gauntlet of its own, and it is
+named as the second switch to drop if that bundle fails.

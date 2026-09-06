@@ -1143,6 +1143,15 @@ ROOT_NODES: Final = False
 # existing singular block -- same entry guards, and the double arm needs two
 # spare slots under SINGULAR_EXT_CAP, so no line extends further than today.
 SINGULAR_EXT2: Final = False
+# RAZOR (overnight/eval/v10/search.md #11): the fail-LOW twin of reverse
+# futility. At depth <= 3, at a non-PV node that is not in check, a static eval
+# more than RAZOR_MARGIN[depth] cp BELOW alpha means a quiet move is very
+# unlikely to rescue the node, so the subtree is replaced by a quiescence
+# search: if that also comes back at or below alpha the node returns it
+# immediately. Reuses the standing eval reverse futility has already computed,
+# so it costs no extra evaluate call. Verification (the qsearch) is what keeps
+# it safe -- a tactical shot still gets found.
+RAZOR: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2119,6 +2128,7 @@ class FastEngine:
             ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
             ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
             ctrl[_fs.C_SING_EXT2] = 1 if SINGULAR_EXT2 else 0
+            ctrl[_fs.C_RAZOR] = 1 if RAZOR else 0
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
             ctrl[_fs.C_EG_WMIN] = ENDGAME_SHRINK_WMIN
             ctrl[_fs.C_EG_CAP] = ENDGAME_SHRINK_CAP
