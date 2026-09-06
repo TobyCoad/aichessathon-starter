@@ -1,0 +1,16 @@
+nmp-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+   112 plies  1/2-1/2       lowest clock    6.4s  longest move  11.2s  at ply 30   70.3s  used w   141s b   140s
+compiled board: on
+   157 plies  1-0           lowest clock    6.1s  longest move   9.8s  at ply 30   74.1s  used w   144s b   144s
+compiled board: on
+   143 plies  1/2-1/2       lowest clock    6.1s  longest move  10.9s  at ply 30   59.8s  used w   146s b   146s
+compiled board: on
+   157 plies  1-0           lowest clock    6.1s  longest move   9.9s  at ply 30   78.9s  used w   146s b   147s
+   100 plies  1/2-1/2       lowest clock    6.8s  longest move  13.4s  at ply 30   55.3s  used w   137s b   138scompiled board: on
+
+compiled board: on
+   163 plies  1-0           lowest clock    6.0s  longest move  11.1s  at ply 30   51.3s  used w   150s b   151s
+
+flags 0/6  errors 0  lowest clock 6.0s  longest move 13.4s
+PASS
