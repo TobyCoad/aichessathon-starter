@@ -334,7 +334,45 @@ what enters a bundle.
   nodes at fixed depth; judged at fixed time), both 1.50x. Do NOT queue single-switch
   tasks for the bundle parts; fold the bundle verdicts when they land.
 
-## Running now (6 Sep 08:00, iter 22)
+## Running now (6 Sep 08:45, iter 23)
+- Nothing could be started again: 155-mixnet2s is still running (288 games, -7.2 +/- 33.8;
+  it was +69.5 +/- 60 at 76 games, so the slope-rescale net is regressing to nothing --
+  expect INCONCLUSIVE-negative at 600, i.e. a fail; it is the interactive session's task,
+  left to run, ~09:35 at the observed 4.9 games/min). Queue behind it unchanged:
+  148-v94all -> v94all-clocktest-l -> drawcap-clocktest-l -> 147-seequiet ->
+  seequiet-clocktest-l -> 146-cutnode -> cutnode-clocktest-l. GPU: 156-mixnet3 (session).
+  Desktop off. So this iteration built the NEXT v9.5 filler, as iter 22 did.
+- SINGULAR_EXT2 (search.md #10, +3..8 @120 s) BUILT 6 Sep 08:40, off in the tree. It grades
+  the singular verification instead of reading it yes/no, entirely inside the existing
+  C_SINGULAR block (same entry guards: depth >= 7, usable hash entry, exts[] line cap):
+  (a) DOUBLE -- at a non-PV node (beta - alpha <= 1), if the hash move beats every
+  alternative by more than SINGULAR_DOUBLE_MARGIN = 25 cp below sbeta, extend it TWO plies,
+  guarded by exts[ply] + 2 <= SINGULAR_EXT_CAP so no line extends further than it can today;
+  (b) NEGATIVE -- if the move is NOT singular but tt_score >= beta at a non-PV node, search
+  it one ply SHALLOWER, because the cutoff is coming anyway and the ply is better spent
+  elsewhere. New ctrl slot C_SING_EXT2 = 50, CTRL_SIZE 50 -> 51; the application site now
+  uses `ext = extend_hash` with the exts[] bookkeeping guarded on `ext > 0`.
+  Deliberately NOT built: the multi-cut arm (`sbeta >= beta -> return sbeta`) that
+  Stockfish has in the same block -- multi-cut is closed by V10_PLAN and stays closed.
+  ruff / mypy / check_fastsearch 70/70 exact + 40/40 table-on PASS (flags-off is
+  bit-identical: extend_hash can only be 0 or 1 with the switch off).
+  BENCH vs the v9.3 champion, back to back under gauntlet load: d8 1,503,594 nodes at
+  212 knps vs 1,511,432 at 246 (0.995x -- node-neutral, because at d8 almost nothing
+  reaches SINGULAR_MIN_DEPTH = 7 with a deep enough hash entry); d10 5,323,757 at 183 knps
+  vs 5,051,285 at 204 (**1.054x**). The d10 number is the real one: extensions cost nodes
+  at fixed depth by construction and are judged at fixed time -- for scale, SINGULAR itself
+  benched 1.55x and PROMOTED inside v8.5, so 1.054x is cheap. Read no switch's cost from a
+  d8 bench when SINGULAR_MIN_DEPTH gates it.
+  Smoke-tested through get_move at 60 s on four positions: book, book, Rd1 in the R+P
+  endgame, Bxh7+ in the middlegame -- sensible, no crash, no time overrun.
+  v9.5 BUNDLE FILLER -- never its own gauntlet slot.
+  Challenger sed: s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/
+  Scratch build in overnight/challengers/singext2.
+- v9.5 bundle union so far: DRAW_BUDGET (needs drawcap-clocktest-l) + ROOT_NODES +
+  SINGULAR_EXT2 + whatever 147-seequiet and 146-cutnode pass. Do not queue it before
+  148-v94all's verdict lands -- the champion moves under it.
+
+## Running before (6 Sep 08:00, iter 22)
 - Nothing could be started: the laptop queue is ~10 h deep (155-mixnet2s running at 146
   games +23.8 +/- 46.1, checkpoint at 200 ~08:20; then 148-v94all -> v94all-clocktest-l ->
   drawcap-clocktest-l -> 147-seequiet -> seequiet-clocktest-l -> 146-cutnode ->

@@ -1150,3 +1150,41 @@ tested through get_move at 60 s on four positions (opening, a rook-and-pawn endg
 middlegames): sensible moves, no crash, no overrun. ROOT_NODES is a bundle filler for v9.5
 alongside DRAW_BUDGET and never gets a gauntlet slot of its own, and v9.5 cannot be queued
 until 148-v94all's verdict lands, because the champion moves under it.
+
+6 Sep 08:45 (loop iter 23) The laptop is still saturated -- 155-mixnet2s at 288 games and
+drifting down to -7.2 +/- 33.8, having been +69.5 +/- 60 at 76, so the slope-rescaled net
+looks like it will land INCONCLUSIVE-negative at 600 around 09:35; behind it sit
+148-v94all, its clocktest, drawcap-clocktest-l, 147-seequiet, 146-cutnode and their
+clocktests. The GPU is the interactive session's and the desktop is off, so as in iter 22
+the only useful move was to have the next v9.5 part ready before its slot comes round.
+Built SINGULAR_EXT2, search.md #10 (+3..8 Elo at 120 s), the follow-up to the SINGULAR
+that shipped inside v8.5.
+
+The idea is that we currently read the singular verification search as a yes/no. If the
+hash move is the only move that reaches sbeta we extend it a ply; otherwise we do nothing.
+Both halves of that throw information away. A move that beats every alternative by a wide
+margin is more forced than one that squeaks past, and a move that is not singular at all
+but whose table score already fails high is one where the cutoff is coming anyway, so the
+ply we spend on it is a ply not spent where the tree is still open. So: at a non-PV node,
+a hash move whose alternatives all fall more than 25 cp below sbeta is extended TWO plies,
+and a non-singular hash move with tt_score >= beta is searched one ply SHALLOWER. Both
+arms live entirely inside the existing singular block, so the entry guards are unchanged,
+and the double arm additionally requires two spare slots under SINGULAR_EXT_CAP, so no
+line can extend further than it can today. I deliberately did not build the third arm
+Stockfish has in the same block -- the multi-cut return when sbeta >= beta -- because
+multi-cut is on V10_PLAN's closed list and stays there.
+
+ruff, mypy and check_fastsearch all pass (70/70 exact, 40/40 table-on); with the switch
+off extend_hash can only be 0 or 1, so the tree is bit-identical to the champion. The
+bench is worth recording carefully because it nearly misled me. At depth 8 the switch is
+1,503,594 nodes against the champion's 1,511,432, i.e. 0.995x, which reads as "does
+nothing" -- but SINGULAR_MIN_DEPTH is 7, so at d8 almost no node has both the depth and a
+deep enough hash entry to enter the block at all. At depth 10 it is 5,323,757 against
+5,051,285, or 1.054x. That is the honest number, and it is the expected shape: extensions
+buy accuracy by spending nodes at fixed depth and are judged at fixed time. For scale,
+SINGULAR itself benched 1.55x and promoted inside v8.5, so 5% is cheap. The general
+lesson, which I put in NOTES beside the ROOT_NODES bench caveat: never read the cost of a
+depth-gated switch off a d8 bench. Smoke-tested through get_move at 60 s on four positions
+(two book, Rd1 in a rook endgame, Bxh7+ in a middlegame): sensible, no crash, no overrun.
+SINGULAR_EXT2 is a v9.5 bundle filler alongside DRAW_BUDGET and ROOT_NODES and never gets
+a gauntlet slot of its own; v9.5 cannot be queued until 148-v94all's verdict lands.
