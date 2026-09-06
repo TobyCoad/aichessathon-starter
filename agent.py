@@ -1133,6 +1133,16 @@ ASP_WIDE: Final = False
 # one that failed low in a handful of nodes is refuted. Pure root ordering in
 # agent.py: no kernel change, so the kernel stays bit-identical.
 ROOT_NODES: Final = False
+# SINGULAR_EXT2 (overnight/eval/v10/search.md #10, the follow-up to SINGULAR):
+# grade the singular verification instead of reading it as yes/no. At a non-PV
+# node, if the hash move beats every alternative by more than 25 cp below the
+# singular beta it is extended TWO plies instead of one (the line is forced, so
+# depth spent there is depth spent on the only move that matters); if it is not
+# singular at all but the table already says the node fails high, it is searched
+# one ply SHALLOWER, because the cutoff is coming anyway. Fires only inside the
+# existing singular block -- same entry guards, and the double arm needs two
+# spare slots under SINGULAR_EXT_CAP, so no line extends further than today.
+SINGULAR_EXT2: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2108,6 +2118,7 @@ class FastEngine:
             ctrl[_fs.C_CAPTURE_ORDER] = 1 if CAPTURE_ORDER else 0
             ctrl[_fs.C_QS_TT] = 1 if QS_TT else 0
             ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
+            ctrl[_fs.C_SING_EXT2] = 1 if SINGULAR_EXT2 else 0
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
             ctrl[_fs.C_EG_WMIN] = ENDGAME_SHRINK_WMIN
             ctrl[_fs.C_EG_CAP] = ENDGAME_SHRINK_CAP

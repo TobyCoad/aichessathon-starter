@@ -208,13 +208,26 @@ C_NMP_MIN_PLY = 46
 C_EG_SHRINK = 47
 C_EG_WMIN = 48
 C_EG_CAP = 49
+# C_SING_EXT2 (search.md #10, the follow-up to C_SINGULAR which shipped in
+# v8.5): grade the singular verification result instead of treating it as a
+# yes/no. When the hash move beats the rest by more than
+# SINGULAR_DOUBLE_MARGIN cp at a non-PV node it is extended TWO plies, not
+# one; when it is not singular at all but the table already says the node
+# fails high (tt_score >= beta), the hash move is searched one ply SHALLOWER
+# -- the cutoff is coming anyway, so the ply is better spent elsewhere. Both
+# arms only ever fire inside the existing C_SINGULAR block, so the entry
+# guards (depth >= SINGULAR_MIN_DEPTH, a usable hash entry, the exts[] line
+# cap) are unchanged; the double arm additionally needs two spare slots under
+# SINGULAR_EXT_CAP so a line cannot extend further than it can today.
+C_SING_EXT2 = 50
+SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
 EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 50
+CTRL_SIZE = 51
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -977,8 +990,18 @@ def search(
         ctrl[C_EXCL_PLY] = -1
         if ctrl[C_ABORT]:
             return 0
+        sing2 = ctrl[C_SING_EXT2] != 0
         if value < sbeta:
             extend_hash = 1
+            if (
+                sing2
+                and beta - alpha <= 1
+                and value < sbeta - SINGULAR_DOUBLE_MARGIN
+                and exts[ply] + 2 <= SINGULAR_EXT_CAP
+            ):
+                extend_hash = 2
+        elif sing2 and beta - alpha <= 1 and tt_score >= beta:
+            extend_hash = -1
 
     mv = moves[ply]
     n = fb.gen_legal(bb, sq, meta, mv, False)
@@ -1184,8 +1207,9 @@ def search(
         else:
             ext = 0
             if extend_hash != 0 and move == hash_move:
-                ext = 1
-                exts[ply] += 1  # the child reads exts[ply] as its line's count
+                ext = extend_hash  # 1, or 2 / -1 under C_SING_EXT2
+                if ext > 0:
+                    exts[ply] += ext  # the child reads exts[ply] as its line's count
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
@@ -1193,8 +1217,8 @@ def search(
                 depth - 1 + ext, -beta, -alpha, ply + 1, scratch, counter, quiets,
                 ec_key, ec_val, exts, conthist1, full_cut,
             )
-            if ext != 0:
-                exts[ply] -= 1
+            if ext > 0:
+                exts[ply] -= ext
         narrow = pvs and (reduction > 0 or searched > 0)
         if narrow and alpha < score < beta and ctrl[C_ABORT] == 0:
             # The null window said this move beats alpha: find out by how much.
