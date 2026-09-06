@@ -1019,3 +1019,24 @@ at 188 games -5.5 +/- 37 (checkpoint will extend), then 145-v93fill, 146-cutnode
 147-seequiet with clocktests interleaved. Desktop off; GPU with the interactive session
 (153-mixnet2). Next: fold the four verdicts, build the v9.3 bundle challenger (passes +
 NMP_V2B + INIT_FOLD + eager signatures), one confirming SPRT + clocktest, ship.
+
+6 Sep 05:25 (loop iter 17) research iteration: nothing to fold (144-caporder mid-run,
+everything buildable built), so two opus agents ran in parallel. (1) rounds25-29.md:
+the three newest platform games analyzed -- none is a clock loss (54/78/17 s in hand
+at each turning point), which retro-confirms closing TIME_V6; round 25 shows 387 cp
+mean static error at 6-9 pieces, round 29 the worst endgame eval on record (674 cp at
+11-16 pieces, ply 108 static +775 vs reference -709), and round 27 is a NEW failure
+mode: +141 at 27 pieces drifted to a dead draw with 53% of the clock spent on 0.00
+shuffle moves ("failed to convert"). (2) endgame_shrink.md: ENDGAME_SHRINK scoped to
+implementation-ready -- blend inside fastsearch.evaluate (call-site blending would
+double-blend via QS_EVAL_CACHE and the TT's stored eval), pure-material baseline from
+agent._MATERIAL, w 256->179 linear over 17->6 pieces with a +/-300 cp clamp and no
+eval-size gate, calibrated in ~2 min against endgame_suite.json's 400 labelled
+positions before any engine time is spent; verdict build-the-switch-skip-the-solo-slot
+(rides in a bundle). One correction recorded in NOTES: the report cites 150-sfnet's
++19 as evidence, but that verdict is VOID (worker self-play bug). Backlog updated:
+ENDGAME_SHRINK is item 4 with the rounds25-29 P1 refinements (ramp to 6, OCB damping)
+folded into its calibration; drawn-position budget cap and a peak_eval postmortem
+counter recorded as fillers. State: 144-caporder recovered to +5.5 +/- 28.6 at 380
+(llr -0.43); its 400 checkpoint will extend to 600. Then 145-v93fill, 146-cutnode,
+147-seequiet. Desktop off; GPU with the interactive session (153-mixnet2).

@@ -275,8 +275,8 @@ what enters a bundle.
   weight lands at 120 s depths. NO solo gauntlet (unmeasurable at 8 s in 600
   games): it rides in the v9.3 BUNDLE SPRT per the small-items rule. Scratch dir
   overnight/challengers/nmpv2b (bench copy only, not queued).
-- 144-caporder at 188 games 04:16, elo -5.5 +/- 37.4, llr -0.86 -- drifting
-  slightly negative; 200-game checkpoint will extend it. Then caporder-clocktest-l,
+- 144-caporder at 380 games 05:18, elo +5.5 +/- 28.6, llr -0.43 -- recovered from
+  -7.2 at 336 with a strong run; the 400 checkpoint will extend it to 600. Then caporder-clocktest-l,
   145-v93fill, v93fill-clocktest-l, 146-cutnode, cutnode-clocktest-l, 147-seequiet,
   seequiet-clocktest-l. Champion bench baseline for the v9.2 tree (NMP_V2 on):
   d8 1,385,489 nodes, d10 4,950,623, d11 9,401,418 (use these, not 1,445,087).
@@ -333,6 +333,30 @@ what enters a bundle.
   PASS. Queued as 147-seequiet (600 games, 8 s) + seequiet-clocktest-l at the
   queue tail.
 
+## Research folded 6 Sep 05:20 (iter 17; two opus agents, reports under overnight/eval/v10/)
+- rounds25-29.md (NEW): rounds 25 (loss, v8), 27 (draw, v8.5), 29 (loss, v9) analyzed. NONE
+  is a clock loss (54/78/17 s in hand at the turning points) -- more evidence TIME_V6 stays
+  closed; it would have changed no result. Round 25: 387 cp mean static error at 6-9 pieces
+  (worse than games.md's 141 at <=10). Round 29: worst on record, 674 cp at 11-16 pieces
+  (games.md said 475); opponent simply strong. Round 27 is a NEW mode: +141 at 27 pieces
+  drifted to a dead draw ("failed to convert"), 53% of the clock spent shuffling in a
+  0.00 position. Proposals: P1 fold into ENDGAME_SHRINK (ramp to 6 pieces + OCB damping,
+  add a <=10-piece band to the suite instrument); P2 budget cap on proven-drawn positions
+  (+0..+6, bundle filler only); P3 peak_eval_ours counter in testing/postmortem.py (tooling).
+- endgame_shrink.md (NEW): implementation-ready. Blend INSIDE fastsearch.evaluate (388-438;
+  call-site blending would double-blend via QS_EVAL_CACHE and the TT's stored static eval).
+  Baseline = pure material via agent._MATERIAL (no PSQT: competes with the net's gradient);
+  piece count is free (meta[fb.PIECES]); w=256 at >=17 pieces linear to 179 (0.70) at 6,
+  delta clamped +/-300 cp, NO |net|<T gate (the bug IS a large wrong eval). Calibration:
+  400 labelled positions in overnight/eval/endgame_suite.json, one process ~2 min, sweeps
+  WMIN/cap AND builds the per-band static-error instrument games.md asked for. Risks named:
+  compressed evals make RFP/futility/NMP margins relatively larger below 17 pieces (same
+  direction as rejected RFP_PHASE); bench nearly blind to it. VERDICT: build the switch
+  (C_EG_SHRINK/C_EG_WMIN/C_EG_CAP, CTRL_SIZE 47->50), calibrate, gate on the 17-min suite
+  vs baseline 10.8/17.0/12.0/5.0, ride in a bundle -- NO solo gauntlet slot before freeze.
+  CORRECTION to the report: it cites "150-sfnet PROMOTED +19" as live evidence -- that
+  verdict is VOID (worker bug, self-play); 152-sfnet REJECTED. Do not lean on it.
+
 ## Backlog (ranked; take the top item that is not running) -- see overnight/eval/V10_PLAN.md
 0. SHIP v9.2 when nmp-clocktest-l PASSES (queued right after 150-sfnet): champion
    + NMP_V2 (PROMOTE +26 at 201 games), INIT_FOLD + the fastboard eager
@@ -358,7 +382,14 @@ what enters a bundle.
    16-out head. The interactive session owns the GPU and the SF-data retrain;
    the loop only folds results. Prereq left: the v9 endgame-suite baseline
    (run when the laptop is not near a gauntlet checkpoint).
-4. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
+4. ENDGAME_SHRINK (V10_PLAN #11, scoped 6 Sep 05:20 -- build from
+   overnight/eval/v10/endgame_shrink.md): switch off in the tree
+   (C_EG_SHRINK/C_EG_WMIN/C_EG_CAP, CTRL_SIZE 47->50, wired like SEE_QUIET), then the
+   2-min calibration script on endgame_suite.json (run it away from a gauntlet
+   checkpoint; it also yields the per-band error instrument), then the 17-min suite as
+   the gate when the laptop is quiet; rides in a bundle SPRT, never a solo slot. Fold
+   rounds25-29.md P1 (ramp to 6 pieces; consider OCB damping) into the calibration sweep.
+5. Init/speed leftovers from speed.md: eager signatures on the fastboard leaves
    DONE 6 Sep 02:15 (iter 14, committed in-tree): 14 leaf helpers (lsb/msb/popcount/
    bit/attacks/attackers/occupancy/_add/_add_promotions/feature/_acc_row/...) get
    eager numba signatures -- source-only, exact by construction (bench d8
@@ -377,8 +408,10 @@ scale, 6-man TB, book rescan, HalfKA.
 of passes PLUS the no-gauntlet riders (NMP_V2B, INIT_FOLD, eager signatures):
 build ONE bundle challenger with every passed switch + NMP_V2B flipped, one
 confirming SPRT + clocktest, then zip/CANDIDATE/notify. After 146, IMPROVING
-and CUTNODE are closed for good. (3) If idle: speed leftovers (see allocation,
-evaluate blocking) or read the newest overnight/postmortem/ for failure modes.
+and CUTNODE are closed for good. (3) If idle: build ENDGAME_SHRINK from
+overnight/eval/v10/endgame_shrink.md (backlog item 4 -- switch + 2-min calibration;
+keep heavy CPU away from gauntlet checkpoints). Rounds 25-29 postmortems are DONE
+(rounds25-29.md); do not re-analyze them.
 Keep the exactness check green. (4) Do NOT start GPU work; the SF retrain and
 153-mixnet2 belong to the interactive session -- fold its suite/gauntlet
 results when they appear in overnight/laptop/results/.
