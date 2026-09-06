@@ -730,6 +730,53 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 20:35, iter 42) -- v9.5's CLOCKTEST PASSED; ITS SPRT WAS KILLED BY OUR OWN CRASH GATE, NOT BY THE ENGINE
+
+**`v95net-clocktest-l` PASS (20:07)** -- flags 0/6, errors 0, lowest clock 5.5 s, longest move
+12.8 s, measured on the shipped net. The mandatory gate is met: v9.5 is safe to run.
+
+**`181-v95-vs-v94` "REJECT ... failed 7/24 games (init 7)" (20:12) IS NOT A VERDICT ON v9.5.**
+It is a stage-1 abort: the run never reached the SPRT, so the net has still never played a
+rated game. All seven failures are `init`. Mechanism, and it is ours:
+- `@njit(cache=False)` everywhere (numba cache/AOT is CLOSED, speed.md -- segfaults + native
+  binaries forbidden), so **every process compiles the kernel from cold, every game**.
+- The gate inherits the task's worker count. 181 had no `workers` field -> `default_workers()`
+  = `(16 // 2) - 1` = **7** -> **14 simultaneous cold compiles**, and seven of them blew the
+  90 s init budget in `testing/referee.py`. `p8-sf10`, running at the same hour with
+  `workers: 4`, gated clean 24/24.
+- **This has now cost three gauntlets: 141-v92prune (19/24), 147-seequiet (7/24), 181 (7/24).**
+  147-seequiet was CLOSED on that abort. **SEE_QUIET's rejection is therefore SUSPECT -- it was
+  never given a strength game either. Do not treat it as a measured negative.**
+- FIXED this iteration in `testing/gauntlet.py::gate`: the replay condition drops the
+  `failures <= 2` cap (it now replays whenever every failure is `init`) and the replay runs at
+  **half the concurrency**. A genuine init crash still fails -- it fails the replay too. ruff PASS.
+- **STANDING RULE: every gauntlet task gets an explicit `workers: 4`.** The whole queue now has it.
+
+**WHAT THE ABORT DOES TELL US, and it is the strongest init evidence we have.** Cold import is
+36.0 s single-process here; the platform is ~1.8x slower against a 90 s budget, so v9.5 lands
+near 65 s of 90 with nothing left for a busy box -- and tonight our own machine pushed init past
+90 s the moment it was loaded. That is the case for **v9.6 = INIT_FOLD + INIT_ASYNC**, and its
+clocktest (`v96-clocktest-l`, the sed flips both) is queued ahead of the re-run SPRT because it
+costs nine minutes and unlocks a second candidate today.
+
+**QUEUE REWRITTEN (all five tasks carry `workers: 4`):** `p8-sf10` (running) ->
+`v96-clocktest-l` -> `182-v95-vs-v94` (challenger = tree, champion = `opponents/v94net`, md5
+1f4be882 = v9.4's net with the tree's search on both sides, 600 games at 8 s, elo0 0 / elo1 20,
+checkpoint 200) -> `p8-sf12` -> `v95-vs-sf14-120s`.
+
+**`p8-sf10` INTERIM AND IT IS THE FIRST GAME EVIDENCE THE NEW NET HAS EVER HAD.** 20 games,
+**+88.7 +/- 225.0 Elo** vs `opponents/sf-skill10` at 8 s. The same probe with the **v9.4** net
+finished at **-17.4 +/- 133.0**. Both are far too wide to conclude anything -- do not quote this
+as a result -- but the sign is the one the endgame suite and the static-error probe predicted.
+
+**CANDIDATE.md updated and re-notified (20:35)** with the clocktest PASS, the abort explained as
+harness rather than engine, and an explicit recommendation: safe to upload, strength unproven,
+verdict tonight.
+
+**NOT DONE, deliberately:** no engine switch, no bench, no `check_fastsearch`. The tree is
+byte-identical to v9.4 and an 8 s gauntlet was on the machine for the whole iteration, so a
+numba compile of mine would have corrupted it. `testing/gauntlet.py` is not an engine file.
+
 ## Running now (6 Sep 20:00, iter 41) -- THE QUEUE WAS DEAD FOR 12 MINUTES AND v9.5 WENT OUT WITH ITS SPRT NEVER STARTED
 
 **THE LAPTOP WAS SPINNING, NOT WORKING.** At 19:48 `p8-sf10` was killed at 20 games ("produced
@@ -2218,6 +2265,22 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0-NEW, iter 42) **READ `v96-clocktest-l` THEN `182-v95-vs-v94`.** If `v96-clocktest-l` PASSES,
+**SHIP v9.6 = v9.5 + INIT_FOLD + INIT_ASYNC** without waiting for any SPRT: INIT_FOLD is exact by
+construction (bit-identical depth-8 node count is the gate, do not skip it) and INIT_ASYNC only
+moves the compile off the import thread, so the clocktest IS the gate. Flip both True in the tree,
+ruff + mypy + check_fastsearch, build the zip from the challenger dir, and the release measurement
+that matters is the **clean-unzip cold import** -- it must beat v9.5's 36.0 s by enough to be worth
+a version number, and if it does not, say so and do not ship. `182-v95-vs-v94`'s 200-game
+checkpoint is v9.5's first and only strength evidence: email the human the moment it lands,
+whichever way it goes.
+(0-NEW-b, iter 42) **SEE_QUIET IS NOT CLOSED.** `147-seequiet` was an init-only crash-gate abort,
+not a strength result (iter 42 section). It is a free bundle filler again -- give it a slot with
+`workers: 4` when one is spare, and correct the backlog line that calls it closed.
+(0-NEW-c, iter 42) **NEVER QUEUE A GAUNTLET TASK WITHOUT `workers: 4`.** `default_workers()` is 7
+here = 14 cold numba compiles = init timeouts, and the crash gate reads them as crashes. The gate
+now self-heals (half concurrency on an init-only replay) but the task field is the real fix.
+
 (0-NEW, iter 41) **READ `v95net-clocktest-l` AND `180-sf100` BEFORE ANYTHING ELSE -- v9.5 IS IN
 THE HUMAN'S DOWNLOADS FOLDER WITH ZERO GAME EVIDENCE.** Clocktest PASS is mandatory; the SPRT's
 200-game checkpoint lands ~21:00. If the clocktest FAILS or the SPRT rejects, email the human

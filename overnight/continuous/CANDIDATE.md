@@ -46,3 +46,29 @@ its 200-game checkpoint lands around 21:00. Our own notes warn that the endgame 
 veto on catastrophes, not the ranking signal" -- v9.3's net scored WORSE on it (13.8) and still
 won +19 Elo in games. Three instruments agree here and two of them are not circular, but none
 of them is Elo. If the gauntlet comes back negative I will say so immediately.
+
+## Update 6 Sep 20:35 -- one gate PASSED, the other aborted before it played a game
+
+**`v95net-clocktest-l`: PASS** (20:07). flags 0/6, errors 0, lowest clock 5.5 s, longest move
+12.8 s -- measured on THIS net, not on the earlier v9.5 that shared the number. This is the
+mandatory gate, and the zip is safe to run: it does not flag and it does not error.
+
+**The 8 s SPRT still has no result, and this time it is our test harness, not the engine.**
+`181-v95-vs-v94` printed `REJECT ... failed 7/24 games (init 7)` at 20:12. That verdict is a
+crash-gate abort, NOT a strength verdict: it never reached stage 2. All seven failures are
+`init` -- the 24-game gate ran 7 games in parallel, i.e. 14 engine processes each compiling the
+numba kernel from cold at the same moment, and seven of them took longer than the 90 s init
+budget. Nothing was played and nothing about the net was measured. Re-queued as
+`182-v95-vs-v94` with the concurrency halved (4 workers); its 200-game checkpoint lands about
+an hour after it starts.
+
+**What that abort does say, and it is not nothing.** Our cold init is 36.0 s single-process
+here; the platform's box is ~1.8x slower against a 90 s budget, so v9.5 lands around 65 s of
+90 with no margin for a loaded machine. Tonight our own gate showed init blowing straight
+through 90 s the moment the machine is busy. That is the case for v9.6 (INIT_FOLD +
+INIT_ASYNC, both already built and measured), whose clocktest is on the machine now.
+
+**Recommendation, unchanged and explicit: v9.5 is safe to upload but its strength is still
+unproven.** Three non-game instruments agree it is better and none of them is Elo. If you would
+rather wait, the SPRT verdict will be in your inbox tonight; if you upload now, nothing in the
+clocktest suggests it will misbehave.

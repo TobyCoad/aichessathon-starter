@@ -31,10 +31,18 @@ def gate(challenger: Path, workers: int, ply_cap: int) -> tuple[bool, str]:
 
     Random play reaches the odd corners -- promotion, en passant, stalemate,
     positions with a single legal move -- far faster than a real opponent does.
-    An init timeout or two under machine load is not a crash: the gate is replayed
-    once, and only a repeat counts as a failure.
+    An init timeout under machine load is not a crash: our kernel compiles from
+    cold in every process (`cache=False` is forced -- see speed.md), so N parallel
+    games mean 2N simultaneous numba compiles, and past ~7 workers they blow the
+    90 s init budget together. That is a property of the harness, not of the
+    engine, so an init-ONLY first pass is replayed once at HALF the concurrency
+    rather than counted -- at any number of failures, not just one or two. Three
+    gauntlets (141-v92prune, 147-seequiet, 181-v95-vs-v94) were rejected by the
+    old <= 2 rule without ever playing a strength game. A real init crash still
+    fails: it fails the replay too, single-file if need be.
     """
     note = ""
+    gate_workers = workers
     for attempt in range(2):
         tally, _ = arena.run(
             challenger,
@@ -43,7 +51,7 @@ def gate(challenger: Path, workers: int, ply_cap: int) -> tuple[bool, str]:
             GATE_BASE_MS,
             GATE_INCREMENT_MS,
             ply_cap,
-            workers,
+            gate_workers,
             0.0,
             20.0,
             quiet=True,
@@ -54,15 +62,20 @@ def gate(challenger: Path, workers: int, ply_cap: int) -> tuple[bool, str]:
                 for name, count in sorted(tally.terminations.items())
                 if name in FAILED_TERMINATIONS
             )
-            init_only = tally.failures <= 2 and all(
+            init_only = all(
                 name == "init"
                 for name, count in tally.terminations.items()
                 if name in FAILED_TERMINATIONS and count
             )
             if init_only and attempt == 0:
-                note = f"; first pass had {tally.failures} init timeout(s) under load, replayed"
+                gate_workers = max(1, gate_workers // 2)
+                note = (
+                    f"; first pass had {tally.failures} init timeout(s) under load, "
+                    f"replayed at {gate_workers} workers"
+                )
                 print(
-                    f"  {tally.failures}/{tally.games} init timeouts under load; replaying gate",
+                    f"  {tally.failures}/{tally.games} init timeouts under load; "
+                    f"replaying gate at {gate_workers} workers",
                     flush=True,
                 )
                 continue

@@ -1,21 +1,5 @@
 [
  {
-  "name": "v95net-clocktest-l",
-  "kind": "clocktest",
-  "sed": ""
- },
- {
-  "name": "180-sf100",
-  "kind": "switch",
-  "sed": "",
-  "champion": "opponents/v94net",
-  "games": 600,
-  "workers": 4,
-  "base_ms": 8000,
-  "elo0": 0,
-  "elo1": 20
- },
- {
   "name": "p8-sf10",
   "kind": "switch",
   "sed": "",
@@ -26,6 +10,18 @@
   "openings": "platform",
   "elo0": -200,
   "elo1": 200
+ },
+ {
+  "name": "v96-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^INIT_FOLD: Final = False$/INIT_FOLD: Final = True/; s/^INIT_ASYNC: Final = False$/INIT_ASYNC: Final = True/"
+ },
+ {
+  "name": "182-v95-vs-v94",
+  "sed": "",
+  "champion": "opponents/v94net",
+  "games": 600,
+  "workers": 4
  },
  {
   "name": "p8-sf12",

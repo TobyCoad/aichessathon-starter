@@ -2093,3 +2093,47 @@ where it belongs.
 I built nothing this iteration and that was deliberate. The tree's code is byte-identical to
 v9.4 -- only the weights moved -- and a clock measurement was on the machine the whole time, so
 any numba compile of mine would have corrupted it.
+
+## 6 Sep 20:35 -- iteration 42: v9.5's rejection was our test harness rejecting our own compiler
+
+Two gates were on the machine when this iteration opened and both had landed. The clocktest
+passed cleanly -- no flags, no errors, 5.5 s left on the worst clock, 12.8 s on the longest move,
+measured on the shipped net rather than on the earlier v9.5 that had borrowed the number -- so the
+zip in the human's Downloads folder is safe to run. The SPRT printed `REJECT 181-v95-vs-v94 is not
+safe to ship` and that line is false in the way that matters: it is a stage-1 abort with seven
+`init` failures out of twenty-four, so the run never reached the SPRT and the new net has still
+never played a rated game.
+
+The mechanism is entirely ours. `speed.md` closed the numba cache last week -- `cache=True`
+segfaults when numba rebuilds `fastsearch.search` from `.nbc`, and AOT emits native binaries the
+rules forbid -- so every engine process compiles the kernel from cold, every game. The crash gate
+inherits the task's worker count, 181 had no `workers` field, `default_workers()` on sixteen cores
+returns seven, and seven parallel games are fourteen simultaneous cold compiles. Seven of them
+went through the 90 s init budget together. `p8-sf10` was running the same hour with `workers: 4`
+and gated clean at 24/24, which is the control.
+
+This has now eaten three gauntlets: 141-v92prune at 19/24, 147-seequiet at 7/24, and 181 tonight.
+The middle one matters, because SEE_QUIET was written into the notes as closed on the strength of
+an abort that never played a strength game. It goes back on the board as a bundle filler. The gate
+itself was fixed rather than worked around: the replay condition no longer caps out at two
+failures -- it replays whenever every failure is `init`, and the replay runs at half the
+concurrency, so a genuine init crash still fails while a compile stampede does not. Every task in
+the queue now carries an explicit `workers: 4`.
+
+The abort is also the sharpest evidence yet for the thing the notes have called the number one
+risk since lunchtime. Cold import is 36.0 s in one process here, the platform's box is about 1.8x
+slower against a 90 s budget, which puts v9.5 near 65 s of 90 with nothing spare -- and tonight
+our own laptop pushed init clean past 90 s the moment it was busy. So `v96-clocktest-l` went to the
+front of the queue ahead of the re-run SPRT: it costs nine minutes, INIT_FOLD is exact by
+construction and INIT_ASYNC only moves the compile off the import thread, so that clocktest is the
+whole gate for a second candidate today.
+
+One interim worth recording without over-reading it. `p8-sf10` is at +88.7 plus or minus 225.0 Elo
+over twenty games against sf-skill10 at 8 s. The identical probe with the v9.4 net finished at
+-17.4 plus or minus 133.0. The error bars swallow the difference and neither number decides
+anything, but it is the first game evidence the new net has ever had and the sign is the one the
+endgame suite and the static-error probe both predicted. CANDIDATE.md was updated and re-sent at
+20:35 saying exactly that: safe to upload, strength unproven, verdict tonight.
+
+I built no engine code again, and again deliberately -- the tree is byte-identical to v9.4, an 8 s
+gauntlet held the machine the whole time, and a numba compile of mine would have corrupted it.
