@@ -656,6 +656,73 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 15:20, iter 34) -- SEARCH_SPLIT BLOCK C SHIPPED INTO THE TREE, -5.9 s OF INIT
+The research pause forbids shipping v9.5 and any gauntlet of 40+ games, so this iteration
+did the one thing the pause explicitly leaves open and that needs NO gauntlet slot: the
+init split. It is committed (3f7d076) and the tree is the champion + block C.
+- **I STOPPED `v94-120s` (PID 20576, killed 15:20) AND REAPED ITS 8 RUNNERS.** Read this
+  before re-queuing it. The worker started it at 15:02, EIGHT MINUTES BEFORE the 15:10
+  research-pause commit parked it in `held.json`; the session parked the task but never
+  killed the process, so a 40-game 120 s **self-play** gauntlet -- exactly the regime the
+  human scrapped at 14:45 -- was holding all four workers and the whole box for ~45 more
+  minutes while three research agents needed it. Its own numbers were contaminated anyway
+  (three `_sfscan.py` processes were running against it at a 120 s time control, where
+  extra load changes the answer). No result file was written, so it is still pending and
+  still in `held.json`; restore it deliberately or not at all. If someone wants the
+  NMP_V2B reading at long TC, the new regime says take it vs `opponents/sf-skill8`.
+  Consequence, and it was the point: the worker immediately picked up `convert-clocktest-l`
+  (the one task the pause allows) at 15:25 -- running, healthy, lowest clock 5.7 s at
+  ply 197.
+- **BLOCK C IS DONE AND THE MECHANISM IS CONFIRMED.** `order_node()` (fastsearch.py:745)
+  takes the ordering block verbatim out of `search`: history2 base, `fb.score_moves`,
+  the conthist pass and the CAPTURE_ORDER rescore; returns `(base, ch_base)`;
+  `history2` / `conthist_on` / `capture_order` are recomputed in `search` as iter 33
+  specified, so INIT_FOLD still constant-folds at both sites. Measured back-to-back under
+  the same light load, INIT_FOLD off:
+      search inference   28.10 s -> 23.64 s   (-15.9%)
+      search lowering     7.46 s ->  6.94 s
+      order_node's own compile         0.19 s inference + 0.22 s lowering
+      cold import        43.7 s  -> 37.8 s    (-5.9 s local, ~-12 s platform at 2.1x)
+  Gates: ruff (whole tree; I also cleared the six initprof lint errors iter 33 left, so
+  `ruff check` is green again), mypy, check_fastsearch 70/70 + 40/40 PASS, bench depth 8
+  **1,110,289 nodes bit-identical** at 252 knps vs 246 for the pre-split champion.
+- **THE SURPRISE, AND IT IS GOOD NEWS FOR THE REMAINING BLOCKS.** `search`'s llvm_lines
+  went UP, 17,627 -> 17,680, while its inference fell 16%. LLVM inlines `order_node`
+  straight back at the IR level, so the emitted code is the same size and the same speed
+  (hence knps unchanged), and only numba's type-inference fixpoint ever sees the smaller
+  function. We get the compile win AND keep the runtime -- the `inline='always'` fallback
+  in initsplit.md is not needed, and the njit->njit call cost the report warned about is
+  measurably nil. Expect the same for B, A and D.
+- **NEXT: BLOCK B, and it is NOT a copy of C -- read this before starting.** B is
+  fastsearch.py:931-1013 (`standing = -INFINITY` through the end of the FUTILITY block),
+  ~85 lines, the largest block left. Unlike C it has **two early returns** (`return
+  standing` from RFP, `return razored` from razor) and it calls `quiesce`. `quiesce` never
+  calls `search`, so there is still no mutual recursion -- but the helper cannot return a
+  bare pair. Contract to build:
+      done, retval, standing, improving, percent, futile, cached_eval = eval_gates(...)
+      if done: return retval
+  Live-outs verified by their use below 1013: `standing` (the prune2 guard at the old
+  1141 and the futility tests), `improving` (NMP and LMR), `percent` (NMP and the move
+  loop's margins), `futile` (the move loop), `cached_eval` (NMP and the TT store). All
+  five must be returned; `rfp_depth` and `razored` are dead after the block and stay
+  local. The helper needs the full eval argument set (bb, sq, meta, undo, keys, w1, b1,
+  white, black, astack, zones, king_zones, w2t, b2, w3, b3, butterfly, moves, scores,
+  ec_key, ec_val, exts, tt_key, tt_data, ctrl, deadline, depth, alpha, beta, ply,
+  in_check, excluded, cached_eval, scratch) -- long, but argument count is not what
+  inference charges for; function BODY size is.
+  Then A (TT probe) and D (TT store), which are the easy pair: no returns, no calls.
+- Gate every block the same way, one block per commit: ruff, mypy, check_fastsearch
+  70/70 + 40/40, bench depth 8 **exactly 1,110,289 nodes**, knps within noise, and
+  `initprof.py` re-run for the record. `overnight/eval/initprof.py` now falls back to
+  `fastboard` for names `fastsearch` does not have and skips missing ones, so it no
+  longer dies on `gen_legal`; copy it into a challenger dir and run with that dir as cwd,
+  or copy it to the repo root for the tree.
+- RUNNING BUDGET FOR v9.5's INIT CLAIM: champion import here was 43.7 s idle-ish with
+  INIT_FOLD off / ~30 s with it on; block C takes ~6 s off both. Four platform samples
+  were 74.1 / >90 (GAME LOST) / 88.1 / 64.1 s against a 90 s budget, so C alone moves the
+  worst case to roughly 78 s. B+A+D should take it clear. Do not quote a platform number
+  we have not measured -- quote the local delta and the 2.1x.
+
 ## Running now (6 Sep 14:35, iter 33) -- INIT MEASURED TO THE PASS: SEARCH_SPLIT is the lever
 Nothing could ship again: `160-v95` was at 348 games / +8.0 at 14:27 and decides at 400
 (~14:42), and its two clocktests (`initasync-clocktest-l` then `v95-clocktest-l`, ~10 min
@@ -1566,6 +1633,14 @@ replacement, QS checks, correction history, wider nets, distillation, int8, self
 scale, 6-man TB, book rescan, HalfKA.
 
 ## Next step
+(0a) THE RESEARCH PAUSE IS STILL ON (human, 15:10): do NOT ship v9.5, do NOT start a
+gauntlet of 40+ games. `convert-clocktest-l` is running and is allowed. Iter 34 stopped
+`v94-120s`, which the pause had parked but nobody had killed -- see the iter 34 section.
+(0b) **BUILD SEARCH_SPLIT BLOCK B** (fastsearch.py:931-1013), then A then D, one commit
+each. Block C landed in iter 34 for -5.9 s of local init with a bit-identical node count;
+B is the biggest block left and its exact contract (a 7-tuple, because it has two early
+returns) is written out in the iter 34 section. This needs NO gauntlet slot, which under
+the new regime is the whole point.
 (0) SUPERSEDED IN PART BY ITER 32: `initasync-clocktest-l` now runs BEFORE `v95-clocktest-l`,
 and v9.5's zip flips INIT_ASYNC True alongside INIT_FOLD if that clocktest passes. v9.5's
 verdict is `160-v95`'s 400-game checkpoint, not the 200 (it landed in the middle band).

@@ -1733,3 +1733,52 @@ it was this morning. SEARCH_SPLIT needs none: it is exact code motion gated on a
 bit-identical node count and a clocktest, so it can proceed alongside the new measurements
 instead of queueing behind them. It was already the largest item on the board by size; it is
 now the largest twice over.
+
+## 6 Sep 15:20-15:55 (iter 34) -- the init split starts paying, and a parked gauntlet that
+was still running
+
+The research pause forbids shipping v9.5 and forbids any gauntlet of forty games or more,
+which leaves exactly one thing on the board worth an iteration: SEARCH_SPLIT, the init work
+iter 33 measured and specified. It needs no gauntlet slot, and under the new regime -- two
+120 s runs a day against sf-skill8 instead of eight self-play runs at 8 s -- that is now the
+scarcest thing we have.
+
+First, though, the box was not free. The worker had started v94-120s at 15:02, eight minutes
+before the 15:10 commit that parked it in held.json. The session parked the task but never
+killed the process, so a forty-game 120 s self-play gauntlet -- precisely the regime the
+human scrapped at 14:45 -- was holding all four workers for another three quarters of an
+hour while three research agents needed the CPU. Its own numbers were contaminated anyway,
+because three sfscan processes were grinding against it at a time control where extra load
+changes the answer. I killed it and reaped its eight runners. No result file was written, so
+it stays pending and stays in held.json; if anyone still wants the NMP_V2B reading at long
+TC, the new regime says take it against sf-skill8 rather than against ourselves. The
+intended consequence followed immediately: the worker picked up convert-clocktest-l, the one
+task the pause allows, at 15:25, and it is healthy at a 5.7 s floor.
+
+Then block C. order_node() takes the ordering block out of search verbatim -- the history2
+base, score_moves, the conthist pass, the CAPTURE_ORDER rescore -- returns base and ch_base,
+and leaves the three fold ternaries to be recomputed in search so INIT_FOLD still constant-
+folds at both sites. Measured back-to-back under the same load with INIT_FOLD off: search's
+type inference 28.10 s to 23.64 s, a 15.9% cut, its lowering 7.46 to 6.94, and the helper's
+own compile costing 0.41 s of the saving. Cold import 43.7 s to 37.8 s. That is -5.9 s here
+and about -12 s on the platform at their measured 2.1x, from one block of four. Gates all
+green: ruff over the whole tree (I cleared the six initprof lint errors iter 33 left behind
+while I was there), mypy, check_fastsearch 70/70 and 40/40, and bench depth 8 coming back at
+1,110,289 nodes bit-identical, 252 knps against 246 for the pre-split champion.
+
+The interesting part is a number that went the wrong way. search's LLVM line count rose
+slightly, 17,627 to 17,680, while its inference fell 16%. LLVM inlines order_node straight
+back at the IR level, so the emitted code is the same size and the same speed -- which is
+why knps did not move -- and only numba's type-inference fixpoint ever sees the smaller
+function. We get the compile win and keep the runtime. That retires the one risk initsplit.md
+flagged: the inline='always' fallback is not needed, the njit-to-njit call costs nothing
+measurable, and blocks B, A and D should behave the same way.
+
+Block B is next and it is not a copy of C. It has two early returns, from RFP and from
+razoring, and it calls quiesce -- which never calls search, so there is still no mutual
+recursion, but the helper cannot return a bare pair. The contract is a seven-tuple with a
+done flag, and the five live-outs are standing, improving, percent, futile and cached_eval.
+I wrote it out in full in NOTES rather than start it with ten minutes left: iter 33 spending
+its last window specifying block C exactly is why block C took forty minutes today instead of
+two hours, and a half-finished kernel edit is the one thing the rules say never to leave
+behind.
