@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from training.train import FEATURES, Net, bucket_of, load_checkpoint
+from training.train import BUCKET_MAP_12, FEATURES, MAX_PIECES, Net, bucket_of, load_checkpoint
 
 
 def expected_shapes(
@@ -91,9 +91,13 @@ def head_numpy(weights: dict[str, np.ndarray], x: np.ndarray, count: np.ndarray)
         h2 = np.maximum(h1 @ weights["W2"] + weights["b2"], 0.0)
         return np.asarray((h2 @ weights["W3"] + weights["b3"]).squeeze(1))
     buckets = weights["W2"].shape[0]
+    table = weights.get("bucket_map")
     out = np.empty(len(x), dtype=np.float32)
     for i in range(len(x)):
-        k = min(max((int(count[i]) - 1) * buckets // 32, 0), buckets - 1)
+        if table is not None:
+            k = int(table[min(max(int(count[i]), 0), MAX_PIECES)])
+        else:
+            k = min(max((int(count[i]) - 1) * buckets // 32, 0), buckets - 1)
         h2 = np.maximum(h1[i] @ weights["W2"][k] + weights["b2"][k], 0.0)
         out[i] = (h2 @ weights["W3"][k] + weights["b3"][k])[0]
     return out
@@ -110,6 +114,13 @@ def main() -> None:
     weights = convert(net)
     if arguments.half:
         weights = halve(weights)
+    # Self-describing metadata, so the engine never re-derives a training choice.
+    # Both are read by agent.py when present and absent from every net before v10,
+    # which keeps those loading exactly as they did.
+    if net.buckets == 12:
+        weights["bucket_map"] = np.asarray(BUCKET_MAP_12, dtype=np.int32)
+    if net.is_mirrored:
+        weights["mirrored"] = np.asarray(1, dtype=np.uint8)
     accumulator = int(net.bag.weight.shape[1])
     hidden = int(net.head_w2.shape[2])
     expected = expected_shapes(accumulator, hidden, net.buckets, net.king_zones)
@@ -146,7 +157,8 @@ def main() -> None:
     parameters = sum(int(np.prod(shape)) for shape in expected.values())
     print(
         f"wrote {arguments.out} ({size / 1e6:.2f} MB, {parameters:,} parameters, "
-        f"{net.buckets} output bucket(s), {net.king_zones} king zone(s))"
+        f"{net.buckets} output bucket(s), {net.king_zones} king zone(s), "
+        f"mirrored {net.is_mirrored})"
     )
     print(f"numpy head matches torch to {error:.2g}")
     for name, shape in expected.items():
