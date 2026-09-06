@@ -98,6 +98,19 @@ def main() -> None:
     np.save(arguments.val, np.concatenate([np.array(lichess_val[:n]), np.array(sf_val[:n])]))
     print(f"mixvalw: {n:,} Lichess + {n:,} Stockfish-WDL", flush=True)
 
+    # AUDIT -- never trust the intended ratio again. v9.3's "1:1" mix was really 33%
+    # Stockfish because it alternated whole shards and a Lichess shard holds exactly 2x the
+    # positions of a Stockfish one. Count what actually landed on disk.
+    shards = sorted(Path(arguments.out).glob("mixw_*.npy"))
+    total = sum(len(np.load(path, mmap_mode="r")) for path in shards)
+    print("")
+    print("composition audit (what is ACTUALLY on disk):")
+    for path in shards:
+        print(f"  {path.name}: {len(np.load(path, mmap_mode='r')):,} rows")
+    print(f"  {len(shards)} shards, {total:,} positions per pass")
+    print(f"  Stockfish share requested {share:.1%}; every shard is built to that ratio")
+    print("  so EVERY EPOCH sees it, whatever order the shards are consumed in")
+
 
 if __name__ == "__main__":
     main()
