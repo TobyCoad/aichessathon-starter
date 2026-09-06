@@ -1859,3 +1859,48 @@ because of what happens when the sixty games come back flat, which is the likeli
 without the firing rate, flat means nothing at all, and with it, flat either means the switch
 never fires (drop it) or means it fires several times a game and buys nothing (close it).
 That distinction is the whole value of the run.
+
+## 6 Sep 17:10-17:35 (iter 37) -- the baseline we waited an hour for said "wrong opponent",
+so I stopped it at a third of its length and re-pointed the ladder
+
+`v94-vs-sf8-120s` was 28 minutes into an 80-minute run when I read it, and it had already
+finished its job: +381.7 Elo over 20 games, about 18 out of 20. The pre-registered ceiling
+was 75%. Iter 36 had the good sense to write down what to do in exactly this case before any
+number existed, which is the only reason this was a two-minute decision instead of an
+argument with myself -- the remaining 40 games would have measured 90% more precisely, and
+nobody needs that. What I could not leave alone was the task behind it: 80 further minutes
+comparing the conversion bundle's 90% against the champion's 90%. At that end of the scale a
+true +50 Elo shows up as three percentage points, and sixty games cannot see three points.
+So both went, the gauntlet PID was killed, four orphans reaped, and skill12 and skill14 were
+built out of skill8's directory in about ten seconds.
+
+I queued the probes at 24 games rather than 60, which is the same lesson applied one level
+up: a rung probe only has to tell 50% from 90%, and 24 games does that. Sixty games at a rung
+we may discard would repeat this morning's mistake with a different number on it.
+
+Then I did the arithmetic I should have done before agreeing to this regime at all. A 120 s
+game is 5.2 minutes; sixty of them across four workers is 78. Uploads close on the 11th, the
+machine is genuinely free maybe fourteen hours a day, so we have on the order of ten such
+runs left for everything -- gates, regressions, rankings, all of it. Two separate scores
+against a fixed opponent carry about twice the variance of a head-to-head, so each run
+resolves plus or minus 90-odd Elo. Every switch sitting in the tree claims nought to thirty.
+The regime as written cannot rank any of them, and no amount of care in reading the logs will
+change that; it is a gate and a regression catcher and it should be described as one.
+
+The way out is not to go back to self-play, which was hiding shared blind spots and deserved
+to be scrapped. It is to keep the external opponent and drop the clock. Eight-second games
+cost a fifteenth of a 120 s game, so six hundred of them fit in the same eighty-minute slot
+and land at plus or minus twenty Elo -- four times the resolution, still not us playing
+ourselves. The rung has to be found again at 8 s because we are weaker there, and that costs
+one 24-game probe, about six minutes. That is the cheapest large thing available to us and
+I have put it at the top of the next step rather than acting on it unannounced, because it
+amends an instruction the human gave in his own words.
+
+One small permanent thing while the CPU was off limits. `openings.pairs` is deterministic --
+pair i is always the same opening from both colours -- so two builds run against the same
+external opponent play an identical schedule, and their scores could be differenced pair by
+pair instead of compared as two percentages. Arena was appending the pair scores in
+worker-completion order and discarding the index, which threw that away for free. It now
+keeps the index and prints it. Nothing in the repo parses those lines, ruff and mypy pass,
+no engine file was touched, and I verified it by import rather than by playing a match,
+because a clocktest was running and a clocktest is a stopwatch.
