@@ -614,6 +614,16 @@ risk and which was still only scoped as "someone should look at (a)/(b)/(c)".
   10,578 lines) is the next candidate for the same treatment, after `search`.
 - QUEUE unchanged: `160-v95` -> `initasync-clocktest-l` -> `v95-clocktest-l` -> `165-v96`
   -> `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
+- PENDING FOR THE NEXT ITERATION, both left mid-flight by the clock, neither blocking:
+  (a) `160-v95` was at 356 games / +9.8 at 14:29 and decides at 400 (~14:42). At +8..+10 it
+      is heading for INCONCLUSIVE-with-a-positive-point-estimate, which is a PASS by the
+      human's rule -- but read the actual verdict line, do not assume it.
+  (b) an opus agent is writing `overnight/eval/v10/rounds32-37.md` (rounds 32, 34, 35 and
+      37 -- the four platform games nobody has folded; NONE of them failed at init, checked
+      before briefing it: terminations were insufficient_material 295 plies, checkmate 148,
+      insufficient_material 125, checkmate 133). Fold its candidate list into the backlog;
+      it was told to flag which candidates are kernel-free, because a kernel branch now
+      costs compile time at the 2.65 exponent above.
 
 ## Running now (6 Sep 14:10, iter 32) -- INIT_ASYNC PULLED FORWARD; KILLER_SHIFT BUILT
 Nothing could ship this iteration: `160-v95` took its 200-game checkpoint in the middle
