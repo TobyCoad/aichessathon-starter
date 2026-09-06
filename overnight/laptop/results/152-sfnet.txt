@@ -1,0 +1,7 @@
+name 152-sfnet
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  152-sfnet  no better than the champion
+  +33 =25 -58  score 39.2%  over 116 games
+  terminations: adjudication 1, checkmate 90, fifty_moves 2, insufficient_material 9, threefold_repetition 14

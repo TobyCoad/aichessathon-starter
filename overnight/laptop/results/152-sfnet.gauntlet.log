@@ -1,0 +1,71 @@
+stage 1: crash gate, 152-sfnet vs random
+  clean over 24 games, 100% vs random
+
+stage 2: SPRT[0, 20], challenger vs champion
+  note: 300 pairs over 119 openings, 2.5 repeats each -- the SPRT will read more confident than the evidence warrants
+      4 games  .... llr +0.00 [-2.94, 2.94] after 1 pairs, elo +0.0 +/- inf
+      5 games  .... llr -0.08 [-2.94, 2.94] after 2 pairs, elo -0.0 +/- 98.9
+      7 games  .... llr -0.40 [-2.94, 2.94] after 3 pairs, elo -58.5 +/- 114.5
+      8 games  .... llr -0.77 [-2.94, 2.94] after 4 pairs, elo -88.7 +/- 100.2
+     12 games  .... llr -0.02 [-2.94, 2.94] after 5 pairs, elo -0.0 +/- 208.3
+     13 games  .... llr -0.03 [-2.94, 2.94] after 6 pairs, elo -0.0 +/- 163.3
+     14 games  .... llr -0.05 [-2.94, 2.94] after 7 pairs, elo -0.0 +/- 135.1
+     18 games  .... llr -0.21 [-2.94, 2.94] after 8 pairs, elo -43.7 +/- 143.1
+     19 games  .... llr -0.24 [-2.94, 2.94] after 9 pairs, elo -38.8 +/- 126.0
+     20 games  .... llr -0.15 [-2.94, 2.94] after 10 pairs, elo -17.4 +/- 121.5
+     22 games  .... llr -0.29 [-2.94, 2.94] after 11 pairs, elo -47.7 +/- 123.7
+     25 games  .... llr -0.40 [-2.94, 2.94] after 12 pairs, elo -58.5 +/- 114.5
+     27 games  .... llr -0.44 [-2.94, 2.94] after 13 pairs, elo -53.9 +/- 105.6
+     28 games  .... llr -0.57 [-2.94, 2.94] after 14 pairs, elo -62.7 +/- 99.3
+     30 games  .... llr -0.46 [-2.94, 2.94] after 15 pairs, elo -46.6 +/- 97.3
+     33 games  .... llr -0.59 [-2.94, 2.94] after 16 pairs, elo -54.7 +/- 92.4
+     34 games  .... llr -0.63 [-2.94, 2.94] after 17 pairs, elo -51.5 +/- 86.9
+     36 games  .... llr -0.67 [-2.94, 2.94] after 18 pairs, elo -48.6 +/- 82.1
+     38 games  .... llr -0.55 [-2.94, 2.94] after 19 pairs, elo -36.7 +/- 81.0
+     40 games  .... llr -0.59 [-2.94, 2.94] after 20 pairs, elo -34.9 +/- 76.9
+     42 games  .... llr -0.72 [-2.94, 2.94] after 21 pairs, elo -41.6 +/- 74.2
+     45 games  .... llr -0.60 [-2.94, 2.94] after 22 pairs, elo -31.7 +/- 73.3
+     46 games  .... llr -0.73 [-2.94, 2.94] after 23 pairs, elo -37.9 +/- 71.1
+     48 games  .... llr -0.89 [-2.94, 2.94] after 24 pairs, elo -51.0 +/- 72.8
+     50 games  .... llr -1.04 [-2.94, 2.94] after 25 pairs, elo -63.2 +/- 73.9
+     52 games  .... llr -1.18 [-2.94, 2.94] after 26 pairs, elo -74.6 +/- 74.7
+     55 games  .... llr -1.33 [-2.94, 2.94] after 27 pairs, elo -85.3 +/- 75.2
+     56 games  .... llr -1.38 [-2.94, 2.94] after 28 pairs, elo -82.2 +/- 72.6
+     58 games  .... llr -1.05 [-2.94, 2.94] after 29 pairs, elo -66.7 +/- 75.3
+     60 games  .... llr -1.17 [-2.94, 2.94] after 30 pairs, elo -70.4 +/- 73.2
+     62 games  .... llr -1.21 [-2.94, 2.94] after 31 pairs, elo -68.1 +/- 70.9
+     64 games  .... llr -1.25 [-2.94, 2.94] after 32 pairs, elo -65.9 +/- 68.7
+     67 games  .... llr -1.37 [-2.94, 2.94] after 33 pairs, elo -69.3 +/- 67.1
+     68 games  .... llr -1.42 [-2.94, 2.94] after 34 pairs, elo -67.2 +/- 65.1
+     70 games  .... llr -1.46 [-2.94, 2.94] after 35 pairs, elo -65.3 +/- 63.3
+     72 games  .... llr -1.50 [-2.94, 2.94] after 36 pairs, elo -63.4 +/- 61.6
+     74 games  .... llr -1.65 [-2.94, 2.94] after 37 pairs, elo -71.4 +/- 62.1
+     76 games  .... llr -1.70 [-2.94, 2.94] after 38 pairs, elo -69.5 +/- 60.5
+     78 games  .... llr -1.84 [-2.94, 2.94] after 39 pairs, elo -72.3 +/- 59.3
+     80 games  .... llr -1.88 [-2.94, 2.94] after 40 pairs, elo -70.4 +/- 57.9
+     82 games  .... llr -2.03 [-2.94, 2.94] after 41 pairs, elo -77.5 +/- 58.3
+     84 games  .... llr -2.08 [-2.94, 2.94] after 42 pairs, elo -75.6 +/- 57.0
+     86 games  .... llr -2.13 [-2.94, 2.94] after 43 pairs, elo -73.8 +/- 55.7
+     88 games  .... llr -2.18 [-2.94, 2.94] after 44 pairs, elo -72.1 +/- 54.5
+     90 games  .... llr -2.04 [-2.94, 2.94] after 45 pairs, elo -66.4 +/- 54.1
+     92 games  .... llr -2.09 [-2.94, 2.94] after 46 pairs, elo -64.9 +/- 53.0
+     94 games  .... llr -2.13 [-2.94, 2.94] after 47 pairs, elo -63.5 +/- 51.9
+     96 games  .... llr -2.28 [-2.94, 2.94] after 48 pairs, elo -65.9 +/- 51.1
+     98 games  .... llr -2.43 [-2.94, 2.94] after 49 pairs, elo -71.9 +/- 51.5
+    100 games  .... llr -2.58 [-2.94, 2.94] after 50 pairs, elo -74.1 +/- 50.8
+    102 games  .... llr -2.73 [-2.94, 2.94] after 51 pairs, elo -79.7 +/- 51.1
+    104 games  .... llr -2.59 [-2.94, 2.94] after 52 pairs, elo -74.6 +/- 50.9
+    106 games  .... llr -2.45 [-2.94, 2.94] after 53 pairs, elo -69.8 +/- 50.6
+    108 games  .... llr -2.60 [-2.94, 2.94] after 54 pairs, elo -75.1 +/- 50.9
+    110 games  .... llr -2.74 [-2.94, 2.94] after 55 pairs, elo -77.0 +/- 50.2
+    112 games  .... llr -2.79 [-2.94, 2.94] after 56 pairs, elo -75.6 +/- 49.3
+    114 games  .... llr -2.84 [-2.94, 2.94] after 57 pairs, elo -74.3 +/- 48.5
+    116 games  FAIL llr -2.99 [-2.94, 2.94] after 58 pairs, elo -76.1 +/- 47.8
+
+C:\dev\aichessathon\starter\overnight\challengers\152-sfnet vs C:\dev\aichessathon\starter
+  +33 =25 -58  score 39.2%  over 116 games
+  FAIL llr -2.99 [-2.94, 2.94] after 58 pairs, elo -76.1 +/- 47.8
+  mean game length 120 plies
+  terminations: adjudication 1, checkmate 90, fifty_moves 2, insufficient_material 9, threefold_repetition 14
+
+REJECT  152-sfnet  no better than the champion
