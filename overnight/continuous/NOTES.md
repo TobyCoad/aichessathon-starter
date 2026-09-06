@@ -413,8 +413,14 @@ the gap to the leader is 300-500 Elo.
   against the 9 opponents we have both played we score 36.4% and the leader 90.0%; their
   draw rate is 7% to our 26%; init has never cost us a ladder game (37 games, zero init
   losses, first move never over 13 s) -- that risk is upload-validation only.
-- CONVERT_BUDGET is BUILT and committed OFF (agent.py only, exactness PASS). It is NOT
-  shippable until convert-clocktest-l passes: it doubles the HARD deadline, which is exactly
+- CONVERT_BUDGET's CLOCKTEST GATE IS CLEARED (folded by iter 34, 15:52):
+  `convert-clocktest-l` **PASS** -- flags 0/6, errors 0, lowest clock 5.7 s, longest
+  move 13.7 s, i.e. indistinguishable from every other passing clocktest despite the
+  doubled hard deadline. So the deadline objection below is answered and CONVERT_BUDGET
+  is now an eligible bundle rider whenever the pause lifts -- still a rider, not a
+  release, because its own author put it at +0..+15 Elo and it has had no strength test.
+- CONVERT_BUDGET is BUILT and committed OFF (agent.py only, exactness PASS). It was NOT
+  shippable until convert-clocktest-l passed: it doubles the HARD deadline, which is exactly
   what a clocktest exists to catch. Its own author put the ceiling at +0..+15 Elo, so it is
   a bundle rider, not a release.
 
