@@ -162,6 +162,13 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   (70/70, 40/40) and committed as-is; 141-v92prune tests the pair. ALWAYS commit kernel +
   agent together; never leave the tree with a half-done build at the end of an iteration.
 
+- SCALE BUG FOUND 03:20: on Lichess positions the SF-trained net's evals are 1.72x the
+  targets (slope 1.717 vs the champion's 1.014): the binpack score scale 0.45 cp/unit was
+  wrong by that factor (the right value is ~0.262, i.e. SF's internal units are ~100/328...).
+  A net that shouts 1.7x confuses every pruning margin -- that, plus the human-distribution
+  loss, is why 152-sfnet lost. Shards rescaled in place (cp x0.582), binpack_decode default
+  now 0.262, the mixed net retrained as 153-mixnet2 (overnight/sf_train_mix.sh). The pure
+  SF net could be retried later with the corrected scale (154-sfnet2) if mixnet2 passes.
 - 152-sfnet (the REAL Stockfish-net test) REJECT at 116 games: -76 +/- 48, llr -2.99. The
   pure SF-data net loses at 8 s despite -43% SF-val loss: it forgot the human distribution
   (Lichess-val 2.4x worse) and the platform openings are human positions. Do not ship. The
