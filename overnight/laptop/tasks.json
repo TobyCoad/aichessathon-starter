@@ -1,5 +1,17 @@
 [
  {
+  "name": "149-v94wdl",
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
+  "games": 600,
+  "net": "overnight/nets/157-wdlnet.npz"
+ },
+ {
+  "name": "v94wdl-clocktest-l",
+  "kind": "clocktest",
+  "sed": "s/^CAPTURE_ORDER: Final = False$/CAPTURE_ORDER: Final = True/; s/^QS_TT: Final = False$/QS_TT: Final = True/; s/^ASP_WIDE: Final = False$/ASP_WIDE: Final = True/; s/^NMP_V2B: Final = False$/NMP_V2B: Final = True/",
+  "net": "overnight/nets/157-wdlnet.npz"
+ },
+ {
   "name": "v9core-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^QS_EVAL_CACHE: Final = False$/QS_EVAL_CACHE: Final = True/; s/^ADJUDICATION: Final = False$/ADJUDICATION: Final = True/; s/^HISTORY2_FIX: Final = False$/HISTORY2_FIX: Final = True/; s/^KILLER_CLEAR: Final = False$/KILLER_CLEAR: Final = True/"

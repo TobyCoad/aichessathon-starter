@@ -1,0 +1,7 @@
+PVS: Final = False
+COMPILED_SEARCH: Final = True
+LMR: Final = True
+LMP: Final = False
+SEE: Final = True
+ASPIRATION: Final = True
+REPETITION_TWOFOLD: Final = True

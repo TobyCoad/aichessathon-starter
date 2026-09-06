@@ -1,0 +1,11 @@
+compiled board: on
+agent imported in 32.3s
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\dev\aichessathon\starter\testing\eg_calib.py", line 90, in <module>
+    main()
+  File "C:\dev\aichessathon\starter\testing\eg_calib.py", line 27, in main
+    with open("overnight/eval/endgame_suite.json", encoding="utf-8") as fh:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'overnight/eval/endgame_suite.json'
