@@ -53,9 +53,12 @@ def main() -> None:
 
     tasks = json.loads(TASKS.read_text())
     names = {t["name"] for t in tasks}
-    for entry in (task, clock):
+    # Insert at the FRONT: the worker takes the first task without a result, and anything
+    # queued while the net trained (156-mixnet3, say) would otherwise take the machine for an
+    # hour ahead of the release the human is waiting on.
+    for entry in reversed([task, clock]):
         if entry["name"] not in names:
-            tasks.append(entry)
+            tasks.insert(0, entry)
     TASKS.write_text(json.dumps(tasks, indent=1))
     print(f"v9.4 queued as 149-v94wdl, net {'IN' if keep else 'DROPPED'}: {why}")
 
