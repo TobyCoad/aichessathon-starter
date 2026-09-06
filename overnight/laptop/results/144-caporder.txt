@@ -1,0 +1,7 @@
+name 144-caporder
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+INCONCLUSIVE  144-caporder  ran out of games; champion stays
+  +206 =189 -205  score 50.1%  over 600 games
+  terminations: adjudication 7, checkmate 405, fifty_moves 11, insufficient_material 71, stalemate 3, threefold_repetition 103
