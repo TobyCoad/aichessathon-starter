@@ -347,7 +347,10 @@ def main() -> None:
     )
     parser.add_argument("--workers", type=int, default=max(1, (mp.cpu_count() or 4) - 2))
     parser.add_argument(
-        "--scale", type=float, default=0.262, help="internal score -> cp (0.45 vs SF17.1 gave nets 1.7x too loud)"
+        "--scale",
+        type=float,
+        default=0.262,
+        help="internal score -> cp (0.45 from SF17.1 depth 12 made nets 1.7x too loud)",
     )
     parser.add_argument("--min-ply", type=int, default=16)
     parser.add_argument("--quiet-fraction", type=float, default=0.5)
