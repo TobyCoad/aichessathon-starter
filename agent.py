@@ -1264,6 +1264,17 @@ _DRAW_CAP_FLOOR: Final = 0.25   # seconds, when the increment is still unobserve
 # of them; and 7 of 10 of those moves were played with over 20 s in hand. We spend 43.5% of
 # the clock on moves where |reference| < 30 and 4.1% on the moves at >= +150 -- the manager
 # is indifferent to winning, so the bank is never there when it matters.
+# WIN_FOCUS is the other half of the same finding, and the larger half. In `choose`,
+# TIME_V6 multiplies the soft budget by _STABILITY_SCALE (0.8 once the best move has
+# repeated) AND by the node-effort term max(0.5, 2.0 - 1.6 * fraction) (~0.56 when the
+# best move takes ~90% of the nodes). BOTH conditions are the definition of a won
+# position, so the two compound to ~0.45x exactly when we are winning. Measured against
+# the leaderboard leader on 521 of their own positions replayed through this engine
+# (overnight/eval/v10/opponent_profile.md): at +300..+800 they spend 1.55 s per move and
+# lose 8.4 cp; we spend 0.90 s and lose 23.0 cp. In LEVEL positions we are their exact
+# equal (5.9 vs 5.9) and when LOSING we are better (10.8 vs 27.1). We are only worse where
+# we have already won, and this is the mechanism that makes us so.
+WIN_FOCUS: Final = False
 CONVERT_BUDGET: Final = False
 _CONV_LO: Final = 120           # cp; root score at which a conversion is live
 _CONV_HI: Final = 900           # cp; above this the game wins itself
@@ -2466,6 +2477,10 @@ class FastEngine:
                         fraction = root_nodes.get(best, 0) / total_nodes
                         factor *= max(0.5, 2.0 - 1.6 * fraction)
                     factor = max(0.4, min(1.5, factor))
+                    if WIN_FOCUS and _CONV_LO <= score <= _CONV_HI:
+                        # Never throttle while a win is live: stability and node-effort
+                        # both read "decided" here, and that is precisely wrong.
+                        factor = max(factor, 1.0)
                 if elapsed > factor * budget:
                     break
             elif TIME_V2:
