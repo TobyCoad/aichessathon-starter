@@ -743,6 +743,78 @@ def quiesce(
 
 
 @njit(cache=False, nogil=True)
+def order_node(
+    bb: Any, sq: Any, meta: Any, undo: Any, mv: Any, n: Any, sc: Any,
+    hash_move: Any, k0: Any, k1: Any, butterfly: Any, counter: Any,
+    conthist1: Any, ctrl: Any,
+) -> Any:
+    """Score the n moves in `mv` into `sc` in place; return (base, ch_base).
+
+    Split out of `search` verbatim (SEARCH_SPLIT block C, initsplit.md): numba's
+    type inference is superlinear in the size of ONE function -- measured
+    elasticity 2.65 -- and init is 89% `search`'s compile, so the same code is far
+    cheaper out of line. Pure code motion; the arithmetic is unchanged and the
+    depth-8 node count must stay bit-identical.
+    """
+    history2 = _F_HISTORY2 if _FOLD else ctrl[C_HISTORY2] != 0
+    base = 0
+    counter_move = 0
+    if history2:
+        base = meta[fb.SIDE] * 4096
+        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
+        if prev != 0:
+            counter_move = counter[(prev & 63) * 64 + ((prev >> 6) & 63)]
+    fb.score_moves(
+        mv, n, sq, hash_move, k0, k1, butterfly, sc, counter_move, base
+    )
+    conthist_on = _F_CONT_HIST if _FOLD else ctrl[C_CONT_HIST] != 0
+    ch_base = -1
+    if conthist_on:
+        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
+        if prev != 0:
+            prev_to = (prev >> 6) & 63
+            prev_piece = sq[prev_to]  # the mover is still on its target square
+            if prev_piece >= 0:
+                ch_base = (prev_piece * 64 + prev_to) * 768
+        if ch_base >= 0:
+            # Quiet ordering: butterfly + conthist1. Quiet scores stay within
+            # +/-2*HISTORY_MAX, far below the killer/counter/capture bands.
+            for j in range(n):
+                m = mv[j]
+                to2 = (m >> 6) & 63
+                if (
+                    (m >> 12) == 0
+                    and sq[to2] < 0
+                    and m != hash_move
+                    and m != k0
+                    and m != k1
+                    and m != counter_move
+                ):
+                    sc[j] += conthist1[ch_base + sq[m & 63] * 64 + to2]
+    capture_order = _F_CAPTURE_ORDER if _FOLD else ctrl[C_CAPTURE_ORDER] != 0
+    if capture_order:
+        # Rescore non-promotion captures (EP stays a quiet: sq[to] < 0, same as
+        # score_moves). SEE-losing captures fall below every quiet score
+        # (quiets stay within +/-2*HISTORY_MAX); winning/equal captures keep
+        # the MVV-LVA band with a capture-history tiebreak on top.
+        for j in range(n):
+            m = mv[j]
+            if m == hash_move or (m >> 12) != 0:
+                continue
+            to2 = (m >> 6) & 63
+            victim = sq[to2]
+            if victim < 0:
+                continue
+            chv = conthist1[(sq[m & 63] * 64 + to2) * 6 + victim % 6]
+            sv = fb.see(bb, sq, meta, m)
+            if sv < 0:
+                sc[j] = -(1 << 21) + sv * 16 + chv // 16
+            else:
+                sc[j] = fb.CAPTURE_BONUS + MVV[victim % 6] * 16 - MVV[sq[m & 63] % 6] + chv // 16
+    return base, ch_base
+
+
+@njit(cache=False, nogil=True)
 def search(
     bb: Any, sq: Any, meta: Any, undo: Any, keys: Any,
     w1: Any, b1: Any, white: Any, black: Any, astack: Any, zones: Any, king_zones: Any,
@@ -1061,61 +1133,13 @@ def search(
     if n == 0:
         return -MATE + ply if in_check else 0
     sc = scores[ply]
-    history2 = _F_HISTORY2 if _FOLD else ctrl[C_HISTORY2] != 0
-    base = 0
-    counter_move = 0
-    if history2:
-        base = meta[fb.SIDE] * 4096
-        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
-        if prev != 0:
-            counter_move = counter[(prev & 63) * 64 + ((prev >> 6) & 63)]
-    fb.score_moves(
-        mv, n, sq, hash_move, killers[ply, 0], killers[ply, 1], butterfly, sc, counter_move, base
+    base, ch_base = order_node(
+        bb, sq, meta, undo, mv, n, sc, hash_move, killers[ply, 0], killers[ply, 1],
+        butterfly, counter, conthist1, ctrl,
     )
+    history2 = _F_HISTORY2 if _FOLD else ctrl[C_HISTORY2] != 0
     conthist_on = _F_CONT_HIST if _FOLD else ctrl[C_CONT_HIST] != 0
-    ch_base = -1
-    if conthist_on:
-        prev = undo[meta[fb.PLY] - 1, fb.U_MOVE] if meta[fb.PLY] > 0 else 0
-        if prev != 0:
-            prev_to = (prev >> 6) & 63
-            prev_piece = sq[prev_to]  # the mover is still on its target square
-            if prev_piece >= 0:
-                ch_base = (prev_piece * 64 + prev_to) * 768
-        if ch_base >= 0:
-            # Quiet ordering: butterfly + conthist1. Quiet scores stay within
-            # +/-2*HISTORY_MAX, far below the killer/counter/capture bands.
-            for j in range(n):
-                m = mv[j]
-                to2 = (m >> 6) & 63
-                if (
-                    (m >> 12) == 0
-                    and sq[to2] < 0
-                    and m != hash_move
-                    and m != killers[ply, 0]
-                    and m != killers[ply, 1]
-                    and m != counter_move
-                ):
-                    sc[j] += conthist1[ch_base + sq[m & 63] * 64 + to2]
     capture_order = _F_CAPTURE_ORDER if _FOLD else ctrl[C_CAPTURE_ORDER] != 0
-    if capture_order:
-        # Rescore non-promotion captures (EP stays a quiet: sq[to] < 0, same as
-        # score_moves). SEE-losing captures fall below every quiet score
-        # (quiets stay within +/-2*HISTORY_MAX); winning/equal captures keep
-        # the MVV-LVA band with a capture-history tiebreak on top.
-        for j in range(n):
-            m = mv[j]
-            if m == hash_move or (m >> 12) != 0:
-                continue
-            to2 = (m >> 6) & 63
-            victim = sq[to2]
-            if victim < 0:
-                continue
-            chv = conthist1[(sq[m & 63] * 64 + to2) * 6 + victim % 6]
-            sv = fb.see(bb, sq, meta, m)
-            if sv < 0:
-                sc[j] = -(1 << 21) + sv * 16 + chv // 16
-            else:
-                sc[j] = fb.CAPTURE_BONUS + MVV[victim % 6] * 16 - MVV[sq[m & 63] % 6] + chv // 16
 
     best_score = -INFINITY
     best_move = 0
