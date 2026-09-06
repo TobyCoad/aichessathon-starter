@@ -387,6 +387,35 @@ same budget (6 epochs, --limit 40000000):
   +10. Worth knowing when reading any promotion: +19 at 200 games is much weaker evidence
   than it sounds, which is what 155-mixnet2s demonstrated in public (+69 at 76 -> -3 at 346).
 
+## INIT TIME IS THE #1 RISK -- IT IS COSTING US GAMES, NOT JUST UPLOADS (6 Sep 12:45)
+The v9.4 upload FAILED first time: "no ready line within the 90 s init budget". The retry
+validated, but at **88.1 s of the 90 s budget** on one smoke game. Four platform samples:
+74.1 s, >90 s (FAILED), 88.1 s, 64.1 s. The platform starts a FRESH PROCESS FOR EVERY LADDER
+GAME and a game that overruns init is lost outright ("game ended white by init"). On that
+sample we may be losing something like a quarter of our games before a move is played --
+which dwarfs the +70 Elo v9.4 just bought. TREAT INIT AS THE TOP v9.5 ITEM.
+- Their box is ~2.1x this laptop on compile, not the 1.55-1.8x we had assumed. Recompute
+  every init margin with 2.1x, and treat local <= 30 s as the ceiling, not a target.
+- PROFILED: 89% of init is fs.warm_up -- numba JIT of the search kernel (28.9 s of 32.4 s).
+  Everything else (numpy, chess, numba, fastboard, fastsearch, the net load) is 3.5 s total.
+  NUMBA_OPT is NOT a lever: 1/2/default all measure 36-40 s, inside the noise.
+- DONE THIS SESSION: INIT_FOLD extended from 18 to 27 kernel slots -- NMP_V2, NMP_V2B, QS_TT,
+  CAPTURE_ORDER (shipped True) + CONT_HIST, ENDGAME_SHRINK (closed False) + RAZOR, SEE_QUIET,
+  SINGULAR_EXT2 (False in the champion). Folding a FALSE slot deletes its branch from the
+  compile, so the closed switches pay as much as the shipped ones. Local idle import
+  35.5-38.1 s -> 29.6-30.3 s. Gates: ruff, mypy, check_fastsearch 70/70 + 40/40 PASS, bench
+  depth 8 = 1,110,289 nodes with the fold ON and OFF (bit-identical).
+  NOTE: this only helps when INIT_FOLD is True, which is done in the ZIP COPY at build time.
+- STILL NOT SAFE. 30 s local x2.1 is ~63 s typical, but the platform's spread was 64-90+ s on
+  identical code, so the worst case is still near the cliff. The next lever is structural, and
+  someone should scope it before the freeze: warm_up compiles the whole search eagerly at
+  import. Options are (a) compile a reduced kernel eagerly and the rest during the first move
+  (the clock is 120 s + 0.5 s, so a slow first move is survivable where a failed init is not),
+  (b) cut the number of njit specialisations warm_up forces, (c) shrink the kernel itself by
+  deleting closed switches outright rather than folding them.
+- DO NOT add new switches to the kernel without measuring init. Every unfolded boolean costs
+  compile time in both directions; fold each one as soon as its verdict lands.
+
 ## v9.4 SHIPPED AND UPLOADED 6 Sep 12:13 -- queue freeze LIFTED
 The human uploaded v9.4 for the next round and is away until ~15:00. Independent checks
 before he uploaded: clocktest PASS (0/6 flags, lowest clock 5.7 s vs a 5 s floor); the zip
