@@ -1447,3 +1447,49 @@ the opposite thing -- is a contained agent.py job but not a twelve-minute one, a
 rule against ending an iteration with a half-done build in the tree is a rule I would rather
 keep than test. It is unblocked now, which is the point: after today it can be judged by a
 referee that agrees with the platform about what a long game is worth.
+
+### 6 Sep 11:45 (iteration 28) -- the engine half of the 600-ply finding
+
+Iteration 27 fixed the instrument and deliberately did not start the engine change, because
+it is not a twelve-minute job and the standing rule is not to end an iteration with a half-done
+build in the tree. This iteration built it: ADJ_V2, off in the tree, agent.py only, no kernel.
+
+The change reads as small -- one constant goes from 300 to 600 in the two places the cap is
+read -- and it is not. `late`, the ramp that scales every adjudication-driven term, starts at
+half the cap, so the champion is at late 0.50 by ply 225, not ply 300. I measured the actual
+draw scores rather than reasoning about them. A rook down, the champion values a draw at
++170 cp at ply 225 and +320 cp from ply 300 on; at our longest recorded game, 323 plies, it is
+still +320. That is more than a rook, and the premise it rests on -- "behind on material at the
+cap is a loss, so buy the draw before the deadline" -- is one the canonical rules contradict.
+At 600 the game is drawn whatever the material. There is no deadline to buy your way out of.
+
+So I reconsidered ADJ_BEHIND_LATE instead of re-basing it, which is what the plan asked for.
+Under the true rule the behind side is not escaping a loss, it is merely declining to lose on
+the board for the plies that remain, and the cap delivers the draw for free. That is worth a
+bounded preference, not a decisive one: ADJ_BEHIND_LATE_V2 is 100 cp, a draw worth a pawn and
+never a rook, and it only ramps from ply 300. Ahead, the correction runs the other way and
+nobody had modelled it at all -- at 600 a won position becomes a draw, so the ahead-side
+urgency is real but belongs near 600, where ADJ_V2 now puts it, instead of arriving 300 plies
+early. The fifty-move plan's window moves to 520-600, which is to say it should never have
+fired in any game we have played, and under ADJ_V2 it will not.
+
+I did not bench it. The two paths are identical at every ply at or below 150 and testing.bench
+starts from the initial position, so the node count cannot differ; running it would have cost
+several minutes of a machine that is currently carrying a release gauntlet and told us a
+number we already know. ruff, mypy and check_fastsearch (70/70 exact, 40/40 with the table on)
+all pass.
+
+What makes this worth a bundle slot rather than a tidy-up is that it is now honestly
+measurable. Our referee agreed with the platform as of yesterday's fix, so a gauntlet no longer
+rewards the false premise -- and games in it are no longer cut off at 300 plies, which means a
+larger share of them now spend real time in the band where the champion is quietly valuing a
+draw at more than a rook. ADJ_V2 goes into the v9.5 bundle with the widened DRAW_BUDGET,
+ROOT_NODES, SINGULAR_EXT2 and RAZOR; the sed is written into NOTES so the next iteration can
+queue it without rebuilding it.
+
+One thing I nearly got wrong. There were 33 python processes on the laptop, which is the exact
+signature iteration 26 recorded as a disaster, and the reflex was to reap. They were all
+descended from the live gauntlet: pool parent, eight workers, a harness runner under each and
+an engine under that. A raw process count is not evidence of orphans -- parentage is. 149-v94wdl
+is at 120 games, +70 with llr +1.61, and its first checkpoint lands around 12:01; the release
+follows the checkpoint line, not the trend.

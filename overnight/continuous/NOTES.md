@@ -251,6 +251,7 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   result and stands.
 
 ## Champion
+- ADJ_V2 built 6 Sep 11:45, OFF (iter 28) -- v9.5 bundle. See "Running now (iter 28)".
 - v9.3 (6 Sep 07:15, emailed) = v9.2 + the mixed SF/Lichess net (153-mixnet2, PROMOTE +19 at
   200, md5 45f73c3f, genuine). weights/net.npz in the tree IS this net now. Every net task
   from here is judged against it; 155-mixnet2s (output x1.31) runs next.
@@ -498,6 +499,53 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
  3. Only then gauntlet it, and only against a 600-ply referee.
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
+
+## Running now (6 Sep 11:45, iter 28)
+- ADJ_V2 BUILT (commit 2105724, OFF in the tree) -- the engine half of the 600-ply finding,
+  step 2 of the plan in "THE PLY CAP IS 600" above. agent.py only, no kernel touched.
+  `cap = PLATFORM_PLY_CAP (600) if ADJ_V2 else ADJUDICATION_PLY (300)` in BOTH places the cap
+  is read: `_contempt`'s `late = (game_ply - cap/2) / (cap/2)` and the ADJ_WINDOW fifty-move
+  plan in `search.prepare`. ADJ_BEHIND_LATE was reconsidered, not re-tuned: under the true
+  rule the behind side is not buying its way out of a loss (the cap DRAWS whatever the
+  material), so the bonus is a bounded preference -- ADJ_BEHIND_LATE_V2 = 100 cp, "a draw is
+  worth a pawn, never a rook".
+- THE SIZE OF IT IS THE RAMP, NOT THE CAP, and it is much bigger than "a rule that fires past
+  ply 300". `late` starts at cap/2, so the CHAMPION is at late 0.50 by ply 225. Measured by
+  direct call, draw score a rook down (champion -> ADJ_V2): ply 225 +170 -> +20, ply 300
+  +320 -> +20, ply 323 (our longest game ever) +320 -> +27, ply 450 +320 -> +70, ply 600
+  +320 -> +120. Ahead: ply 225 -37 -> -25, ply 300 -50 -> -25. So today, in ordinary long
+  middlegames, we value a draw at more than a rook when behind on premises the canonical rules
+  contradict. Identical to the champion at every ply <= 150.
+- NO BENCH RUN, deliberately: the two paths are identical below ply 150 and `testing.bench`
+  starts from the initial position, so its node count cannot differ. ruff + mypy clean,
+  check_fastsearch 70/70 exact + 40/40 PASS (run under the live gauntlet).
+- ADJ_V2 IS NOW HONESTLY MEASURABLE and that is new: iter 26 corrected testing/referee.py to
+  the 600-ply draw, so a gauntlet no longer rewards the false premise. It also means gauntlet
+  games get LONGER (nothing is cut off at 300 any more), so a larger share of games now spend
+  time in the band where the champion's +170..+320 draw score is live. It goes in the v9.5
+  bundle, not a gauntlet of its own -- one gauntlet per version stands.
+- v9.5 BUNDLE SED, ready to queue the moment v9.4 has shipped and 146-cutnode / 147b-seequiet
+  have returned (add CUTNODE / SEE_QUIET to it only if they promote):
+  s/^ADJ_V2: Final = False$/ADJ_V2: Final = True/; s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^ROOT_NODES: Final = False$/ROOT_NODES: Final = True/; s/^SINGULAR_EXT2: Final = False$/SINGULAR_EXT2: Final = True/; s/^RAZOR: Final = False$/RAZOR: Final = True/
+  Its clocktest gate is `drawcap2-clocktest-l` (already queued, for the WIDENED DRAW_BUDGET;
+  the narrow version's PASS does not transfer). ADJ_V2 adds no time-management risk.
+- 149-v94wdl AT 118 GAMES 11:37, +71.7 +/- 58.9, llr +1.59 -- tracking well above the +10
+  promote line, first checkpoint at 200 games ~12:01. NOT YET A VERDICT: read the checkpoint
+  line, and remember the measured power (a +19 at 200 promoted 155-mixnet2s' ancestor and
+  +69 at 76 games decayed to -3 by 346). Queue order behind it is right: v94wdl-clocktest-l
+  (the release gate) -> drawcap2-clocktest-l -> 146-cutnode -> 147b-seequiet.
+- PROCESS CHECK: 33 python processes looked like the orphan disaster of iter 26 but is the
+  NORMAL shape of a running gauntlet -- gauntlet -> pool parent -> 8 pool workers -> a harness
+  runner each -> an engine each, every one of them descended from the live gauntlet pid 5660.
+  Check parentage before reaping; a raw count is not evidence of orphans.
+- NEXT STEP, in order: (1) the moment 149-v94wdl checkpoints PROMOTE and v94wdl-clocktest-l
+  PASSes, ship v9.4 exactly as the human's instruction section says (flip the four switches +
+  copy overnight/nets/157-wdlnet.npz into the tree, exact check, zip FROM the tested
+  challenger with INIT_FOLD True, clean-unzip import < 45 s, CANDIDATE.md, notify);
+  (2) then add `train.py|merge_mix` to worker.sh's busy_gauntlets regex (still deferred on
+  purpose -- it would make the worker WAIT and block the release gauntlet);
+  (3) then queue the v9.5 bundle with the sed above; (4) the RAZOR TT-store lever remains the
+  only untried improvement to RAZOR -- do not re-tune its margins.
 
 ## Running now (6 Sep 11:20, iter 27)
 - THE REFEREE NOW PLAYS THE PLATFORM'S GAME (commit ce2f33d, iter 26's item 0, DONE).
