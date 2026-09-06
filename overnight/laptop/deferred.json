@@ -18,5 +18,11 @@
   "name": "146-cutnode",
   "sed": "s/^CUTNODE: Final = False$/CUTNODE: Final = True/",
   "games": 600
+ },
+ {
+  "name": "156-mixnet3",
+  "net": "overnight/nets/156-mixnet3.npz",
+  "sed": "",
+  "games": 600
  }
 ]
