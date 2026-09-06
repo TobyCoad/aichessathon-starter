@@ -408,6 +408,41 @@ before release". He is awaiting the v9.4 email and wants it expedited without lo
   output-slope rescale is worth NOTHING in games (+69 at 76 games decayed to -3 by 346) --
   SLOPE RESCALE CLOSED. Measure slope as a diagnostic, never ship a rescale.
 
+## Running now (6 Sep 10:45, iter 26)
+- THE MACHINE WAS NOT ACTUALLY QUIET. The session stopped 147b-seequiet at 10:18 and moved
+  it to deferred.json, but SEVEN orphaned gauntlet pool workers (parent 52300, dead; spawned
+  10:00) were still playing games. Free RAM was 8.8 GB and the WDL trainer -- the thing the
+  v9.4 release waits on -- had gone 115 s -> 734 s -> 595 s -> 242 s per epoch. Reaped them
+  (`reap_orphans`, "reaped 7 orphans"); python processes 13 -> 6. STANDING LESSON: killing a
+  gauntlet's parent does NOT stop its pool; ALWAYS run reap_orphans after stopping a task,
+  and check the process list rather than trusting tasks.json/heartbeat.
+- LAPTOP DELIBERATELY LEFT IDLE. tasks.json holds only clocktests that already have result
+  files, so the worker has nothing pending -- and that is the RIGHT state right now: at
+  ~115 s/epoch unloaded the WDL run has ~12-15 min left, so 149-v94wdl can queue ~11:10.
+  A 10 min clocktest started now would cost ~5 min on the release path. Do not fill the
+  machine until 149-v94wdl is running. (Queue freeze from the session still applies.)
+- TWO TRAINERS SHARE THE GPU (session-owned, not touched): the WDL fine-tune (PID 51964,
+  started 09:34, epoch 6/12 at 10:22, val 0.005991 best at epoch 4) and `pilot-heads12.pt`
+  (PID 52656, started 10:17) -- the 12-bucket NET_V10 pilot. Noted only so a later iteration
+  does not mistake the second one for a stray.
+- DRAW_BUDGET WIDENED (round 31 item 4a) 6 Sep 10:40, still OFF in the tree: `_DRAW_PIECES`
+  10 -> 14 and the clock guard moved off LOW_CLOCK_V6 onto its own `_DRAW_MIN_CLOCK = 8.0`.
+  agent.py only, no kernel touched. ruff / mypy / check_fastsearch 70/70 exact + 40/40 PASS.
+  Verified by direct call: a 13-piece shuffle with 10 s left now caps to 0.40 s (the narrow
+  guards refused it on BOTH counts), a 9-piece one still caps, 20 pieces still does not.
+  IT DOES NOT INHERIT drawcap-clocktest-l's PASS -- widening makes it fire far more often.
+  `drawcap2-clocktest-l` is parked in overnight/laptop/deferred.json and MUST run before
+  DRAW_BUDGET ships in v9.5. The narrow version is dead; do not ship the old PASS.
+- RAZOR, ROOT_NODES, SINGULAR_EXT2 unchanged and still off. v9.5 bundle union: DRAW_BUDGET
+  (widened, needs drawcap2-clocktest-l) + ROOT_NODES + SINGULAR_EXT2 + RAZOR + whatever
+  SEE_QUIET / CUTNODE return when they are re-queued after v9.4.
+- NEXT STEP, in order: (1) if 149-v94wdl has a PROMOTE verdict + v94wdl-clocktest-l PASS,
+  ship v9.4 exactly as the human's instruction section says; (2) the moment 149-v94wdl is
+  RUNNING, re-add 146-cutnode, 147b-seequiet, drawcap2-clocktest-l from deferred.json;
+  (3) then add `train.py|merge_mix` to worker.sh's busy_gauntlets regex (iter 25's root
+  cause, deferred on purpose); (4) the RAZOR TT-store lever is still the only untried
+  improvement to RAZOR -- do not re-tune its margins.
+
 ## Running now (6 Sep 10:10, iter 25)
 - THE LAPTOP WAS IDLE and 147-seequiet's REJECT IS NOT AN ENGINE VERDICT. Both fixed.
   (a) The worker finished the withdrawn 149-v94wdl at 09:40 and then had NOTHING pending:

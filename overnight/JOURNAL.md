@@ -1330,3 +1330,41 @@ So RAZOR is a weak switch on the evidence I have -- 1.4% fewer nodes at fixed de
 to nothing -- and I have said so rather than dressing it up. It rides in the v9.5 bundle with
 ROOT_NODES, SINGULAR_EXT2 and DRAW_BUDGET, it does not get a gauntlet of its own, and it is
 named as the second switch to drop if that bundle fails.
+
+6 Sep 10:45 (loop iter 26) The queue said the machine was quiet and the process list said it
+was not. The session had stopped 147b-seequiet at 10:18 and moved it into deferred.json, but
+seven of its multiprocessing pool workers were still alive with a dead parent, still playing
+games, spawned at 10:00. Free RAM was 8.8 GB of 31.4 and the WDL trainer -- the one thing the
+v9.4 release the human is waiting on actually depends on -- had gone from 115 s an epoch to
+734, then 595, then 242. I ran reap_orphans; it reaped seven and the python count fell from
+thirteen to six. The lesson is worth carrying: killing a gauntlet's parent does not stop its
+pool, so reap_orphans belongs after every stop, and the process list is the truth rather than
+tasks.json or the heartbeat file.
+
+I then left the laptop deliberately idle, which is not the usual instinct. Every entry in
+tasks.json already has a result file so the worker has nothing pending, and at roughly 115 s
+an epoch unloaded the WDL run has about twelve to fifteen minutes left, which puts 149-v94wdl
+in the queue near 11:10. A ten minute clocktest started now would take perhaps five minutes
+off the release path for no gain, because the v9.5 bundle cannot be queued until v9.4's
+verdict moves the champion anyway. Idle is the correct state until that gauntlet is running.
+Two trainers are sharing the GPU -- the WDL fine-tune and, since 10:17, the twelve-bucket
+NET_V10 pilot -- both session-owned; I noted them so nobody later mistakes the second for a
+stray and kills it.
+
+The build this iteration was the one concrete item round 31's post-mortem produced: widening
+DRAW_BUDGET's guards from ten pieces and twelve seconds to fourteen pieces and eight seconds.
+Round 31 measured the narrow version inert, overlapping on about three of the hundred and six
+drawn shuffle moves, so it was shipping a switch that never fired. The change is agent.py
+only, no kernel, and I moved the clock test off LOW_CLOCK_V6 onto its own _DRAW_MIN_CLOCK
+rather than coupling it to a TIME_V6 constant. ruff, mypy and check_fastsearch all pass --
+70/70 exact and 40/40 best-move agreement. I checked the guards by calling the function
+directly instead of trusting the arithmetic: a thirteen-piece shuffle with ten seconds left
+now caps the soft budget to 0.40 s where the narrow guards refused it on both counts, a
+nine-piece position still caps, and twenty pieces still does not.
+
+What matters more than the widening is that it cannot inherit its own tick. drawcap-clocktest-l
+passed this morning against the narrow guards, and widening makes the cap fire far more often,
+so that PASS is not evidence about the switch that now sits in the tree. I parked
+drawcap2-clocktest-l in deferred.json and wrote into NOTES that DRAW_BUDGET does not ship in
+v9.5 without it. The narrow version is dead either way; there is no configuration left that
+the old PASS describes.

@@ -1190,14 +1190,20 @@ _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
 # DRAW_BUDGET (rounds25-29 P2): round 27 spent 63.5 s -- 53% of the game clock --
 # on 61 moves whose reference evaluation was exactly 0. Once the root score has
 # hugged the draw score for six of our searches in a row, the halfmove clock is
-# past 20 and ten or fewer pieces remain, thinking harder does not change the
+# past 20 and fourteen or fewer pieces remain, thinking harder does not change the
 # move: cap the soft budget near the observed increment and bank the clock for
 # a game that comes alive later. The hard deadline is never touched.
 DRAW_BUDGET: Final = False
 _DRAW_BAND: Final = 25          # |root score| that counts as holding the draw, cp
 _DRAW_MOVES: Final = 6          # consecutive own searches inside the band
 _DRAW_HMC: Final = 20           # halfmove clock that proves no progress either way
-_DRAW_PIECES: Final = 10
+# Round 31 (6 Sep) measured the narrow guards INERT: `pieces <= 10` and
+# `clock > 12` overlapped on ~3 of the 106 drawn shuffle moves that game, so the
+# cap never fired. Widened to 14 pieces / 8 s, which covers those 106 moves and
+# banks ~30-35 s. Widening makes it fire far more often, so this DOES NOT inherit
+# drawcap-clocktest-l's PASS: re-run the clocktest before it ships.
+_DRAW_PIECES: Final = 14
+_DRAW_MIN_CLOCK: Final = 8.0    # seconds left below which we never cap the budget
 _DRAW_CAP_FLOOR: Final = 0.25   # seconds, when the increment is still unobserved
 _DRAW_SCORES: list[int] = []    # our root scores this game, newest last
 _DRAW_LAST_PLY: int = -1
@@ -2651,7 +2657,7 @@ def _draw_budget_soft(board: chess.Board, time_left_ms: int, soft: float) -> flo
         and all(abs(s) <= _DRAW_BAND for s in _DRAW_SCORES)
         and board.halfmove_clock > _DRAW_HMC
         and chess.popcount(board.occupied) <= _DRAW_PIECES
-        and time_left_ms / 1000.0 > LOW_CLOCK_V6
+        and time_left_ms / 1000.0 > _DRAW_MIN_CLOCK
     ):
         cap = max(_DRAW_CAP_FLOOR, 0.8 * _observed_increment())
         return min(soft, time.monotonic() + cap)
