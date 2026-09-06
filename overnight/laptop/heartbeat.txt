@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 06:58
-task 153-mixnet2
-progress     175 games  .... llr +0.31 [-2.94, 2.94] after 87 pairs, elo +18.0 +/- 44.9
+time 2026-09-06 07:18
+task 155-mixnet2s
+progress      24 games  .... llr +0.24 [-2.94, 2.94] after 12 pairs, elo +43.7 +/- 113.4
