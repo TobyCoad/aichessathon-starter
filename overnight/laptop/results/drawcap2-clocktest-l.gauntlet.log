@@ -1,0 +1,16 @@
+drawcap2-clocktest-l: 6 games at 120s+0.5s, charged x1.5 +20 ms/move, 4 workers
+compiled board: on
+    98 plies  1/2-1/2       lowest clock    6.9s  longest move  10.8s  at ply 30   62.7s  used w   137s b   137s
+compiled board: on
+   112 plies  0-1           lowest clock    6.9s  longest move   9.3s  at ply 30   53.4s  used w   138s b   137s
+compiled board: on
+   187 plies  1/2-1/2       lowest clock    5.7s  longest move  10.9s  at ply 30   53.0s  used w   155s b   155s
+compiled board: on
+   325 plies  1/2-1/2       lowest clock    5.6s  longest move   9.4s  at ply 30   73.2s  used w   193s b   192s
+compiled board: on
+    49 plies  1/2-1/2       lowest clock   25.5s  longest move  10.1s  at ply 30   76.9s  used w   106s b    99s
+compiled board: on
+   158 plies  0-1           lowest clock    6.2s  longest move   8.8s  at ply 30   65.7s  used w   150s b   149s
+
+flags 0/6  errors 0  lowest clock 5.6s  longest move 10.9s
+PASS
