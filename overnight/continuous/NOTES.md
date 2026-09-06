@@ -597,8 +597,10 @@ around 15:00 (measured rate ~3.5 games/min). Two things were done instead.
     chosen over any kernel-side one. NOTES' rule "do not add new switches to the kernel
     without measuring init" now effectively rules out kernel fillers before the freeze.
   * GATES: ruff PASS, mypy PASS, check_fastsearch 70/70 exact + 40/40 table-on PASS.
-  * BENCH CAVEAT, read it before quoting a number: `testing.bench` runs 
-    UNRELATED positions through ONE engine instance, so the shift path does execute there
+  * BENCH: depth 8 **1,110,289 nodes**, 227 knps under gauntlet load -- BIT-IDENTICAL to the
+    v9.4 champion's 1,110,289, i.e. the switch does not perturb the benchmark at all.
+  * BENCH CAVEAT, read it before quoting that number as evidence of a no-op: `testing.bench`
+    runs UNRELATED positions through ONE engine instance, so the shift path does execute there
     but carries killers between positions that never follow each other in a game. Any node
     difference the depth-8 bench shows is therefore an artefact of the instrument, not a
     property of the switch; it is neither evidence for nor against. The switch is
