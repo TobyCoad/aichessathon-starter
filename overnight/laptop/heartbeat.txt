@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 11:41
+time 2026-09-06 11:51
 task 149-v94wdl
-progress     134 games  .... llr +1.87 [-2.94, 2.94] after 67 pairs, elo +68.3 +/- 52.3
+progress     170 games  .... llr +2.51 [-2.94, 2.94] after 85 pairs, elo +68.3 +/- 44.9
