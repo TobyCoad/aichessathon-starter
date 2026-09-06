@@ -101,6 +101,27 @@ JOURNAL.md; add the iteration's line to JOURNAL.md too.
   zip time flip INIT_FOLD True in the tested challenger, re-check bench nodes + import.
   Scratch build kept in overnight/challengers/initfold.
 ## Stockfish-data net (the human's overnight priority, run by the interactive session -- NOT the loop)
+- SESSION HANDOVER 6 Sep 07:20: Fable -> Opus (interactive). Lane unchanged: the
+  interactive session owns the GPU and the net line; the loop owns search bundles and
+  folds net verdicts when they land in overnight/laptop/results/.
+- 156-mixnet3 TRAINING NOW (started 07:23, ~2.4 h, PID 14984 detached; log
+  overnight/eval/train-mix3.log, script overnight/sf_train_mix3.sh). ONE change from the
+  mix2 recipe: model selection validates on data/mixval.npy, a 50/50 shuffle of 500k
+  Lichess val + 500k SF val, instead of SF val alone. RATIONALE: mix2 early-stopped on
+  sf_val only, so nothing in the recipe defended the human distribution -- and that is
+  exactly the shape of its damage. eg_calib_v93 vs eg_calib: 5-8 pieces 673.7 -> 331.9 cp
+  (-51%, the band that loses us games) but 9-12 228.4 -> 262.6 (+15%) and 13-16
+  137.3 -> 184.4 (+34%). If the regression is a selection artefact, a combined criterion
+  keeps the 5-8 win and gives back less. Baseline recorded: initial (champion) loss on the
+  combined val 0.004967. Chain auto-runs export --half -> check_nnue -> endgame suite ->
+  xval (lichess/sf) -> stages the net at overnight/nets/156-mixnet3.npz (OUTSIDE the
+  challenger dir, per the 150-sfnet bug) -> queues 156-mixnet3 (600 games, 8 s) and
+  aborts if the net is byte-identical to the tree's. Judge on the GAMES; per the loop's
+  method note the 400-position suite is a gross-regression veto only.
+- LAUNCH GOTCHA (cost 3 attempts): PowerShell Start-Process on Git bash needs a LOGIN
+  shell -- `bash.exe -lc "cd /c/dev/aichessathon/starter && exec bash <script>"`. Without
+  -l the child has no PATH, so dirname/date are not found and the job dies silently in
+  seconds while looking launched.
 - Source: linrock/test80-2024 binpacks (Stockfish self-play, engine-distribution positions).
   Decoder training/binpack_decode.py (validated: 435k sample entries, 0 invalid boards /
   illegal moves; scores are side-to-move internal units, int16-wrapped, VALUE_NONE 32002
