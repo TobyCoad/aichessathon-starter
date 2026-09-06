@@ -564,6 +564,57 @@ NEXT ITERATION, in this order (it is a contained agent.py + testing/ job, no ker
 Do NOT close this by arguing the old numbers were fine because v9 promoted: v9 promoted a
 four-switch bundle under a referee that shared the bug.
 
+## Running now (6 Sep 14:35, iter 33) -- INIT MEASURED TO THE PASS: SEARCH_SPLIT is the lever
+Nothing could ship again: `160-v95` was at 348 games / +8.0 at 14:27 and decides at 400
+(~14:42), and its two clocktests (`initasync-clocktest-l` then `v95-clocktest-l`, ~10 min
+each) only start after that -- so v9.5's gate closes ~15:05, in the NEXT iteration. The
+window went on the two things that were unblocked: the four unfolded post-mortems (agent
+running, report -> overnight/eval/v10/rounds32-37.md) and INIT, which NOTES calls the #1
+risk and which was still only scoped as "someone should look at (a)/(b)/(c)".
+- **IT IS NOW MEASURED, not scoped. Full report: overnight/eval/v10/initsplit.md.**
+  New instrument, reusable: `overnight/eval/initprof.py` (copy into a challenger dir, run
+  with that dir as cwd) attributes numba compile seconds per dispatcher, then per compiler
+  PASS, plus an IR-size proxy. Everything below was taken under `160-v95`'s load, so
+  absolutes are ~20% high; all comparisons are between runs under the same load.
+- **89% of init is one function and 71% of that is TYPE INFERENCE.** Champion + INIT_FOLD:
+  import 37.4 s, of which numba compile 37.3 s, of which `search` 24.5 s exclusive /
+  32.6 s inclusive. No other function exceeds 2.3 s. Inside `search`: type inference
+  21.95 s, native lowering 6.71 s, everything else 2.17 s. THIS EXPLAINS THE OLD NULL
+  RESULT: NUMBA_OPT 1/2/default all measured 36-40 s because LLVM is not where the time is.
+- **Inference is superlinear in single-function size, exponent 2.65 (measured).** INIT_FOLD
+  off vs on is a clean within-function pair: LLVM lines 17,627 -> 15,953 (-9.5%) but
+  inference 30.6 -> 23.5 s (-23.3%). Lowering's elasticity is 1.6. A cross-function check
+  agrees on the shape (make_move 4,879 lines -> 0.91 s; quiesce 10,578 -> 4.15 s; search
+  15,953 -> 23.5 s). Between quadratic and cubic. Consequence: the SAME code costs far less
+  to compile spread over several njit functions than inside one.
+  * This also retires lever (c) ("delete closed switches outright"): folding already removes
+    them before typing and there are only 27, so INIT_FOLD has taken nearly all of it.
+- **NEXT BUILD = `SEARCH_SPLIT` (no switch; it is pure code motion).** Four blocks of
+  `fastsearch.py:746-1394` are self-contained and do NOT call `search`, so moving them out
+  creates no mutual recursion (the thing numba handles badly): A TT probe 807-841, B eval /
+  improving / RFP / razor / futility flags 859-943, C movegen + ordering 1059-1141,
+  D TT store 1356-1391. ~235 of 650 lines, 36% of the body. NMP (944-1020), the singular /
+  extend_hash block (1021-1058) and the move loop (1142-1347) all recurse and STAY.
+  * Predicted at the measured exponent: 23.5 s * 0.64^2.65 = 7.5 s + ~2-3 s for the helpers
+    = **~-13 s local, ~-27 s on the platform at 2.1x** (typical 63 s -> ~36 s, the worst
+    observed 90+ s -> ~51 s). At a conservative exponent 2.0 it is still -8 s / -17 s.
+  * Order: C -> B -> A -> D, biggest first, ONE BLOCK PER COMMIT so a knps regression can
+    be bisected. Gate after each: ruff, mypy, check_fastsearch 70/70 + 40/40, bench depth 8
+    node count **bit-identical to 1,110,289**, and re-run initprof to record the new number.
+  * THE ONE RISK: njit->njit is a real call. LLVM normally inlines small ones and LLVM opt
+    is cheap here, so expect nil -- but MEASURE knps, do not assume. If knps drops, the fix
+    is `inline='always'` on that helper -- which hands the compile time straight back,
+    because IR-level inlining happens BEFORE type inference. That trade is the whole point.
+  * Why this outranks everything else on the board: it is bigger than any search bundle we
+    have shipped. Four platform init samples are 74.1 / >90 (GAME LOST) / 88.1 / 64.1 s
+    against a 90 s budget; a game lost at init is a whole point.
+- Second-order, only if it falls out of the split: `gen_legal` compiles 3x (2.3 s) and
+  make_full / make_light / score_moves / qs_tt_store 2x each -- extra signatures forced by
+  differing argument types at the call sites, ~1.5 s if unified. `quiesce` (4.2 s inference,
+  10,578 lines) is the next candidate for the same treatment, after `search`.
+- QUEUE unchanged: `160-v95` -> `initasync-clocktest-l` -> `v95-clocktest-l` -> `165-v96`
+  -> `v96-clocktest-l` -> `v96-120s` -> `v94-120s`.
+
 ## Running now (6 Sep 14:10, iter 32) -- INIT_ASYNC PULLED FORWARD; KILLER_SHIFT BUILT
 Nothing could ship this iteration: `160-v95` took its 200-game checkpoint in the middle
 band (-1.8 at 196) and is playing the further 200, so v9.5's verdict lands at 400 games,
@@ -1397,6 +1448,13 @@ reason to re-examine NMP_V2B before piling more pruning on top of it.
 (3) SHIP v9.6 on `165-v96`'s checkpoint + `v96-clocktest-l` PASS: DRAW_BUDGET + CUTNODE +
 SEE_QUIET. If it fails, split ONCE by dropping SEE_QUIET (`166-v96b`) and close SEE_QUIET
 whatever comes back. `v96-120s` is confirmation for DRAW_BUDGET and lands after the ship.
+(3b) **THEN BUILD `SEARCH_SPLIT` (iter 33, overnight/eval/v10/initsplit.md) -- it is now the
+top item on the board, ahead of any search switch.** Measured: 89% of init is `search`'s
+compile and 71% of that is numba type inference, whose cost scales as size^2.65, so moving
+the four non-recursive blocks out of `search` is worth ~-13 s local / ~-27 s platform
+against a 90 s budget on which we have already lost a game. No switch, pure code motion,
+one block per commit, gate = bit-identical depth-8 node count (1,110,289) + knps within
+noise. Do NOT do it while `v94-120s` or `v96-120s` is running.
 (4) v9.7 now has KILLER_SHIFT (iter 32, killer decay = V10_PLAN #12's other half, agent.py
 only, off in the tree). It still needs a second switch; the RAZOR TT-store lever is the only untried improvement to RAZOR (do not re-tune its
 margins); NET_V10 belongs to the interactive session. Build the fillers while a gauntlet

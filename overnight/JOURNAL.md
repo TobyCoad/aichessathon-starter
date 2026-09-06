@@ -1667,3 +1667,42 @@ and check_fastsearch (70/70 exact, 40/40 table-on) all pass. It goes into v9.7, 
 solo slot. One honest caveat recorded with it: `testing.bench` runs unrelated positions
 through one engine instance, so any node difference it shows for this switch is an artefact
 of carrying killers between positions that never follow each other in a game.
+
+## 6 Sep 14:35 (iteration 33) -- init measured to the compiler pass; SEARCH_SPLIT is the lever
+Nothing could ship: 160-v95 was at 348 games and +8.0 at 14:27, its 400-game checkpoint
+lands ~14:42, and the two clocktests that gate v9.5 only start after it, so the gate closes
+around 15:05. The window went on the two unblocked things. One opus agent was sent to mine
+the four platform games nobody has folded (rounds 32, 34, 35, 37 -- none of them an init
+failure) into overnight/eval/v10/rounds32-37.md. The rest went on init, which NOTES has
+called the #1 risk since v9.4's upload failed at >90 s and which was still only scoped as
+"someone should look at it".
+
+It is now measured rather than scoped, with a reusable instrument (overnight/eval/initprof.py)
+and a report (overnight/eval/v10/initsplit.md). Cold import of the champion with INIT_FOLD on
+is 37.4 s under gauntlet load, of which numba compilation is 37.3 s, of which the single
+`search` function is 24.5 s exclusive and 32.6 s inclusive; no other function exceeds 2.3 s.
+Inside `search` the split by compiler pass is type inference 21.95 s, native lowering 6.71 s,
+everything else 2.17 s. That retires an old null result honestly: NUMBA_OPT made no
+difference because LLVM was never where the time was.
+
+The useful part is the scaling. INIT_FOLD off against on is a clean within-function pair --
+17,627 LLVM lines and 30.6 s of inference against 15,953 and 23.5 s -- so a 9.5% smaller
+function infers 23.3% faster, an elasticity of 2.65, with a cross-function check
+(make_move, quiesce, search) agreeing on the shape. Compile cost is somewhere between
+quadratic and cubic in the size of the one function it runs on, which means the same code
+is far cheaper to compile spread across several njit functions than inside one. It also
+means lever (c) from NOTES, deleting closed switches outright, is nearly exhausted:
+INIT_FOLD already prunes them before typing.
+
+So the next build is SEARCH_SPLIT, and it is not a switch -- it is pure code motion. Four
+blocks of fastsearch.py:746-1394 are self-contained and never call `search`, so moving them
+out creates no mutual recursion: the TT probe, the eval/improving/RFP/razor/futility flag
+block, movegen plus ordering, and the TT store. That is 36% of the body; NMP, the singular
+extension block and the move loop all recurse and stay. At the measured exponent it is worth
+about -13 s locally and -27 s on the platform, taking a typical init from ~63 s to ~36 s
+against a 90 s budget on which we have already lost a whole game. That is larger than any
+search bundle we have shipped. The one risk is that njit-to-njit calls cost knps; LLVM
+should inline them and LLVM opt is cheap here, but it gets measured, not assumed, and the
+fix if it does cost -- inline='always' -- hands the compile time straight back, because
+IR-level inlining runs before type inference. Order of work is one block per commit,
+biggest first, gated each time on a bit-identical depth-8 node count of 1,110,289.
