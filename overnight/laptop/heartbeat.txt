@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-06 02:00
+time 2026-09-06 02:10
 task 150-sfnet
-progress      90 games  .... llr +0.41 [-2.94, 2.94] after 45 pairs, elo +27.1 +/- 57.8
+progress     126 games  .... llr +0.75 [-2.94, 2.94] after 63 pairs, elo +33.2 +/- 50.1
