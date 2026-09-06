@@ -982,3 +982,9 @@ binpack_decode ruff annotations from the same interrupted session. State:
 150-sfnet at 104 games +33.5 (checkpoint ~03:00), nmp-clocktest-l next (the
 v9.2 gate), then 144-caporder / 145-v93fill / 146-cutnode / 147-seequiet.
 Everything buildable is built; next iteration ships v9.2 on a clocktest PASS.
+
+6 Sep 02:45 150-sfnet's PROMOTE was VOID: worker.sh rebuilt the challenger dir from the tree
+before copying the task's net (which lived inside that dir), so v9.1 played v9.1 (+19 at 200 =
+noise; the identical md5 proved it). Worker fixed (nets staged under overnight/nets/, a net equal
+to the tree's aborts the task); SF net re-exported to overnight/nets/152-sfnet.npz and queued
+first as 152-sfnet. 143-nmp PROMOTE +26/201 stands (real switch test).

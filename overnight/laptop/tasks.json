@@ -57,6 +57,12 @@
   "games": 600
  },
  {
+  "name": "152-sfnet",
+  "net": "overnight/nets/152-sfnet.npz",
+  "sed": "",
+  "games": 600
+ },
+ {
   "name": "nmp-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^NMP_V2: Final = False$/NMP_V2: Final = True/"

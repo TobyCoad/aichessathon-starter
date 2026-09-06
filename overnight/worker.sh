@@ -37,7 +37,8 @@ push_up() {
     say "push failed after retries"; return 1
 }
 reap_orphans() {  # python pool workers whose parent died (a Ctrl-C'd gauntlet) keep playing games
-    powershell -NoProfile -Command "\$all = Get-CimInstance Win32_Process; \$ids = @{}; foreach (\$p in \$all) { \$ids[\$p.ProcessId] = 1 }; \$o = \$all | Where-Object { \$_.Name -match 'python' -and -not \$ids.ContainsKey(\$_.ParentProcessId) -and \$_.CommandLine -match 'multiprocessing|harness' }; foreach (\$x in \$o) { Stop-Process -Id \$x.ProcessId -Force -ErrorAction SilentlyContinue }; \"reaped \$(\$o.Count) orphans\"" 2>/dev/null | tr -d ''
+    powershell -NoProfile -Command "\$all = Get-CimInstance Win32_Process; \$ids = @{}; foreach (\$p in \$all) { \$ids[\$p.ProcessId] = 1 }; \$o = \$all | Where-Object { \$_.Name -match 'python' -and -not \$ids.ContainsKey(\$_.ParentProcessId) -and \$_.CommandLine -match 'multiprocessing|harness' }; foreach (\$x in \$o) { Stop-Process -Id \$x.ProcessId -Force -ErrorAction SilentlyContinue }; \"reaped \$(\$o.Count) orphans\"" 2>/dev/null | tr -d '
+'
 }
 busy_gauntlets() {  # other gauntlets or clock tests running on this machine
     # python processes only: the query's own PowerShell command line would match itself
@@ -74,11 +75,21 @@ run_task() {
     workers=$(field "$task" workers 0); elo0=$(field "$task" elo0 0); elo1=$(field "$task" elo1 20); tc=$(field "$task" base_ms 8000)
     say "task $name ($kind)"
     local d="overnight/challengers/$name"
+    local net; net=$(field "$task" net "")
+    # A net task may point INSIDE the challenger dir (a training chain exported it there):
+    # stage it first, because the dir is rebuilt from the tree below. (150-sfnet was tested
+    # against itself because of exactly this.)
+    if [ -n "$net" ]; then
+        mkdir -p overnight/nets; cp "$net" "overnight/nets/$name.npz" || { say "net $net missing"; return 1; }
+        net="overnight/nets/$name.npz"
+    fi
     rm -rf "$d"; mkdir -p "$d/weights"
     cp agent.py fastboard.py fastsearch.py "$d/"
     cp weights/net.npz weights/book.bin "$d/weights/"; cp -r weights/syzygy "$d/weights/"
-    local net; net=$(field "$task" net "")
-    [ -n "$net" ] && cp "$net" "$d/weights/net.npz"   # a task may test a different net
+    if [ -n "$net" ]; then
+        cp "$net" "$d/weights/net.npz"   # a task may test a different net
+        cmp -s "$net" weights/net.npz && { say "net task $name: the net equals the tree net -- nothing to test"; return 1; }
+    fi
     local book; book=$(field "$task" book "")
     if [ -n "$book" ] && ! cp "$book" "$d/weights/book.bin"; then
         say "task $name: book $book missing -- waiting for it to land"; sleep 120; return 1

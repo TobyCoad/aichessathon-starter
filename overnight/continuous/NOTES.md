@@ -162,6 +162,15 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   (70/70, 40/40) and committed as-is; 141-v92prune tests the pair. ALWAYS commit kernel +
   agent together; never leave the tree with a half-done build at the end of an iteration.
 
+- !!! 150-sfnet's PROMOTE (+19 at 200) IS VOID (6 Sep 02:40): the worker rebuilds the
+  challenger dir from the tree BEFORE copying the task's net, and the net path pointed inside
+  that dir, so the gauntlet played v9.1 against v9.1. Do NOT promote or ship any net from it.
+  Worker fixed (nets staged in overnight/nets/, and a net equal to the tree net aborts the
+  task). The SF net is re-exported to overnight/nets/152-sfnet.npz and re-queued as 152-sfnet
+  (first in the queue). 151-mixnet, when its chain queues it, has the same in-dir path: the
+  fixed worker stages it correctly, so it is fine. 143-nmp PROMOTE (+26/201) is a real switch
+  result and stands.
+
 ## Champion
 - v9.1 (5 Sep 21:55, uploaded by the human when he reads the email) = v9 + TIME_V6, all True
   in the tree (exact 70/70). Evidence: 40 games at 120 s vs v9 55.0% (+11 =22 -7), clocktest
