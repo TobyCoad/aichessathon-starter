@@ -1,0 +1,7 @@
+name 183-v95-vs-v94
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+INCONCLUSIVE  183-v95-vs-v94  ran out of games; champion stays
+  +218 =170 -212  score 50.5%  over 600 games
+  terminations: checkmate 430, fifty_moves 21, insufficient_material 62, stalemate 2, threefold_repetition 85
