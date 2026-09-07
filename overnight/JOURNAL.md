@@ -2193,3 +2193,17 @@ baseline on this corpus. Repeat run + a 600 variant running for reproducibility/
 Rule from here: every net gets its slope measured on Lichess val and EVAL_SCALE_VALUE set to
 400/slope before any other test. Mixed-data fine-tune (v12 candidate) at epoch ~10/32, mixed-val
 improving (0.006958 -> 0.006762 by epoch 3).
+
+7 Sep 21:40 (Fable) -- SCALE DIRECTION SETTLED, AND A MEASUREMENT CORRECTION. fastsearch.py
+reads only the EVAL_SCALE / EVAL_SCALE_PHASE FLAGS from agent.py; the VALUES (300, the
+220..125 table) are its own copies. So the "526/600/460" replays all ran the kernel at 300
+(x0.75): the gain measured this afternoon is from scaling the search's evaluation DOWN.
+Kernel-consistent up-scaled variants (526 in both files: 37 fixed / 4 worse / 3,894 cp;
+up-bucket table: 36 / 3 / 3,282) are no better than v11 as shipped (37 / 5 / 4,032); the
+per-bucket DOWN table (220..125) gives 37-38 fixed / 2,883-3,660; flat 300 gives 42 fixed /
+2 worse / 2,375-2,453 twice. The Lichess-slope argument for scaling up was measured on the
+wrong distribution: on positions our search reaches the net over-states, and that is what
+the margins see. v11.1 = v11 + EVAL_SCALE (300) promoted in the tree; check_fastsearch
+69/70 (one 10-node rounding divergence at identical score, from int truncation of
+out*300 differing between the two evaluate paths), check_bundle shippable (import 44.9 s
+under training load), clocktest + 40 games vs v11-asis running.

@@ -286,7 +286,204 @@ def _bucket(pieces: int) -> int:
 
 # The network predicts a win-probability logit; centipawns are that times 400.
 # Getting this constant wrong scales the whole evaluation silently.
-OUTPUT_SCALE: Final = 400.0
+#
+# 400 is not an arbitrary number: training/train.py's loss is
+# (sigmoid(prediction) - sigmoid(target_cp / 400))**2, so a net that fitted its
+# labels perfectly satisfies cp = 400 * logit by construction and OUTPUT_SCALE is
+# that same SCALE read backwards. A net that is merely good does not, and the
+# direction of the miss is predictable rather than a guess: squared error in
+# PROBABILITY space is nearly flat once |logit| is past ~2, so the training signal
+# barely charges the net for an over-extreme logit and it drifts wide.
+#
+# It does. Measured on 1,540 positions drawn from our own 54 platform games
+# (overnight/pgn/platform), stratified evenly over seven piece-count bands, no
+# positions in check, Stockfish depth 13 as the reference, mates dropped and
+# |cp| <= 1000 -- mean absolute error of `scale * logit` against that reference:
+#
+#     scale     200    250    280    300    330    360    400    450
+#     v10      84.7   77.7   76.7   77.6   82.3   89.9  102.7  120.5
+#     v11      82.8   76.9   77.7   80.2   85.8   94.2  107.4  125.5
+#
+# The minimum is near 255-265 and 400 costs 40% more error than the minimum. That
+# is not a curve fitted to noise: split in half at random, the scale fitted on one
+# half scores 76.6-77.2 on the other, against 104.6-110.2 for 400, and the same
+# holds for the previous net (best ~270-280). Both nets are over-dispersed by about
+# 1.5x; the mirrored one is very slightly worse (255-265 against 270-280).
+#
+# This is not a cosmetic constant, because every fixed centipawn margin in the
+# search is compared against a number this scale produced -- RFP_MARGIN 80,
+# FUTILITY_MARGIN, RAZOR_MARGIN, DELTA_MARGIN, BIG_DELTA, the aspiration window,
+# the singular margin, CONTEMPT's 10/25/50, ADJ_WINDOW, and ENDGAME_SHRINK's blend
+# against material. An eval 1.5x too wide is arithmetically the same thing as every
+# one of those margins being 1.5x too tight, so the search prunes on thresholds it
+# was never tuned for.
+#
+# Be careful what this does NOT say. It does not explain the v10 -> v11 regression:
+# BOTH nets have it, to within a whisker, and a depth-controlled comparison of the
+# two shows v11 using 0.97x v10's nodes at depth 8 and 1.12x at depth 10 -- i.e.
+# the mirrored net does not prune MORE per ply, so "over-confident eval buys extra
+# depth on worse guidance" is not the mechanism. This is a standing defect in the
+# engine that the calibration work happened to uncover, not the cause of anything.
+#
+# EVAL_SCALE is deliberately not set to the fitted 260. That value minimises squared
+# error against Stockfish, and an alpha-beta search does not want a minimum-error
+# eval so much as one whose scale agrees with the margins it is compared against;
+# cutting the scale by 35% widens every margin above by 1.54x in true centipawns and
+# will cost depth. 300 is a 25% cut, inside the upper half of the fitted range, which
+# widens them by 1.33x without turning the pruning off. Judged by testing.mistakes.
+EVAL_SCALE: Final = True
+EVAL_SCALE_VALUE: Final = 300.0
+OUTPUT_SCALE: Final = EVAL_SCALE_VALUE if EVAL_SCALE else 400.0
+
+# EVAL_SCALE_PHASE: one scale per output bucket rather than one for the whole game,
+# because the miss is not uniform. Same corpus and same reference as above; the scale
+# here is the one that MINIMISES mean absolute error against Stockfish inside each
+# bucket, swept on a 5 cp grid, which is a better-behaved estimator than the
+# regression slope (an OLS slope is attenuated by however noisy that bucket is, and
+# the noise differs threefold across the eight):
+#
+#   bucket  pieces   n    v10 best   v11 best   v11 MAE at best   at 400   at flat 250
+#     0      3-4     58      215        220           57.8        137.3       63.8
+#     1      5-8    141      270        255           41.6         97.0       41.6
+#     2      9-12   207      295        275           98.0        168.9      101.0
+#     3     13-16   212      285        270           95.5        121.2       96.4
+#     4     17-20   216      295        270           80.9        104.5       81.8
+#     5     21-24   220      285        250           93.6        112.7       93.6
+#     6     25-28   217      140        200           66.6         80.1       67.7
+#     7     29-32   216      115        125           45.0         58.7       48.2
+#
+# The opening heads want a scale barely half the middlegame heads'. The eight output
+# heads were trained independently and nothing in the loss tied their output scales
+# together, so this is what one would expect -- but it means a fixed 80 cp margin
+# means two different things at move 5 and move 40, which the search cannot see.
+#
+# Be honest about how much this is worth: over the whole corpus the shaped table
+# scores MAE 75.6 against 76.9 for the best flat scale and 107.4 for 400. Nearly all
+# of the available gain is in the LEVEL, not the SHAPE -- 1.7% more, for a table
+# that has to be right about every bucket. It ships behind its own switch so the
+# two can be told apart, not because the static error argues for it.
+#
+# The hazard is a discontinuity at a bucket boundary: a capture taking the board from
+# 25 to 24 men would cross a 30% step and manufacture a phantom bonus for trading. So
+# the table is interpolated linearly between bucket midpoints and indexed by piece
+# count directly, which spreads that step over four captures instead of one. Costs
+# one float64 load and no branch per evaluation.
+#
+# EVAL_SCALE_PHASE SUPERSEDES EVAL_SCALE rather than composing with it: the table is
+# already at its own fitted level (mean 253), so applying both would rescale twice.
+EVAL_SCALE_PHASE: Final = False
+# MAE-optimal scale for the SHIPPED net, per output bucket, from the table above.
+EVAL_SCALE_PHASE_FIT: Final = (220.0, 255.0, 275.0, 270.0, 270.0, 250.0, 200.0, 125.0)
+
+# EVAL_SCALE_SMOOTH: the same correction as a three-parameter curve in piece count
+# instead of eight independent per-bucket numbers. Two measurements argue for it.
+#
+# 1. The eight per-bucket numbers are mostly not measurable. On the 1,493 non-mate
+#    corpus positions the three standard estimators of "the scale that fits this
+#    bucket" -- the regression slope cov/var, the ratio of standard deviations, and
+#    the inverse regression -- agree in the endgame and diverge wildly in the opening,
+#    because that is where the net's logit stops correlating with the reference:
+#
+#      bucket  pieces   n   cov/var   sd ratio   inverse   corr(logit, cp)
+#        0      1-4     59     193       206       221         0.935
+#        1      5-8    143     238       248       258         0.962
+#        2      9-12   209     249       271       298         0.915
+#        3     13-16   213     280       327       397         0.843
+#        4     17-20   216     277       336       400         0.833
+#        5     21-24   220     215       325       490         0.671
+#        6     25-28   217     164       395       943         0.425
+#        7     29-32   216     148       324       661         0.490
+#
+#    A 6x spread between estimators in bucket 6 is not a scale that has been measured;
+#    it is regression dilution. A 1,000-sample bootstrap of the cov/var estimate says
+#    the same thing -- a 90% interval of [122, 215] for bucket 6 and [79, 239] for
+#    bucket 7 against [223, 257] for bucket 1. Eight free parameters spend their
+#    freedom on the four bands where the data cannot pin them down.
+#
+# 2. Out of sample the extra parameters buy nothing. Repeated 5-fold cross-validation
+#    (20 shuffles, refitting inside each fold, mean absolute error on the held-out
+#    fold): a single constant scores 78.20, a quadratic in piece count 77.16, and the
+#    eight-parameter step 77.93 -- WORSE than the constant, which is what overfitting
+#    looks like. For reference an unfitted flat 270 scores 77.84 and the shipped 400
+#    scores 110.99. The whole shape is worth about 1 cp of the 33 cp that the level is
+#    worth.
+#
+# So the curve below is fitted on the same corpus and the same MAE criterion as
+# EVAL_SCALE_PHASE, but with three parameters rather than eight:
+#
+#   scale(pieces) = clip(a + b*q + c*q^2, 150, 300),  q = (pieces - 16) / 16
+#
+# fitted by iteratively reweighted least squares (an L1 fit, matching the criterion).
+# In-sample it is indistinguishable from the eight-parameter table -- MAE 76.33
+# against 76.42 for EVAL_SCALE_PHASE's interpolation and 76.22 for the raw step --
+# and out of sample it is the only shape that beats a constant.
+#
+# The floor of 150 is not cosmetic. The curve is extrapolating exactly where the
+# corpus says the slope is unidentified (p >= 30, corr 0.49), and unclamped it falls
+# to 129 at 32 men; the clamp stops a fit from making the opening evaluation
+# arbitrarily quiet on the strength of noise. The ceiling never binds (peak 275).
+#
+# What this actually buys over a step table is boundary behaviour. Measured on the
+# corpus, evaluating the SAME position under its own output head and under the head
+# one bucket up -- the phantom score change a boundary-crossing capture already
+# produces today with a flat scale -- gives a mean |change| of 14.3 cp at 25->24 men,
+# 18.9 at 21->20 and 17.0 at 29->28. The heads are nearly continuous there. A step
+# scale multiplies that: the per-capture rescale ratio at each boundary is
+#
+#   pieces      25->24   29->28    worst
+#   step table   1.250    1.600    1.600
+#   EVAL_SCALE_PHASE (interpolated)
+#                1.057    1.122    1.122
+#   this curve   1.043    1.076    1.076
+#
+# and 1.600 on a +300 cp position is a phantom +180 cp for making one capture, five
+# times the largest discontinuity the engine has today, at a piece count the search
+# crosses constantly. 1.076 is +23 cp, the same order as the head change already
+# there. Note that NO piece-count-dependent scale is free of this: a positive rescale
+# that depends only on piece count cannot reorder moves that leave the same material,
+# so its only effects are (a) exactly this trading bias and (b) making every fixed
+# centipawn margin phase-dependent. Smoothness does not remove the total bias across
+# a game, it spreads it over every capture instead of concentrating it at seven.
+#
+# EVAL_SCALE_SMOOTH SUPERSEDES both EVAL_SCALE and EVAL_SCALE_PHASE: like the phase
+# table it is already at its own fitted level, so composing would rescale twice.
+EVAL_SCALE_SMOOTH: Final = False
+# (a, b, c) in q = (pieces - 16) / 16, then the (floor, ceiling) the curve is clipped to.
+EVAL_SCALE_SMOOTH_FIT: Final = (273.43, -24.18, -120.24)
+EVAL_SCALE_SMOOTH_CLIP: Final = (150.0, 300.0)
+
+
+def _piece_scale_table() -> npt.NDArray[np.float64]:
+    """The output scale for a position with 0..32 men. Flat unless EVAL_SCALE_PHASE.
+
+    Built once at import and read by both forward passes; fastsearch.py builds the
+    same table from the same numbers and testing/check_fastsearch compares the two,
+    so they cannot drift apart in silence.
+    """
+    if EVAL_SCALE_SMOOTH:
+        # Same expression, character for character, in fastsearch.py; check_fastsearch
+        # compares the two arrays, so a divergence fails the gate rather than the game.
+        q = (np.arange(33, dtype=np.float64) - 16.0) / 16.0
+        a, b, c = EVAL_SCALE_SMOOTH_FIT
+        lo, hi = EVAL_SCALE_SMOOTH_CLIP
+        return np.clip(a + b * q + c * q * q, lo, hi)
+    if not EVAL_SCALE_PHASE:
+        return np.full(33, OUTPUT_SCALE, dtype=np.float64)
+    if len(EVAL_SCALE_PHASE_FIT) != BUCKETS:
+        raise RuntimeError(
+            f"EVAL_SCALE_PHASE_FIT has {len(EVAL_SCALE_PHASE_FIT)} entries for "
+            f"{BUCKETS} output buckets: the table was fitted to a different net"
+        )
+    fit = np.asarray(EVAL_SCALE_PHASE_FIT, dtype=np.float64)
+    # _bucket maps `pieces` to (pieces - 1) * BUCKETS // 32, so bucket k covers
+    # 32*k/BUCKETS + 1 upward and its midpoint is half a band above that.
+    width = 32.0 / BUCKETS
+    mids = np.array([width * k + width / 2.0 + 0.5 for k in range(BUCKETS)])
+    counts = np.arange(33, dtype=np.float64)
+    return np.interp(counts, mids, fit).astype(np.float64)
+
+
+PIECE_SCALE: Final = _piece_scale_table()
 
 # --------------------------------------------------------------------------------
 # Endgame tablebase
@@ -874,16 +1071,17 @@ class Accumulator:
         else:
             own, opponent = self.black, self.white
         k = _bucket(pieces)
+        scale = float(PIECE_SCALE[pieces if 0 <= pieces <= 32 else 32])
         if self.fast:
             compiled: float = float(
                 _eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, _SCRATCH)
             )
-            return int(compiled * OUTPUT_SCALE)
+            return int(compiled * scale)
         hidden = np.concatenate((own, opponent))
         np.clip(hidden, 0.0, 1.0, out=hidden)
         hidden *= hidden  # SCReLU
         second = np.maximum(hidden @ W2[k] + B2[k], 0.0)
-        return int(float((second @ W3[k] + B3[k])[0]) * OUTPUT_SCALE)
+        return int(float((second @ W3[k] + B3[k])[0]) * scale)
 
 
 def _to_table(score: int, ply: int) -> int:
@@ -2064,14 +2262,14 @@ class FastEngine:
             own, opponent = self.white, self.black
         else:
             own, opponent = self.black, self.white
-        k = _bucket(int(meta[5]))
+        pieces = int(meta[5])
+        k = _bucket(pieces)
         score = int(
             float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, self.scratch))
-            * OUTPUT_SCALE
+            * float(PIECE_SCALE[pieces])
         )
         # Mirror the kernel's ENDGAME_SHRINK blend so root contempt and any
         # offline calibration see the number the tree actually plays.
-        pieces = int(meta[5])
         if not ENDGAME_SHRINK or pieces >= _fs.EG_HI or abs(score) >= DISTANCE_THRESHOLD:
             return score
         wmin = ENDGAME_SHRINK_WMIN

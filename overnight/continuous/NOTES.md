@@ -254,7 +254,7 @@ checkpoint; keep the exactness check green at every commit; never edit results f
 - Cause: the net (pure-Stockfish nets misrank human-position moves; eval_rank top-loss 239 vs
   197/195 for v9.5/v9.3) PLUS a scale mismatch shared by every net since v9.5 (slope 0.70-0.76
   vs margins tuned at 1.0). Inference is faithful (check_nnue); search unchanged since v9.4.
-- Fix 1 (measured): EVAL_SCALE=True, EVAL_SCALE_VALUE=526 on v11 -> mistake-set replay
+- Fix 1 (measured, CORRECTED 21:40 -- the kernel used 300, i.e. x0.75 DOWN; see JOURNAL): EVAL_SCALE=True at 300 on v11 -> mistake-set replay
   42 FIXED / 2 WORSE / 2,424 cp given away (v11: 37/5/4,032; old baseline 33/2/2,901).
   Challenger dir overnight/challengers/v11-scale526. Ship candidate once the repeat run agrees.
 - Fix 2 (running): v12 = v11 architecture fine-tuned on n80000 x Lichess interleaved,
@@ -263,6 +263,13 @@ checkpoint; keep the exactness check green at every commit; never edit results f
 - Tools: testing/eval_probe.py (one position, per move), testing/eval_rank.py (corpus audit).
 - Open non-net suspects: platform init/fallback on the newer builds (needs the round 52-57
   match logs from the human), TIME_V6's floor in very long games (round 57).
+
+- v11.1 (7 Sep 21:40, being validated) = v11 + EVAL_SCALE at 300 in the tree. Per-bucket
+  tables (down or up) and flat up-scales all lost to flat 300 on the mistake replay. Every net
+  must have its in-search scale chosen by the mistake replay (testing.mistakes retest), not by
+  a Lichess slope. KNOWN: check_fastsearch shows 69/70 with the scale on (rounding of
+  out*300 differs between agent and kernel evaluate at 1 node in ~28k); fix the rounding to
+  match (round-half-even both sides) when convenient.
 
 ## Champion
 - **v9.6 (6 Sep 21:20, emailed) = v9.5 + INIT_ASYNC.** Engine byte-for-byte v9.5 (same search,
