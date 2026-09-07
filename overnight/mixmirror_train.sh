@@ -5,6 +5,8 @@
 # showed the pure-Stockfish nets misrank human-position moves; the mixed recipe is the one
 # that last won games (v9.3, +19). Gate here is eval_rank, NOT the endgame suite; the
 # gauntlet follows only if eval_rank is not worse than the champion.
+# --limit 40M: the first run took the machine down while copying a 145M-position (9.8 GB)
+# Lichess shard into RAM; 40M keeps the SF:human position ratio at ~1:2 per epoch pair.
 #   nohup bash overnight/mixmirror_train.sh > /dev/null 2>&1 &
 cd "$(dirname "$0")/.." || exit 1
 PY=./.venv/Scripts/python.exe
