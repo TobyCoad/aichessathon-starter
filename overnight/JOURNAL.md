@@ -2225,3 +2225,6 @@ under training + match load; re-measured when quiet). v11.1 (v11 + scale 300) is
 40 games vs v11 read 40%. Overnight: overnight/v13_train.sh -- v13 = v12 continued on all 38
 SF shards x 5 human months (72 epochs), v13b = v13 + endgame-heavy shard (16 epochs); each
 exported, checked, eval_rank'd, replayed at 300/400; then v13 vs v12@400, 400 games at 8 s.
+
+7 Sep 22:05 v12 (unscaled) vs v11-asis, 40 games at 8 s under training load: +16 =13 -11,
+56.2%, +44 +/- 78. Sign agrees with eval_rank and the replay (v11.1's 40-game read was 40%).
