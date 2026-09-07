@@ -2166,3 +2166,19 @@ but it fires the pre-registered rule from iter 38: that rung is in the 40-70% ba
 8 s is now the screening opponent and we can stop grading ourselves against ourselves. The net's
 actual verdict, `182-v95-vs-v94`, started at 21:08 and checkpoints around 22:20 -- the human has
 both zips in his Downloads folder and gets that answer whichever way it goes.
+
+7 Sep 20:20 (Fable, interactive) -- WHY v11 REGRESSED: a position-level audit, no games.
+New tools: testing/eval_probe.py (per-move static vs Stockfish for a position) and
+testing/eval_rank.py (corpus-wide: root bias/|err|, loss of the static's top child, top-3 hit,
+Spearman, per piece band). On the 60-position blunder corpus at SF depth 12:
+  v11 mirrored/pure-SF: bias +39, |err| 133, top-loss 239, top3 27%, rho 0.30
+  v9.5 pure-SF:         bias +40, |err| 128, top-loss 197, top3 28%, rho 0.34
+  v9.3 mixed human+SF:  bias +17, |err| 133, top-loss 195, top3 32%, rho 0.36
+v11 misranks moves worst, notably at 25-32 pieces (top-loss 267 vs 179/196) -- the human-position
+judgement lost by pure-Stockfish training -- and every net shares a 13-16-piece hole (top-loss
+230-266, top3 <= 20%) and +80..+115 cp optimism there. Nets since v9.5 also whisper (slope
+0.70-0.76 on Lichess val) against margins tuned at slope 1.0; EVAL_SCALE 300 exists, untested.
+The inference matches the model (check_nnue), the search is unchanged since v9.4: the net and
+its training data are the regression; the endgame bias is the standing weakness. Verdict rule
+from here: every net passes eval_rank (top-loss and 25-32 band not worse than the champion)
+BEFORE a gauntlet, and nothing ships without a gauntlet.
