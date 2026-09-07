@@ -78,7 +78,11 @@ def agent_eval(agent: ModuleType, board: chess.Board) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check the engine's learned evaluation.")
-    parser.add_argument("--agent", type=Path, default=Path("overnight/challengers/002-nnue"))
+    # The TREE, not a challenger. This defaulted to overnight/challengers/002-nnue, so
+    # `check_nnue --checkpoint <new net>` silently validated a months-old engine against
+    # the new checkpoint and reported "net and agent both unmirrored" with an 846 cp
+    # numpy-vs-torch gap -- a FAIL that says nothing about what is actually shipping.
+    parser.add_argument("--agent", type=Path, default=Path("."))
     parser.add_argument("--checkpoint", type=Path, default=Path("weights/net.pt"))
     parser.add_argument("--plies", type=int, default=6000)
     parser.add_argument(
