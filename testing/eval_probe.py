@@ -63,7 +63,7 @@ def main() -> None:
     sf_path = ROOT / "engines/stockfish/stockfish-windows-x86-64-avx2.exe"
     sf = chess.engine.SimpleEngine.popen_uci(str(sf_path))
     sf.configure({"Threads": 1, "Hash": 128})
-    out = open(args.json, "a", encoding="utf-8") if args.json else None
+    out = args.json.open("a", encoding="utf-8") if args.json else None  # noqa: SIM115
     scale = getattr(mod, "PIECE_SCALE", None)
     for fen in fens:
         board = chess.Board(fen)

@@ -53,24 +53,28 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out", type=Path, default=None, help="JSON lines of per-position rows")
     args = ap.parse_args()
-    fens = [json.loads(line)["fen"] for line in args.corpus.read_text(encoding="utf-8").splitlines() if line.startswith("{")]
+    lines = args.corpus.read_text(encoding="utf-8").splitlines()
+    fens = [json.loads(line)["fen"] for line in lines if line.startswith("{")]
     if args.limit:
         fens = fens[: args.limit]
     mod = load_agent(args.agent)
     engine = mod._FAST if getattr(mod, "_FAST", None) is not None else mod.FastEngine()
-    sf = chess.engine.SimpleEngine.popen_uci(str(ROOT / "engines/stockfish/stockfish-windows-x86-64-avx2.exe"))
+    sf_exe = ROOT / "engines/stockfish/stockfish-windows-x86-64-avx2.exe"
+    sf = chess.engine.SimpleEngine.popen_uci(str(sf_exe))
     sf.configure({"Threads": 1, "Hash": 128})
     rows = []
     for fen in fens:
         board = chess.Board(fen)
         pieces = chess.popcount(board.occupied)
         root_static = static_eval(mod, engine, board)
-        root_sf = sf.analyse(board, chess.engine.Limit(depth=args.depth), game=object())["score"].pov(board.turn).score(mate_score=3000)
+        info = sf.analyse(board, chess.engine.Limit(depth=args.depth), game=object())
+        root_sf = info["score"].pov(board.turn).score(mate_score=3000)
         statics, sfs, moves = [], [], []
         for move in board.legal_moves:
             board.push(move)
             statics.append(-static_eval(mod, engine, board))
-            sfs.append(-sf.analyse(board, chess.engine.Limit(depth=args.depth - 1), game=object())["score"].pov(board.turn).score(mate_score=3000))
+            cinfo = sf.analyse(board, chess.engine.Limit(depth=args.depth - 1), game=object())
+            sfs.append(-cinfo["score"].pov(board.turn).score(mate_score=3000))
             board.pop()
             moves.append(move.uci())
         if not moves:
@@ -83,7 +87,11 @@ def main() -> None:
             "top_loss": best_sf - sfs[top_static], "top3_hit": int(sfs.index(best_sf) in order),
             "spearman": spearman(statics, sfs), "n": len(moves),
         })
-        print(f"  {fen[:50]:50s} pcs {pieces:2d} bias {root_static - root_sf:+5d} top-loss {best_sf - sfs[top_static]:4d} rho {spearman(statics, sfs):+.2f}", flush=True)
+        print(
+            f"  {fen[:50]:50s} pcs {pieces:2d} bias {root_static - root_sf:+5d}"
+            f" top-loss {best_sf - sfs[top_static]:4d} rho {spearman(statics, sfs):+.2f}",
+            flush=True,
+        )
     sf.quit()
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
