@@ -46,6 +46,20 @@ ACC = 256
 HIDDEN = 32
 SCALE = 400.0
 
+# PHASE_SCALE: the squash the target is divided by, per piece-count bucket, instead of a
+# flat SCALE. One constant cannot be right for both phases. `sigmoid(cp/SCALE)` saturates
+# at a rate set by SCALE, and the corpus clamps cp at +-2000 -- which bites unevenly:
+# 40.2% of 3-4 piece rows sit ON that cap against 0.0% of 29-32 piece rows, and mean |cp|
+# is 903 in the sparsest bucket against 144 in the fullest. So the endgame heads train
+# against a target that is pinned near 1.0 far more often, and learn to saturate. Fitting
+# the scale that best maps this net's logit onto Stockfish centipawns over 240 real game
+# positions recovers exactly that shape: 227 at 5-8 pieces rising to ~400 at 25-28.
+#
+# Whatever vector is used HERE must be used at inference too -- the engine's OUTPUT_SCALE
+# multiplies the logit back into centipawns, so training and play must agree or every
+# score is systematically wrong. Empty means "flat SCALE", i.e. the old behaviour.
+PHASE_SCALE: list[float] = []
+
 
 # Twelve heads, indexed by piece count 0..32. Equal-width bands spend seven of
 # eight heads above 16 pieces, where the net is already accurate; this table puts
@@ -396,13 +410,28 @@ class Batches:
             yield white, black, mask, stm, target
 
 
-def loss_fn(prediction: Tensor, target: Tensor, weight: Tensor | None = None) -> Tensor:
+def target_scale(pieces: Tensor | None, buckets: int) -> Tensor | float:
+    """The squash divisor for each sample: a flat SCALE, or PHASE_SCALE by bucket."""
+    if not PHASE_SCALE or pieces is None:
+        return SCALE
+    table = torch.tensor(PHASE_SCALE, dtype=torch.float32, device=pieces.device)
+    return table[bucket_of(pieces.long(), len(PHASE_SCALE))]
+
+
+def loss_fn(
+    prediction: Tensor,
+    target: Tensor,
+    weight: Tensor | None = None,
+    pieces: Tensor | None = None,
+    buckets: int = 8,
+) -> Tensor:
     """MSE between predicted and target win probability.
 
-    `prediction` is a logit; `target` is in centipawns and is squashed by SCALE.
+    `prediction` is a logit; `target` is in centipawns and is squashed by SCALE, or by
+    PHASE_SCALE[bucket] when that vector is set.
     `weight`, if given, scales each sample's squared error (mean 1 over the batch).
     """
-    error = (torch.sigmoid(prediction) - torch.sigmoid(target / SCALE)) ** 2
+    error = (torch.sigmoid(prediction) - torch.sigmoid(target / target_scale(pieces, buckets))) ** 2
     if weight is None:
         return error.mean()
     return (error * weight).mean()
@@ -458,8 +487,15 @@ def evaluate_loss(
     total = 0.0
     seen = 0
     for white, black, mask, stm, target in batches.epoch(generator):
-        weight = sample_weights(mask.sum(1), target) if weighted else None
-        total += float(loss_fn(net(white, black, mask, stm), target, weight)) * len(target)
+        counts = mask.sum(1)
+        weight = sample_weights(counts, target) if weighted else None
+        # `counts` matters: with PHASE_SCALE set, the training objective squashes the
+        # target per bucket. Scoring validation on the flat SCALE would measure a
+        # different objective from the one being optimised, and best-epoch selection
+        # would then pick the epoch that is best under the objective we are replacing.
+        total += float(
+            loss_fn(net(white, black, mask, stm), target, weight, counts, net.buckets)
+        ) * len(target)
         seen += len(target)
     net.train()
     return total / max(seen, 1)
@@ -558,8 +594,9 @@ def train(
         seen = 0
         for white, black, mask, stm, target in batches.epoch(generator):
             prediction = net(white, black, mask, stm)
-            weight = sample_weights(mask.sum(1), target) if weight_endgame else None
-            loss = loss_fn(prediction, target, weight)
+            counts = mask.sum(1)
+            weight = sample_weights(counts, target) if weight_endgame else None
+            loss = loss_fn(prediction, target, weight, counts, buckets)
             optimiser.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]
             optimiser.step()
@@ -666,8 +703,22 @@ def main() -> None:
         "--warmup-epochs", type=int, default=0, help="epochs before patience counts"
     )
     parser.add_argument("--limit", type=int, default=0, help="use only the first N positions")
+    parser.add_argument(
+        "--phase-scale", default="",
+        help="comma-separated per-bucket target squash instead of a flat SCALE; the engine's "
+             "OUTPUT_SCALE must be given the SAME vector or every score is wrong",
+    )
     parser.add_argument("--skip-sanity", action="store_true")
     arguments = parser.parse_args()
+
+    if arguments.phase_scale:
+        global PHASE_SCALE
+        PHASE_SCALE = [float(x) for x in arguments.phase_scale.split(",")]
+        if len(PHASE_SCALE) != arguments.buckets:
+            raise SystemExit(
+                f"--phase-scale has {len(PHASE_SCALE)} values but --buckets is {arguments.buckets}"
+            )
+        print(f"phase scale: {PHASE_SCALE}")
 
     if not torch.cuda.is_available():
         raise SystemExit(
