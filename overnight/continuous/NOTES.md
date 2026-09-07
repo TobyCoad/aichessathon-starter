@@ -271,6 +271,12 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   out*300 differs between agent and kernel evaluate at 1 node in ~28k); fix the rounding to
   match (round-half-even both sides) when convenient.
 
+- v12 (7 Sep 21:55) = mixed-data fine-tune of v11's mirrored net, UNSCALED (EVAL_SCALE off):
+  IS the tree now (net md5 6170827d). Replay 41/1/2,094; eval_rank top-loss 201, rho 0.40.
+  v11.1 on hold (40 games 40% vs v11). Overnight: overnight/v13_train.sh (see JOURNAL).
+  RULE: a net's scale is chosen by the mistake replay (testing.mistakes retest, 300 vs 400),
+  and nothing ships on the replay alone -- games decide.
+
 ## Champion
 - **v9.6 (6 Sep 21:20, emailed) = v9.5 + INIT_ASYNC.** Engine byte-for-byte v9.5 (same search,
   same net 9e2b0006, d8 bench 1,014,119, identical to v9.5); the kernel compile moves to a

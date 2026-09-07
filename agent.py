@@ -331,7 +331,7 @@ def _bucket(pieces: int) -> int:
 # cutting the scale by 35% widens every margin above by 1.54x in true centipawns and
 # will cost depth. 300 is a 25% cut, inside the upper half of the fitted range, which
 # widens them by 1.33x without turning the pruning off. Judged by testing.mistakes.
-EVAL_SCALE: Final = True
+EVAL_SCALE: Final = False
 EVAL_SCALE_VALUE: Final = 300.0
 OUTPUT_SCALE: Final = EVAL_SCALE_VALUE if EVAL_SCALE else 400.0
 

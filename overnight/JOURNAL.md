@@ -2214,3 +2214,14 @@ replay (42 vs 37 fixed at 120 s). Open question: does the x0.75 scale help at 12
 replay's clock) and hurt at 8 s (less depth, margins matter more), or is the replay corpus
 (our own blunders) simply not representative? v11.1 was emailed before this landed; the
 human has been told to hold the upload pending a 200-game verdict.
+
+7 Sep 21:55 (Fable) -- v12 = the mirrored architecture fine-tuned on n80000 x Lichess (mixed
+val 0.006958 -> 0.006376; Lichess-val -25%, SF-val +9%; slope 0.99 on the mix). eval_rank:
+|err| 114, top-loss 201, top3 35%, rho 0.40 -- best of v9.3/v9.5/v11/v12 on ranking. Mistake
+replay: at scale 400 (unscaled) 41 fixed / 1 worse / 2,094 cp (best row of any build); at 300
+39 / 2 / 3,174 -> v12 ships UNSCALED (its own scale is ~1.0). Promoted into the tree (net md5
+6170827d, EVAL_SCALE off), check_fastsearch 70/70, bundle shippable (import 63 s measured
+under training + match load; re-measured when quiet). v11.1 (v11 + scale 300) is on hold:
+40 games vs v11 read 40%. Overnight: overnight/v13_train.sh -- v13 = v12 continued on all 38
+SF shards x 5 human months (72 epochs), v13b = v13 + endgame-heavy shard (16 epochs); each
+exported, checked, eval_rank'd, replayed at 300/400; then v13 vs v12@400, 400 games at 8 s.
