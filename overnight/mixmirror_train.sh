@@ -37,7 +37,7 @@ rm -rf "$d"; mkdir -p "$d/weights"
 cp agent.py fastboard.py fastsearch.py "$d/"
 cp weights/book.bin "$d/weights/"; cp -r weights/syzygy "$d/weights/"
 $PY -u -m training.export --checkpoint training/checkpoints/net_v12-mixmirror.pt \
-    --out "$d/weights/net.npz" --half > overnight/eval/export-mixmirror.log 2>&1 \
+    --out "$d/weights/net.npz" --half --mirror > overnight/eval/export-mixmirror.log 2>&1 \
     || { say "EXPORT FAILED: $(tail -n 2 overnight/eval/export-mixmirror.log | tr '\n' ' ')"; exit 1; }
 if ! $PY -u -m training.check_nnue --agent "$d" \
     --checkpoint training/checkpoints/net_v12-mixmirror.pt \
