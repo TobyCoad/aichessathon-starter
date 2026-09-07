@@ -23,7 +23,7 @@ for i in 0 1 2 3 4 5 6 7; do SHARDS="$SHARDS ${SF[$i]} ${HU[$((i % 4))]}"; done
 if [ ! -f training/checkpoints/net_v12-mixmirror.json ]; then
     $PY -u training/train.py \
         --data $SHARDS \
-        --val data/sf80kf/sf80kf_val.npy \
+        --val data/mixed_val.npy \
         --resume training/checkpoints/net_v11-mirror.pt --mirror \
         --accumulator 512 --buckets 8 --king-zones 16 \
         --lr 1e-4 --epochs 32 --patience 10 --warmup-epochs 1 --skip-sanity \
