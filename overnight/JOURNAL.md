@@ -2207,3 +2207,10 @@ the margins see. v11.1 = v11 + EVAL_SCALE (300) promoted in the tree; check_fast
 69/70 (one 10-node rounding divergence at identical score, from int truncation of
 out*300 differing between the two evaluate paths), check_bundle shippable (import 44.9 s
 under training load), clocktest + 40 games vs v11-asis running.
+
+7 Sep 21:20 v11.1 vs v11-asis, 40 games at 8 s (run under GPU fine-tune load, 4 workers):
++9 =14 -17, 40.0%, -70 +/- 72 Elo. INCONCLUSIVE by size but the sign contradicts the mistake
+replay (42 vs 37 fixed at 120 s). Open question: does the x0.75 scale help at 120 s (the
+replay's clock) and hurt at 8 s (less depth, margins matter more), or is the replay corpus
+(our own blunders) simply not representative? v11.1 was emailed before this landed; the
+human has been told to hold the upload pending a 200-game verdict.
