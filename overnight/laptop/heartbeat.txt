@@ -1,4 +1,4 @@
 host tobys-laptop
-time 2026-09-07 04:13
+time 2026-09-07 04:23
 task 183-v95-vs-v94
-progress     342 games  .... llr -1.42 [-2.94, 2.94] after 171 pairs, elo -8.1 +/- 31.3  [pair 170 0.25]
+progress     376 games  .... llr -0.92 [-2.94, 2.94] after 188 pairs, elo -0.9 +/- 30.2  [pair 187 0.5]
