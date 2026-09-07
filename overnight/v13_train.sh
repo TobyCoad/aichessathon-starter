@@ -1,7 +1,7 @@
 #!/bin/bash
 # Overnight 7-8 Sep: two candidate nets on top of v12, each fully evaluated by morning.
 #   v13  = v12 continued on the WIDE mix: all 38 n80000 shards rotated against the five
-#          human months (4 Lichess + 2024_11), --limit 40M per human shard, 72 epochs.
+#          human months (4 Lichess + 2024_11), --limit 40M per human shard, 150 epochs (the human's call).
 #          v12 was still improving at its last epoch on only 8 SF shards + 4 human.
 #   v13b = v13 continued 16 epochs with the endgame-heavy Lichess shard (70% <= 16 pieces)
 #          alternating with SF shards, aimed at the 13-16-piece hole every net shares.
@@ -49,7 +49,7 @@ if [ ! -f training/checkpoints/net_v13.json ]; then
     $PY -u training/train.py --data $SHARDS --val data/mixed_val.npy \
         --resume training/checkpoints/net_v12-mixmirror.pt --mirror \
         --accumulator 512 --buckets 8 --king-zones 16 \
-        --lr 1e-4 --epochs 72 --patience 16 --warmup-epochs 1 --skip-sanity --limit 40000000 \
+        --lr 1e-4 --epochs 150 --patience 30 --warmup-epochs 1 --skip-sanity --limit 40000000 \
         --out training/checkpoints/net_v13.pt > overnight/eval/train-v13.log 2>&1 || { say "v13 TRAIN FAILED"; exit 1; }
 fi
 say "v13 train done: $(grep -E 'restored|wrote.*json' overnight/eval/train-v13.log | tail -n 2 | tr '\n' ' ')"

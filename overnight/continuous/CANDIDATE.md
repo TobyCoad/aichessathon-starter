@@ -1,40 +1,34 @@
-# v11.1 -- v11 + EVAL_SCALE (the search's evaluation scaled x0.75)
+# v12 -- the mirrored net fine-tuned on mixed Stockfish + human data, unscaled
 
-Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v11.1.zip** (21.6 MB zip; also
-`submission-v111.zip` in the repo root). Built from the tree by harness.package after the
-switch was flipped; testing.check_bundle cold-imported it in a fresh subprocess: compiled
-board on, compiled search on, mirroring agrees, kernels from the zip, legal moves.
+Ready to upload: **C:/Users/tobyc/Downloads/aichessathon-v12.zip** (21.6 MB; also
+`submission-v12.zip` in the repo root). Built by harness.package from the tree;
+testing.check_bundle cold-imported it in a fresh subprocess: compiled board on, compiled
+search on, mirroring agrees, kernels from the zip, legal moves. Net md5 6170827d.
 
 ## What changed (vs v11)
-- **EVAL_SCALE on at 300** (was 400): every evaluation the search compares against its
-  pruning margins is 0.75x what v11 used. Same net (md5 1298b2c0), same search. The net
-  over-states positions on the lines our search actually reaches, so with the old scale
-  reverse futility, futility, the null move and the aspiration window all pruned against a
-  number that was too rosy.
+- **The net.** v11's mirrored 16-zone architecture, warm-started from v11 and fine-tuned
+  32 epochs on Stockfish n80000 shards interleaved with the four Lichess human months
+  (validation on a mixed 800k set). v11 had been trained on engine positions only and had
+  lost the human-position judgement; this puts it back while keeping most of the n80000 gain.
+- **EVAL_SCALE off** (400, unscaled). v12's own scale is ~1.0 on the mixed set, and the
+  mistake replay prefers it unscaled (see below). v11.1's x0.75 does NOT apply to v12.
 
-## Measured (59-position mistake replay at the real 120 s clock, testing.mistakes)
-| build | fixed | better | same | worse | cp given away |
-|---|---|---|---|---|---|
-| pre-v11 baseline | 33 | 6 | 17 | 2 | 2,901 |
-| v11 as shipped | 37 | 2 | 11 | 5 | 4,032 |
-| v11.1 (scale 300) | 42 | 1 | 15 | 2 | 2,424 |
-| v11.1 repeat | 42 | 1 | 15 | 2 | 2,375 |
-| per-bucket table 220..125 | 37 | 3 | 18 | 2 | 3,660 |
-| scale UP 526 (kernel-consistent) | 37 | 3 | 16 | 4 | 3,894 |
-- Clock replay (6 games at 120 s + 0.5 s, x1.5 charge): PASS, 0 flags, lowest clock 5.7 s,
-  longest move 10.5 s.
-- Cold import of the bundle: 44.9 s in-process here, measured while a GPU fine-tune loaded
-  the CPU (v11 measured 33.2 s idle); platform budget 90 s.
-- Exactness check: 69/70 identical, the one divergence a 10-node rounding difference at an
-  identical score (int truncation of out*300 differs between the two evaluate paths).
-- A 40-game 8 s match vs v11 as shipped was started and skipped at the human's request;
-  its result is recorded in the journal when it finishes.
+## Measured
+- Held-out loss, same positions for both: Lichess (human) 0.005227 vs v11 0.007007 (-25%);
+  Stockfish n80000 0.007522 vs 0.006910 (+9%); mixed 0.006372 vs 0.006968 (-8.5%).
+- Ranking audit (testing.eval_rank, 60 blunder positions, every legal move vs Stockfish d12):
+  root error 114 cp (v11 133), loss of the net's top move 201 (v11 239), Stockfish's best
+  in the net's top 3: 35% (v11 27%), rank correlation 0.40 (v11 0.30). Best of every net
+  measured; the shared 13-16-piece weakness is unchanged.
+- Mistake replay (59 positions, real 120 s clock): **41 fixed / 4 better / 14 same / 1 worse,
+  2,094 cp given away** -- v11: 37 / 2 / 11 / 5 / 4,032; the best row of any build so far.
+  At scale 300 it is worse (39 / 2 / 17 / 2 / 3,174), hence unscaled.
+- Exactness check 70/70 identical, 40/40 best move. Cold import 63 s measured under a GPU
+  training run plus a 4-worker match; v11's idle figure with the same net size was 33 s.
+- NOT yet: the 40-game 8 s match vs v11 and the clock replay are running now; their results
+  are recorded in the journal and sent as a follow-up if either disagrees.
 
-## Why not the bucketed table
-Both per-bucket tables (the fitted 220..125 and a slope-derived up-table) fixed fewer
-positions and gave away 500-1,500 cp more than the flat 0.75 on the same replay.
-
-## Next
-- v12 candidate net: v11's mirrored architecture fine-tuned on n80000 x Lichess mixed data,
-  epoch ~26/32, validated on a mixed set; gated by the ranking audit (testing.eval_rank),
-  then its own scale chosen by the mistake replay before any gauntlet.
+## Overnight
+v13 = v12 continued on all 38 Stockfish shards x five human months, 150 epochs; then v13b =
+v13 + an endgame-heavy shard; each audited, replayed at both scales, and v13 plays 400 games
+vs v12 at 8 s. Results by morning.
