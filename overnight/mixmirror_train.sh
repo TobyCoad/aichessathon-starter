@@ -56,7 +56,7 @@ sys.path.insert(0, ".")
 from pathlib import Path
 from training.train import load_checkpoint, Batches, evaluate_loss, _records
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-sets = {"lichess_val": Path("data/validation_w512-150m.npy"), "sf80kf_val": Path("data/sf80kf/sf80kf_val.npy")}
+sets = {"lichess_val": Path("data/validation_w512-150m.npy"), "sf80kf_val": Path("data/sf80kf/sf80kf_val.npy"), "mixed_val": Path("data/mixed_val.npy")}
 for name, ck, mirror in (("v11", "training/checkpoints/net_v11-mirror.pt", True), ("v12-mixmirror", "training/checkpoints/net_v12-mixmirror.pt", True)):
     net = load_checkpoint(Path(ck), None, None, mirror=mirror).to(device)
     for label, path in sets.items():
