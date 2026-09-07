@@ -250,6 +250,20 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   fixed worker stages it correctly, so it is fine. 143-nmp PROMOTE (+26/201) is a real switch
   result and stands.
 
+## 7 Sep 20:35 (Fable, interactive) -- v11 regression diagnosed; scale fix measured
+- Cause: the net (pure-Stockfish nets misrank human-position moves; eval_rank top-loss 239 vs
+  197/195 for v9.5/v9.3) PLUS a scale mismatch shared by every net since v9.5 (slope 0.70-0.76
+  vs margins tuned at 1.0). Inference is faithful (check_nnue); search unchanged since v9.4.
+- Fix 1 (measured): EVAL_SCALE=True, EVAL_SCALE_VALUE=526 on v11 -> mistake-set replay
+  42 FIXED / 2 WORSE / 2,424 cp given away (v11: 37/5/4,032; old baseline 33/2/2,901).
+  Challenger dir overnight/challengers/v11-scale526. Ship candidate once the repeat run agrees.
+- Fix 2 (running): v12 = v11 architecture fine-tuned on n80000 x Lichess interleaved,
+  overnight/mixmirror_train.sh, validated on data/mixed_val.npy; gate = testing/eval_rank
+  (not the endgame suite), then a gauntlet ONLY with the human's go-ahead (no long SPRTs today).
+- Tools: testing/eval_probe.py (one position, per move), testing/eval_rank.py (corpus audit).
+- Open non-net suspects: platform init/fallback on the newer builds (needs the round 52-57
+  match logs from the human), TIME_V6's floor in very long games (round 57).
+
 ## Champion
 - **v9.6 (6 Sep 21:20, emailed) = v9.5 + INIT_ASYNC.** Engine byte-for-byte v9.5 (same search,
   same net 9e2b0006, d8 bench 1,014,119, identical to v9.5); the kernel compile moves to a

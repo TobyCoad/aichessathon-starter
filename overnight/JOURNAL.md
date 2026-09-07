@@ -2182,3 +2182,14 @@ The inference matches the model (check_nnue), the search is unchanged since v9.4
 its training data are the regression; the endgame bias is the standing weakness. Verdict rule
 from here: every net passes eval_rank (top-loss and 25-32 band not worse than the champion)
 BEFORE a gauntlet, and nothing ships without a gauntlet.
+
+7 Sep 20:35 (Fable) -- SCALE MISMATCH: first fix measured. v11's evals sit at 0.76 of the
+reference scale (slope on Lichess val) against margins tuned at 1.0. A v11 copy with
+EVAL_SCALE=True, EVAL_SCALE_VALUE=526 (= 400/0.76, so the search sees unit-slope evals)
+replayed the 59-position mistake set at the real 120 s clock: FIXED 42 / better 1 / same 15 /
+WORSE 2, total cp given away 2,424 -- vs v11 as shipped 37/2/11/5 and 4,032, and the pre-v11
+baseline 33/6/17/2 and 2,901. The rescale alone removes v11's tail regression and beats the old
+baseline on this corpus. Repeat run + a 600 variant running for reproducibility/sensitivity.
+Rule from here: every net gets its slope measured on Lichess val and EVAL_SCALE_VALUE set to
+400/slope before any other test. Mixed-data fine-tune (v12 candidate) at epoch ~10/32, mixed-val
+improving (0.006958 -> 0.006762 by epoch 3).
