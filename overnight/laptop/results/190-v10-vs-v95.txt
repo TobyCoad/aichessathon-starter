@@ -1,0 +1,7 @@
+name 190-v10-vs-v95
+kind switch
+host tobys-laptop
+base_ms 8000 openings default games 600
+REJECT  190-v10-vs-v95  no better than the champion
+  +48 =39 -75  score 41.7%  over 162 games
+  terminations: checkmate 123, fifty_moves 5, insufficient_material 12, threefold_repetition 22
