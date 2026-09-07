@@ -73,8 +73,8 @@ evaluate 210-v13 training/checkpoints/net_v13.pt
 a=$(grep -oE "now [0-9,]+" overnight/eval/retest-210-v13.log | tr -d ',' | awk '{print $2}')
 b=$(grep -oE "now [0-9,]+" overnight/eval/retest-210-v13-s400.log | tr -d ',' | awk '{print $2}')
 pick=210-v13; [ "${b:-99999}" -lt "${a:-99999}" ] && pick=210-v13-s400
-say "gauntlet: $pick vs 200-mixmirror (v12), 8 s, checkpoint 200"
-$PY -u -m testing.gauntlet --challenger "overnight/challengers/$pick" --champion overnight/challengers/200-mixmirror \
+say "gauntlet: $pick vs 200-mixmirror-s400 (v12 as shipped, scale 400), 8 s, checkpoint 200"
+$PY -u -m testing.gauntlet --challenger "overnight/challengers/$pick" --champion overnight/challengers/200-mixmirror-s400 \
     --games 400 --workers 4 > overnight/eval/v13-vs-v12.gauntlet.log 2>&1
 say "gauntlet result: $(grep -E '^(PROMOTE|REJECT|INCONCLUSIVE)|score' overnight/eval/v13-vs-v12.gauntlet.log | tail -n 2 | tr '\n' ' ')"
 say "done"
