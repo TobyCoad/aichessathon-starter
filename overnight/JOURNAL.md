@@ -2228,3 +2228,7 @@ exported, checked, eval_rank'd, replayed at 300/400; then v13 vs v12@400, 400 ga
 
 7 Sep 22:05 v12 (unscaled) vs v11-asis, 40 games at 8 s under training load: +16 =13 -11,
 56.2%, +44 +/- 78. Sign agrees with eval_rank and the replay (v11.1's 40-game read was 40%).
+
+7 Sep 22:15 v12 gates complete: clocktest PASS (0/6 flags, lowest clock 5.5 s, longest move
+11.7 s); bundle cold import 32.5 s when quiet (63 s earlier was load). Fully gated except a
+long SPRT. v13 at epoch 19/150.
