@@ -69,6 +69,7 @@ for _var in (
     os.environ.setdefault(_var, "1")
 
 import random
+import sys
 import threading
 import time
 from collections.abc import Hashable, Iterator
@@ -103,9 +104,9 @@ _IMPORT_T0: Final = time.monotonic()
 # BLAS; quantisation is a C++/SIMD trick that inverts in Python.
 
 _WEIGHTS = np.load(Path(__file__).with_name("weights") / "net.npz")
-W1: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)   # (K * 768, A)
+_W1_RAW: Final = np.ascontiguousarray(_WEIGHTS["W1"], dtype=np.float32)  # (K * 768, A)
 B1: Final = np.ascontiguousarray(_WEIGHTS["b1"], dtype=np.float32)   # (A,)
-ACC_SIZE: Final = W1.shape[1]
+ACC_SIZE: Final = _W1_RAW.shape[1]
 FEATURES: Final = 768
 
 # King zones: W1 holds one 768-row block per zone of the perspective's own king, so
@@ -113,7 +114,99 @@ FEATURES: Final = 768
 # castled short, castled long or still in the centre. The zone is a property of
 # the king's square seen from its own side (mirrored for black), and the first-layer
 # index is `zone * 768 + feature`. A one-zone file is the old layout, unchanged.
-KING_ZONES: Final = int(W1.shape[0]) // FEATURES
+KING_ZONES: Final = int(_W1_RAW.shape[0]) // FEATURES
+# MIRRORED: files e-h are reflected onto a-d for a perspective whose own king stands on
+# them, so one zone covers two mirror-equivalent king squares and sees twice the data.
+# `export.py` has always stamped this flag; until training/check_nnue.py grew a guard,
+# nothing read it, and a mirrored net would have scored nonsense on half the board in
+# silence. A feature index is zone*768 + half + piece*64 + square and every stride is a
+# multiple of 8, so XORing the index by 7 flips exactly the square's file.
+MIRRORED: Final = bool(int(_WEIGHTS["mirrored"])) if "mirrored" in _WEIGHTS.files else False
+# W1 gains a second half holding the file-reflected copy of every row, so a perspective
+# whose own king stands on files e-h is served by `zone + KING_ZONES` instead of by XORing
+# every feature index. That turns the reflection into an ADDITION to the zone offset -- a
+# value the compiled kernels already take as a parameter -- so `fastboard.py` and
+# `fastsearch.py` need no signature change and no new logic to play a mirrored net.
+# A row index is zone*768 + half + piece*64 + square and 768 is a multiple of 8, so row^7
+# flips exactly the square's file; verified over every zone, half, piece and square.
+# Costs 25 MB of resident float32 and nothing on disk.
+W1: Final = (
+    np.ascontiguousarray(
+        np.concatenate([_W1_RAW, _W1_RAW[np.arange(_W1_RAW.shape[0]) ^ 7]])
+    )
+    if MIRRORED
+    else _W1_RAW
+)
+
+if MIRRORED and KING_ZONES != 16:
+    # Deliberately fatal, and it has to be here rather than in the exporter. fastboard.zone_of
+    # hardcodes the folded 16-zone map when mirrored and adds `zones` for the reflected half,
+    # so the reflected half comes out at `15 + zones` no matter what KING_ZONES says. With 8
+    # zones that is block 23 into a W1 holding 16, and refresh() reads off the end of it --
+    # roughly 12288 rows x 512 floats past the last valid one. numba compiles with bounds
+    # checking off, so that is a SIGSEGV, not an exception anything here could catch. Measured on
+    # a kz8 mirrored net: imports clean, prints "compiled board: on", disagrees with a full
+    # rebuild on 3 of 3 positions. Loud failure beats silent nonsense.
+    raise RuntimeError(
+        f"mirrored nets require KING_ZONES == 16, not {KING_ZONES}: "
+        "fastboard.zone_of's folded map is fixed at 16"
+    )
+
+
+# ROOT_LMR: the root loop searches every root move at full depth. The kernel contains
+# root-capable LMR, but `choose`'s Python loop never reaches it, so late root moves --
+# which the ordering has already judged unlikely -- cost as much as the best move.
+# Measured on THIS code, fixed depth 8, 16 positions, driven through the real choose()
+# loop (not root_search, which applies kernel LMR/RFP/NMP at ply 0 and so measures a tree
+# 1.94x smaller than the engine plays): 928,953 -> 559,703 nodes, -39.7%. Root best move
+# changes on 4 of 16 positions: three of those four get BETTER (+5, +16, +1 cp) and one
+# worse (-8). Summed over all 16 the net is +58 cp, against -13 cp of losses spread over
+# positions mostly outside those four. So this is a real behavioural delta that is, on this
+# sample, mildly positive -- not free depth, and 16 positions is not evidence of strength.
+# Only a match can settle it, and see the TIME_V6 note before running one.
+# A reduced search that beats alpha is re-searched at full depth, so a move can only be
+# missed the way ordinary LMR can miss one, never scored wrongly: alpha is the running
+# maximum, so any value worth recording is > alpha and forces the full-depth re-search.
+ROOT_LMR: Final = False
+ROOT_LMR_MIN_MOVE: Final = 4     # first root move index eligible for reduction
+ROOT_LMR_DEEP_MOVE: Final = 10   # from here the reduction is 2 plies
+ROOT_LMR_MIN_DEPTH: Final = 3    # never reduce in a shallow iteration
+
+
+# HISTORY_V2: the butterfly history table is numerically dead as shipped. The bonus is
+# min(depth*depth, 1200) against HISTORY_MAX = 16384, so the gravity term
+# `h * bonus // HISTORY_MAX` is 0 for every realistic pair (h~1000, bonus~9 gives
+# 9000 // 16384 = 0) and the table is a plain unbounded counter. Measured over full
+# depth-10 searches it reaches max ~2317 and min ~-99, so BOTH consumers of it are
+# unreachable: the LMR history step needs |hist| > 8000 and the PRUNE_V2 quiet cut needs
+# hist < -1500. Neither has ever fired in a shipped game. This raises one update to ~15%
+# of the table's range and moves the two thresholds onto the new scale, which also makes
+# a CONT_HIST retest meaningful -- its divisor of 6000 was likewise never reached.
+# Measured through the real choose() loop, depth 8, 16 positions: the bonus rescale ALONE
+# costs +1.2% nodes -- gravity now saturates the top of the table, so the best quiets tie at
+# the cap and lose ordering resolution the old unbounded counter had. All of the value is in
+# HIST_PRUNE_SLOPE_V2, which the working table finally reaches: -13.6% at 1000, 15/16 root
+# best moves -- but that peak is an ARTEFACT and 1000 is not a tuned optimum: at depth 7 the
+# curve is monotone and 600 is best, on 16 different positions 1200 beats 1000 and 600 wins
+# by 12 points, and on the original 16 a single position swings +16,401 nodes between 1000
+# and 800, which manufactures the peak by itself. The only robust finding is the DIRECTION:
+# a lower slope prunes more. 1000 is a conservative point on that line, not a summit.
+# The LMR step stays at 8000 -- note it is NOT dead under V2, where the table reaches +16k
+# and the positive arm fires on 15 of 16 positions; lowering it merely costs nodes.
+# Do NOT enable this with CONT_HIST: at fastsearch.py's `adj` term a rescaled
+# butterfly saturates the +/-2 clamp on its own, so the result would measure butterfly, not
+# continuation history.
+HISTORY_V2: Final = False
+
+
+def _block(zone: int, flip: int) -> int:
+    """The W1 block for a perspective: its zone, or the reflected copy of that zone."""
+    return zone + KING_ZONES if flip else zone
+
+
+def _mirror_flip(square: int) -> int:
+    """0, or 7 when this perspective's own king sits on files e-h."""
+    return 7 if (square & 7) >= 4 else 0
 
 
 def _zone(square: int) -> int:
@@ -133,6 +226,13 @@ def _zone(square: int) -> int:
         if rank <= 3:
             return 4 + (file >> 2)
         return 6 + (file >> 2)
+    if KING_ZONES == 16 and MIRRORED:
+        # `square` has already had _mirror_flip applied, so its file is a-d.
+        if rank <= 1:
+            return rank * 4 + file
+        if rank <= 3:
+            return 8 + (rank - 2) * 2 + (file >> 1)
+        return 12 + ((rank - 4) >> 1) * 2 + (file >> 1)
     if KING_ZONES == 16:
         if rank <= 1:
             return file
@@ -314,7 +414,8 @@ def _feature(square: int, piece_type: int, colour: chess.Color, white_pov: bool)
 # against 13.4% for generating moves. numba is preinstalled on the platform and the
 # organisers name it as the supported way to make Python fast here.
 #
-# Eager signatures, so compilation happens at import inside the 60 second budget
+# Eager signatures, so compilation happens at import inside the init budget (~90 s: see
+# INIT_READY_S below -- platform imports of 74.1 s and 88.1 s both played, >90 s forfeited)
 # rather than on the clock at move one. fastmath IS enabled, and this comment used
 # to claim the opposite. The concern behind the original wording was real --
 # fastmath lets the compiler reassociate floating-point arithmetic, so the
@@ -523,8 +624,19 @@ class Accumulator:
     """
 
     __slots__ = (
-        "added", "black", "depth", "fast", "features", "removed", "stack", "white",
-        "zone_black", "zone_white", "zones",
+        "added",
+        "black",
+        "depth",
+        "fast",
+        "features",
+        "flip_black",
+        "flip_white",
+        "removed",
+        "stack",
+        "white",
+        "zone_black",
+        "zone_white",
+        "zones",
     )
 
     def __init__(self) -> None:
@@ -534,8 +646,12 @@ class Accumulator:
         # the zone along with the vectors. A king move that crosses a zone boundary
         # rebuilds that one perspective from scratch; every other move is a delta.
         self.zone_white = 0
+        self.flip_white = 0
+        self.flip_black = 0
         self.zone_black = 0
-        self.zones: list[tuple[int, int]] = []
+        # (zone_white, zone_black, flip_white, flip_black) -- the flips unwind with the
+        # zones, or a pop restores the wrong reflection for the rest of the search.
+        self.zones: list[tuple[int, int, int, int]] = []
         # Scratch for a full rebuild: at most 32 first-layer indices.
         self.features = np.zeros(64, dtype=np.int32)
         self.fast = _COMPILED
@@ -560,7 +676,18 @@ class Accumulator:
         king = board.king(colour)
         if king is None:
             return 0
-        return _zone(king if colour == chess.WHITE else king ^ 56)
+        own = king if colour == chess.WHITE else king ^ 56
+        return _zone(own ^ _mirror_flip(own) if MIRRORED else own)
+
+    @staticmethod
+    def _king_flip(board: chess.Board, colour: chess.Color) -> int:
+        """This perspective's file reflection, 0 or 7; always 0 when unmirrored."""
+        if not MIRRORED:
+            return 0
+        king = board.king(colour)
+        if king is None:
+            return 0
+        return _mirror_flip(king if colour == chess.WHITE else king ^ 56)
 
     def _rebuild(
         self, board: chess.Board, white_pov: bool, zone: int, out: npt.NDArray[np.float32]
@@ -589,8 +716,10 @@ class Accumulator:
     def refresh(self, board: chess.Board) -> None:
         self.zone_white = self._king_zone(board, chess.WHITE)
         self.zone_black = self._king_zone(board, chess.BLACK)
-        self._rebuild(board, True, self.zone_white, self.white)
-        self._rebuild(board, False, self.zone_black, self.black)
+        self.flip_white = self._king_flip(board, chess.WHITE)
+        self.flip_black = self._king_flip(board, chess.BLACK)
+        self._rebuild(board, True, _block(self.zone_white, self.flip_white), self.white)
+        self._rebuild(board, False, _block(self.zone_black, self.flip_black), self.black)
         self.zones.clear()
         if self.fast:
             self.depth = 0
@@ -617,13 +746,18 @@ class Accumulator:
         # that perspective is rebuilt after the deltas below rather than updated.
         crossing = 0  # 1 = white perspective, 2 = black perspective
         new_zone = 0
+        new_flip = 0
         if piece_type == chess.KING and KING_ZONES > 1:
-            new_zone = _zone(move.to_square if mover == chess.WHITE else move.to_square ^ 56)
-            if mover == chess.WHITE and new_zone != self.zone_white:
-                crossing = 1
-            elif mover == chess.BLACK and new_zone != self.zone_black:
-                crossing = 2
-        self.zones.append((self.zone_white, self.zone_black))
+            own_to = move.to_square if mover == chess.WHITE else move.to_square ^ 56
+            new_flip = _mirror_flip(own_to) if MIRRORED else 0
+            new_zone = _zone(own_to ^ new_flip if MIRRORED else own_to)
+            old_flip = self.flip_white if mover == chess.WHITE else self.flip_black
+            old_zone = self.zone_white if mover == chess.WHITE else self.zone_black
+            if new_zone != old_zone or new_flip != old_flip:
+                crossing = 1 if mover == chess.WHITE else 2
+        self.zones.append(
+            (self.zone_white, self.zone_black, self.flip_white, self.flip_black)
+        )
         if piece_type is not None:
             removed[0] = _feature(move.from_square, piece_type, mover, True)
             removed[1] = _feature(move.from_square, piece_type, mover, False)
@@ -669,10 +803,12 @@ class Accumulator:
             try:
                 if crossing == 1:
                     self.zone_white = new_zone
-                    self._rebuild(board, True, new_zone, self.white)
+                    self.flip_white = new_flip
+                    self._rebuild(board, True, _block(new_zone, new_flip), self.white)
                 else:
                     self.zone_black = new_zone
-                    self._rebuild(board, False, new_zone, self.black)
+                    self.flip_black = new_flip
+                    self._rebuild(board, False, _block(new_zone, new_flip), self.black)
             finally:
                 board.pop()
 
@@ -685,8 +821,11 @@ class Accumulator:
     ) -> None:
         """Save the current vectors, then add and subtract the given W1 rows, each
         perspective in its own king-zone block."""
-        white_offset = self.zone_white * FEATURES
-        black_offset = self.zone_black * FEATURES
+        # The reflection rides in the offset: a perspective whose king is on files e-h reads
+        # the second half of W1, which holds the file-flipped rows. Nothing downstream --
+        # including the compiled push kernel -- needs to know mirroring exists.
+        white_offset = _block(self.zone_white, self.flip_white) * FEATURES
+        black_offset = _block(self.zone_black, self.flip_black) * FEATURES
         if self.fast:
             # The compiled kernel does no bounds checking -- numba's eager
             # signatures compile with boundscheck off, so overrunning the stack
@@ -713,7 +852,12 @@ class Accumulator:
             self.black -= W1[removed[2 * k + 1] + black_offset]
 
     def pop(self) -> None:
-        self.zone_white, self.zone_black = self.zones.pop()
+        (
+            self.zone_white,
+            self.zone_black,
+            self.flip_white,
+            self.flip_black,
+        ) = self.zones.pop()
         if self.fast:
             self.depth -= 1
             _pop_kernel(self.white, self.black, self.stack, self.depth)
@@ -993,7 +1137,7 @@ LAZY_ACC: Final = True
 PRUNE_V2: Final = True
 # SINGULAR: singular extensions. At depth >= 7 with a hash move whose stored
 # bound is exact or a lower bound at depth >= depth - 3, the node is searched
-# again without that move at half depth with a window two pawns per ply below
+# again without that move at half depth with a window two CENTIpawns per ply below
 # the stored score; if nothing else reaches it the hash move is the only move
 # and is searched a ply deeper. Capped at six check-or-singular extensions on
 # a line. Needs COMPILED_SEARCH.
@@ -1221,21 +1365,36 @@ RESERVE_FRACTION: Final = 0.10
 LOW_CLOCK: Final = 15.0
 # TIME_V6 (V10_PLAN #1): what every OpenBench engine measured. (a) The budget
 # credits the increment it actually observes (median of the clock deltas between
-# our calls), keeps a 4% reserve instead of 10%, and drops the low-clock regime
-# to 9 s -- the 13 s absorbing floor in games.md came from the 10% reserve plus
+# our calls), keeps a 6% reserve instead of 10%, and drops the low-clock regime
+# to 12 s -- the 13 s absorbing floor in games.md came from the 10% reserve plus
 # remaining/30 below 15 s. (b) The next iteration is never predicted (Ethereal
 # gained +6..+12 removing exactly that); the search stops at an iteration end
 # once elapsed exceeds ideal x stability x score-drop x node-effort, with the
-# hard deadline (3 soft budgets, 12% of the clock) as the only mid-iteration stop.
-# Stability 1.2 -> 0.8 (Ethereal), score-drop 2^(-drop/100) (Stash), node effort
-# max(0.5, 2.0 - 1.6*bestFraction) (Ethereal/Koivisto), product clamped [0.4, 2].
-# The first cut (Stash's 2.5x table, 4 soft budgets, 4% reserve) drained the clock
-# to 1.6 s with 19 s moves under the 1.5x clocktest charge; these are the tamed
-# values. Absorbs TIME_V5's
+# hard deadline (2.5 soft budgets, 10% of the clock) as the only mid-iteration stop.
+# Stability 1.2 -> 0.8 (Ethereal), score-drop 2^(+drop/100) where drop = older - newer,
+# so a falling score LENGTHENS the search (Stash writes it as 2^(-diff/100) over the
+# opposite subtraction -- same rule, and the sign here matches this file's `drop`), node effort
+# max(0.5, 2.0 - 1.6*bestFraction) (Ethereal/Koivisto), product clamped [0.4, 1.5].
+# The first cut (Stash's 2.5x table, 4 soft budgets, 9 s low-clock, 4% reserve) drained
+# the clock to 1.6 s with 19 s moves under the 1.5x clocktest charge; the numbers above
+# are the tamed values -- read them off RESERVE_FRACTION_V6 / LOW_CLOCK_V6 / _budget_v6,
+# not off this paragraph, which has been wrong before. Absorbs TIME_V5's
 # 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
 TIME_V6: Final = True
 RESERVE_FRACTION_V6: Final = 0.06
 LOW_CLOCK_V6: Final = 12.0
+# LOW_CLOCK_EXTEND: below LOW_CLOCK_V6 the budget sets `hard = soft`, which collapses the
+# maximum onto the optimum and leaves `choose`'s stability / score-drop / node-effort rule
+# nothing to extend into. Measured over 31 lost and drawn games: 25 losing moves were played
+# under 12 s costing 6,012 cp, and 9 of them (1,466 cp, 3.6% of all value we lose) are ones
+# the engine finds the reference move for when given more time. This restores a maximum
+# above the optimum WITHOUT changing the optimum, so the average spend -- and therefore the
+# flag risk that `hard = soft` exists to control -- is unchanged; only the rare unstable
+# move can now run longer. Below LOW_CLOCK_FLOOR it stays in survival mode.
+LOW_CLOCK_EXTEND: Final = False
+LOW_CLOCK_FLOOR: Final = 6.0        # seconds; under this, hard = soft as before
+LOW_CLOCK_HARD_MULT: Final = 2.5    # same multiple the normal regime allows
+LOW_CLOCK_HARD_FRACTION: Final = 0.15
 _STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
 _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
 # DRAW_BUDGET (rounds25-29 P2): round 27 spent 63.5 s -- 53% of the game clock --
@@ -1491,9 +1650,12 @@ class Engine:
         # a draw we can claim -- the referee claims threefold automatically, so a
         # winning side that shuffles will have the win taken away from it.
         key = _key(board)
-        # A count of 1 means the position occurred once, which is not a draw. In-tree
-        # repetitions are caught by is_repetition(2); a pre-root position needs two
-        # prior sightings before a third occurrence here would let the referee claim.
+        # REPETITION_TWOFOLD ships, so _REPEAT_LIMIT is 1, not 2: ONE prior sighting is
+        # already enough to bail out. The referee claims a threefold automatically, and a
+        # position we have seen once before plus this occurrence plus one more is a
+        # threefold we would not get to refuse -- so a winning side must not walk into it.
+        # (Under _REPEAT_LIMIT == 2 the rule would instead be "two prior sightings"; see
+        # the switch at REPETITION_TWOFOLD, and do not read this comment as describing it.)
         if ply and (self.history.get(key, 0) >= _REPEAT_LIMIT or board.is_repetition(2)):
             return 0
 
@@ -1737,6 +1899,25 @@ def _warm_search(fs: Any) -> None:
 try:
     if FAST_BOARD and _COMPILED:
         import fastboard as _fb
+
+        # The two modules decide "is this net mirrored?" from separately resolved
+        # weights/net.npz paths -- agent.py from its own directory, fastboard.py from
+        # fastboard's. An engine directory carrying its own agent.py and weights/ but
+        # NOT its own fastboard.py (which is what night.sh's challenger() builds) makes
+        # them disagree, and zone_of then hands refresh() block indices for a W1 that
+        # was never doubled: measured exit 0xC0000409, no traceback, nothing catchable.
+        # The guard above only compares MIRRORED against KING_ZONES, which cannot see
+        # this. Dropping to the python engine is the right answer -- it uses agent.W1,
+        # which is self-consistent whichever way the disagreement runs -- and the
+        # except below prints "compiled board: off", so the fallback is visible.
+        if bool(getattr(_fb, "_F_MIRRORED", False)) != MIRRORED:
+            print(
+                f"mirroring mismatch: agent {MIRRORED} vs fastboard "
+                f"{getattr(_fb, '_F_MIRRORED', None)} -- {_fb.__file__} reads a different "
+                "weights/net.npz. Falling back to the python engine.",
+                file=sys.stderr,
+            )
+            raise RuntimeError("agent and fastboard disagree about mirroring")
 
         # fastboard stays synchronous: FastEngine's own construction below calls into
         # it, and it is ~3 s of the ~32. The search kernel is the 89%.
@@ -2374,6 +2555,7 @@ class FastEngine:
                         )
                     iteration_best = int(moves[0])
                     first_done = False
+                    root_in_check = bool(_fb.in_check(pos.bb, pos.meta)) if ROOT_LMR else False
                     for i in range(n):
                         move = int(moves[i])
                         node_start = (
@@ -2381,7 +2563,29 @@ class FastEngine:
                         )
                         self._make(move)
                         try:
-                            if (PVS or LMR_AGGRESSIVE) and i:
+                            root_r = 0
+                            if (
+                                ROOT_LMR
+                                and i >= ROOT_LMR_MIN_MOVE
+                                and depth >= ROOT_LMR_MIN_DEPTH
+                                and not root_in_check
+                            ):
+                                root_r = 2 if i >= ROOT_LMR_DEEP_MOVE else 1
+                                root_r = min(root_r, depth - 2)
+                            if root_r > 0:
+                                # Reduced, null window. Only a move that beats alpha earns
+                                # the full-depth search, so the cost of being wrong is one
+                                # re-search, not a wrong score.
+                                value = -self.root_search(
+                                    depth - 1 - root_r, -alpha - 1, -alpha, 1
+                                )
+                                if value > alpha:
+                                    value = -self.root_search(
+                                        depth - 1, -alpha - 1, -alpha, 1
+                                    )
+                                    if alpha < value < hi:
+                                        value = -self.root_search(depth - 1, -hi, -alpha, 1)
+                            elif (PVS or LMR_AGGRESSIVE) and i:
                                 value = -self.root_search(depth - 1, -alpha - 1, -alpha, 1)
                                 if alpha < value < hi:
                                     value = -self.root_search(depth - 1, -hi, -alpha, 1)
@@ -2394,7 +2598,16 @@ class FastEngine:
                                     root_nodes.get(move, 0)
                                     + int(self.ctrl[_fs.C_NODES]) - node_start
                                 )
-                        if ROOT_ORDER:
+                        if ROOT_ORDER and not (root_r > 0 and value <= alpha):
+                            # Dropping a reduced fail-low is an extra root PRUNING heuristic,
+                            # not a safety fix -- be honest about which. `pass_scores` is
+                            # fresh per depth, and the sort key `-prev_scores.get(move,
+                            # -INFINITY)` is +1048576 for a move with no entry against an
+                            # ascending sort, so a dropped move goes LAST, behind every move
+                            # that did record a score. Demoting it to the back is exactly
+                            # what makes this pruning rather than a cost. Measured
+                            # against writing the bound: 559,703 vs 608,751 nodes, 12/16 vs
+                            # 11/16 root best moves. Best of the three variants tried.
                             pass_scores[move] = value
                         if i == 0:
                             # A first move that fell out of the window proves nothing
@@ -2535,6 +2748,7 @@ _PONDER_THREAD: threading.Thread | None = None
 _PONDER_STARTED: float = 0.0
 _PONDER_LAST_NODES: int = 0
 _SEARCHED_MOVES: int = 0  # requests answered by the search (not the book or a tablebase)
+_FALLBACK_SAID: bool = False  # so a repeated mid-move failure costs one line, not a hundred
 if _FAST_OK:
     try:
         _FAST = FastEngine()
@@ -2841,7 +3055,8 @@ def _observed_increment() -> float:
 def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     """TIME_V6 deadlines: the soft budget is the ideal spend that the stop rule in
     `choose` scales by stability, score drop and node effort; the hard deadline is
-    the only mid-iteration stop, four soft budgets or a quarter of the clock."""
+    the only mid-iteration stop, 2.5 soft budgets or a tenth of the clock (and below
+    LOW_CLOCK_V6 it collapses onto the soft budget unless LOW_CLOCK_EXTEND is on)."""
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
     inc = _observed_increment()
@@ -2852,7 +3067,11 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
         # settles where remaining/18 x charge = increment -- 6 s under the 1.5x
         # clocktest charge (measured 5.1-6.3 s at /16), ~8 s on the platform.
         soft = max(0.02, remaining / 18.0)
-        hard = soft
+        if LOW_CLOCK_EXTEND and remaining > LOW_CLOCK_FLOOR:
+            hard = max(soft, min(soft * LOW_CLOCK_HARD_MULT,
+                                 remaining * LOW_CLOCK_HARD_FRACTION))
+        else:
+            hard = soft
     else:
         soft = remaining / expected + 0.7 * inc
         hard = min(remaining * 0.10, soft * 2.5)
@@ -2937,6 +3156,12 @@ def _join_warmup(time_left_ms: int) -> int:
     _WARM_THREAD = None
     if _WARM_FAILED:
         _FAST = None  # no compiled search: Engine plays this game
+        # This fires AFTER the import-time "compiled board: on" line, so without a print
+        # the dashboard shows a healthy init for a game played at ~1/4 the nodes. Say so.
+        print(
+            "compiled search: FAILED to warm; playing this game on the python engine",
+            file=sys.stderr,
+        )
     try:
         left = int(time_left_ms) - int((time.monotonic() - started) * 1000.0)
     except (TypeError, ValueError):
@@ -3051,6 +3276,10 @@ def _get_move(fen: str, time_left_ms: int) -> str:
                 move = candidate
         except Exception:
             move = None
+            global _FALLBACK_SAID
+            if not _FALLBACK_SAID:
+                _FALLBACK_SAID = True
+                print("compiled search: raised mid-move; python fallback", file=sys.stderr)
 
     if move is None:
         # refresh() and _budget() were outside this guard, so an exception in either
@@ -3064,6 +3293,7 @@ def _get_move(fen: str, time_left_ms: int) -> str:
             soft, hard = _budget(board, max(time_left_ms - spent, 50))
             move = _ENGINE.choose(board, soft, hard)
         except Exception:
+            print("both engines raised; returning the first legal move", file=sys.stderr)
             return next(iter(board.legal_moves)).uci()
 
     if HYGIENE:

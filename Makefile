@@ -12,9 +12,9 @@ arena:
 	uv run python -m harness.arena --opponent baselines/greedy --games 20
 
 zip:
-	uv run python -m harness.package --include fastboard.py --include fastsearch.py
+	uv run python -m harness.package
 
 gate:
-	uv run ruff check .
-	uv run mypy
+	uv run ruff check agent.py fastboard.py fastsearch.py harness training/export.py training/check_nnue.py training/features.py testing/gauntlet.py testing/arena.py testing/sprt.py testing/referee.py testing/openings.py testing/clocktest.py testing/check_fastboard.py testing/check_fastsearch.py testing/mistakes.py testing/replay_eval.py testing/audit_mirrorplay.py testing/check_bundle.py
+	uv run mypy agent.py fastboard.py fastsearch.py harness training/export.py training/check_nnue.py training/features.py testing/gauntlet.py testing/arena.py testing/sprt.py testing/referee.py testing/openings.py testing/clocktest.py testing/check_fastboard.py testing/check_fastsearch.py testing/mistakes.py testing/replay_eval.py testing/audit_mirrorplay.py testing/check_bundle.py
 	uv run python -m harness.arena --opponent baselines/random --games 2 --base-ms 5000

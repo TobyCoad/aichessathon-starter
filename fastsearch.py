@@ -260,6 +260,21 @@ def _scan_agent_flags() -> dict[str, bool]:
 _AGENT_FLAGS = _scan_agent_flags()
 _FOLD = _AGENT_FLAGS.get("INIT_FOLD", False)
 _F_HYGIENE = _AGENT_FLAGS.get("HYGIENE", False)
+_F_HISTORY_V2 = _AGENT_FLAGS.get("HISTORY_V2", False)
+# On the HISTORY_V2 scale: one update moves ~15% of the table's range, so gravity engages
+# and both derived thresholds sit inside the values the table actually reaches.
+HIST_BONUS_SLOPE = 300
+HIST_BONUS_BASE = 250
+HIST_BONUS_CAP = 2400
+HIST_LMR_STEP_V2 = 8000   # i.e. unchanged: the step is a net node COST at every
+# threshold that actually fires, and at 3000 it fires asymmetrically -- the positive
+# arm on every position, the negative arm on 6 of 16 -- so it mostly GRANTS extensions.
+HIST_PRUNE_SLOPE_V2 = 1000   # NOT 400 and not 1500: measured, -400 sits between p25 and p50 of the
+# rescaled table (a third of all quiets prunable at depth 1) and, measured, is PAST the
+# peak: the saving is non-monotone at 1500 +1.2%, 1200 -8.2%, 1000 -13.6%, 800 -12.2%,
+# 600 -11.4%, and below 1000 best-move agreement collapses from 15/16 to 12/16. 1000 sits
+# near p15-p20 of the rescaled table. All of HISTORY_V2's value is in this one number --
+# the bonus rescale alone costs +1.2% nodes.
 _F_FUTILITY = _AGENT_FLAGS.get("FUTILITY", False)
 _F_PVS = _AGENT_FLAGS.get("PVS", False) or _AGENT_FLAGS.get("LMR_AGGRESSIVE", False)
 _F_LMR = _AGENT_FLAGS.get("LMR", False)
@@ -1178,7 +1193,7 @@ def search(
             hist = butterfly[base + (move & 63) * 64 + ((move >> 6) & 63)]
             if ch_base >= 0:
                 hist += conthist1[ch_base + sq[move & 63] * 64 + ((move >> 6) & 63)]
-            if hist < -HIST_PRUNE_SLOPE * depth:
+            if hist < -(HIST_PRUNE_SLOPE_V2 if _F_HISTORY_V2 else HIST_PRUNE_SLOPE) * depth:
                 continue
         if (
             (_F_SEE_MAIN if _FOLD else ctrl[C_SEE_MAIN] != 0)
@@ -1223,9 +1238,9 @@ def search(
                     elif adj < -2:
                         adj = -2
                     reduction -= adj
-                elif hist > 8000:
+                elif hist > (HIST_LMR_STEP_V2 if _F_HISTORY_V2 else 8000):
                     reduction -= 1
-                elif hist < -8000:
+                elif hist < -(HIST_LMR_STEP_V2 if _F_HISTORY_V2 else 8000):
                     reduction += 1
                 if reduction < 0:
                     reduction = 0
@@ -1323,9 +1338,16 @@ def search(
                         if history2:
                             # gravity: pull toward +MAX for the cutoff move, toward
                             # -MAX for the quiets searched before it at this node
-                            bonus = depth * depth
-                            if bonus > 1200:
-                                bonus = 1200
+                            if _F_HISTORY_V2:
+                                bonus = HIST_BONUS_SLOPE * depth - HIST_BONUS_BASE
+                                if bonus < 1:
+                                    bonus = 1
+                                if bonus > HIST_BONUS_CAP:
+                                    bonus = HIST_BONUS_CAP
+                            else:
+                                bonus = depth * depth
+                                if bonus > 1200:
+                                    bonus = 1200
                             idx = base + (move & 63) * 64 + ((move >> 6) & 63)
                             butterfly[idx] += bonus - butterfly[idx] * bonus // HISTORY_MAX
                             for q in range(searched):

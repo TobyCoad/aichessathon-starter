@@ -47,6 +47,6 @@ Each promoted only on PASS. The bundle then plays 40 games at 120 s vs the champ
 
 ## Stage 4 -- ship
 clocktest + crash hunt + 120 s match on the final build; package with
-`python -m harness.package --include fastboard.py --include fastsearch.py`;
+`python -m harness.package`;
 the user uploads. Hard go/no-go: Tuesday 8 Sep evening. If stage 1 has not passed
 gate (f) by then, the port is dropped and v4 stays.

@@ -306,9 +306,15 @@ def decode_chunk(job: tuple[bytes, float, int, float, int]) -> tuple[np.ndarray,
         except (ValueError, AssertionError, IndexError, KeyError):
             break  # a malformed or unsupported chain: keep what this chunk gave so far
         seen += 1
-        if ply < min_ply or board.is_check() or abs(score) >= VALUE_NONE:
-            continue
-        if move is not None and board.is_capture(move):
+        try:
+            if ply < min_ply or board.is_check() or abs(score) >= VALUE_NONE:
+                continue
+            if move is not None and board.is_capture(move):
+                continue
+        except (ValueError, IndexError, KeyError, AssertionError):
+            # A malformed entry must cost us one position, not the whole run: an unguarded
+            # IndexError here killed an 800M decode after 5 shards (6 Sep 20:15). Only
+            # `next(entries)` was guarded; everything downstream of it was not.
             continue
         if attack_min:
             # Keep only positions where the side to move genuinely bears on the enemy
@@ -325,7 +331,10 @@ def decode_chunk(job: tuple[bytes, float, int, float, int]) -> tuple[np.ndarray,
                     break
             if pressure < attack_min:
                 continue
-        idx = white_indices(board)
+        try:
+            idx = white_indices(board)
+        except (ValueError, IndexError, KeyError, AssertionError):
+            continue
         if not idx or len(idx) > MAX_PIECES:
             continue
         cp = score if board.turn == chess.WHITE else -score

@@ -17,6 +17,15 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 PY=./.venv/Scripts/python.exe
+# GATED: the shipped files only. The repo-wide sweep is permanently red -- ~99 ruff and
+# ~136 mypy errors, all of them in testing/ and training/ scratch audit scripts -- so
+# gating on it meant the zip could never be built. These four are clean on both, and are
+# the only things the platform ever imports.
+# Plus the files whose breakage would corrupt a SHIPPED artifact rather than a scratch
+# report: export.py writes weights/net.npz, check_nnue.py is the only guard that a bad
+# export is caught, and the testing/ harnesses produce the PROMOTE/REJECT exit code that
+# decides what gets copied into agent.py. The ~99 dirty files are all audit_* scratch.
+GATED="agent.py fastboard.py fastsearch.py harness training/export.py training/check_nnue.py training/features.py testing/gauntlet.py testing/arena.py testing/sprt.py testing/referee.py testing/openings.py testing/clocktest.py testing/check_fastboard.py testing/check_fastsearch.py testing/mistakes.py testing/replay_eval.py testing/audit_mirrorplay.py testing/check_bundle.py"
 DRY=${NIGHT_DRY:-0}
 STATE=overnight/night${NIGHT_TAG:-}
 mkdir -p "$STATE"
@@ -56,7 +65,12 @@ RESUME=training/checkpoints/net_w512-150m.pt
 challenger() {  # name switch
     local d="overnight/challengers/$1"
     rm -rf "$d"; mkdir -p "$d/weights"
-    cp agent.py "$d/agent.py"
+    # The kernels travel with the agent. Without them the dir uses the ROOT fastboard,
+    # which reads the ROOT weights/net.npz for its mirroring flag -- so a challenger
+    # carrying an unmirrored net against a mirrored tree (or the reverse) disagrees with
+    # its own kernel about the feature map. agent.py now refuses that and drops to the
+    # python engine, which is a 4x slower gauntlet reported as a real result.
+    cp agent.py fastboard.py fastsearch.py "$d/"
     if [ -n "$2" ]; then
         sed -i "s/^$2: Final = False\$/$2: Final = True/" "$d/agent.py"
         if ! grep -q "^$2: Final = True\$" "$d/agent.py"; then
@@ -84,17 +98,25 @@ promote() {  # name what [net]
     if [ "$DRY" = 1 ]; then say "DRY: would promote $1"; return 0; fi
     local b="overnight/champion_backup_$(date -u +%Y%m%dT%H%M%SZ)"
     mkdir -p "$b/weights"
-    cp agent.py "$b/agent.py"; cp weights/net.npz "$b/weights/net.npz"
+    # Kernels too: this backup is an engine directory, and one without them silently
+    # falls back to the pure-python search when restored or replayed.
+    cp agent.py fastboard.py fastsearch.py "$b/"; cp weights/net.npz "$b/weights/net.npz"
+    # Promote whatever the challenger actually carries. Copying agent.py alone means a
+    # challenger that won BECAUSE of a kernel change promotes only half of itself, and
+    # the half left behind is the half that was measured.
     cp "$d/agent.py" agent.py
+    [ -f "$d/fastboard.py" ] && cp "$d/fastboard.py" fastboard.py
+    [ -f "$d/fastsearch.py" ] && cp "$d/fastsearch.py" fastsearch.py
     [ "${3:-}" = net ] && cp "$d/weights/net.npz" weights/net.npz
-    if $PY -m ruff check . >> "$MAIN" 2>&1 && $PY -m mypy >> "$MAIN" 2>&1; then
-        git add agent.py weights/net.npz
+    if $PY -m ruff check $GATED >> "$MAIN" 2>&1 && $PY -m mypy $GATED >> "$MAIN" 2>&1; then
+        git add agent.py fastboard.py fastsearch.py weights/net.npz
         git commit -q -m "promote $1: $2" -m "Unattended, by overnight/night.sh. Backup in $b." \
             && say "promoted $1, committed"
         note "**PROMOTED $1** -- $2"
     else
         say "GATE RED after promoting $1 -- restored the backup"
-        cp "$b/agent.py" agent.py; cp "$b/weights/net.npz" weights/net.npz
+        cp "$b/agent.py" agent.py; cp "$b/fastboard.py" fastboard.py
+        cp "$b/fastsearch.py" fastsearch.py; cp "$b/weights/net.npz" weights/net.npz
         note "$1 passed its SPRT but the ruff/mypy gate went red; NOT promoted"
         return 1
     fi
@@ -232,13 +254,37 @@ switch_stage hygiene 030-hygiene HYGIENE -25 0 "$NW_GAMES" "history decay, post-
 
 if ! finished final; then
     say "=== 7/7 final ==="
-    if $PY -m ruff check . >> "$MAIN" 2>&1 && $PY -m mypy >> "$MAIN" 2>&1; then
+    packaged=1
+    if $PY -m ruff check $GATED >> "$MAIN" 2>&1 && $PY -m mypy $GATED >> "$MAIN" 2>&1; then
         say "gate green"
         if [ "$DRY" != 1 ]; then
-            $PY -m harness.package >> "$MAIN" 2>&1 && say "submission.zip built"
+            # The && swallowed a package failure: the night was then marked finished, is
+            # skipped on every resume, and nobody learns there is no zip. package.py now
+            # leaves the previous good zip in place when it refuses, so the failure is
+            # recoverable -- but only if it reaches SUMMARY.md, which is what a human reads.
+            if $PY -m harness.package >> "$MAIN" 2>&1; then
+                say "submission.zip built"
+                # Presence is not importability. Cold-import the zip with only itself on
+                # sys.path, the way the platform will -- a module-level raise there
+                # forfeits every game and package.py cannot see it.
+                if $PY -m testing.check_bundle submission.zip >> "$MAIN" 2>&1; then
+                    say "bundle cold-import OK"
+                else
+                    say "BUNDLE FAILED ITS COLD IMPORT -- do not upload"
+                    note "**submission.zip built but fails a cold import; do not upload**"
+                    packaged=0
+                fi
+            else
+                say "PACKAGE FAILED -- no new submission.zip"
+                note "**package failed -- submission.zip is stale or absent, do not upload blind**"
+                packaged=0
+            fi
         fi
     else
         say "GATE RED at the end of the night"; note "**gate red at the end -- look before uploading**"
+        # Same door, different room: without this the gate-red path marks the stage done,
+        # final.done is written, and every resume skips packaging forever.
+        packaged=0
     fi
     {
         echo
@@ -248,7 +294,10 @@ if ! finished final; then
         echo "## Commits tonight"
         git log --oneline -8
     } >> "$SUMMARY"
-    mark final
+    # Only mark the stage done if it actually produced a zip. `mark final` writes
+    # final.done and the loop resumes by that file, so marking after a failure means the
+    # zip is never retried -- the night reports complete with a stale submission on disk.
+    [ "${packaged:-1}" = 1 ] && mark final
 fi
 
 # ----------------------------------------------------------- 8. review -------

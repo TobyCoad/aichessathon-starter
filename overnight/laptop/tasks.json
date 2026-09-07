@@ -1,5 +1,43 @@
 [
  {
+  "name": "192-v10-vs-v95-120s",
+  "sed": "",
+  "champion": "opponents/v95net",
+  "games": 60,
+  "workers": 4,
+  "base_ms": 120000,
+  "increment_ms": 500,
+  "net": "overnight/nets/190-v10.npz",
+  "elo0": -20,
+  "elo1": 20
+ },
+ {
+  "name": "193-v10-scaled-vs-v95-120s",
+  "sed": "",
+  "champion": "opponents/v95net",
+  "games": 60,
+  "workers": 4,
+  "base_ms": 120000,
+  "increment_ms": 500,
+  "net": "overnight/nets/191-v10-scaled.npz",
+  "elo0": -20,
+  "elo1": 20
+ },
+ {
+  "name": "191-v10-scaled-vs-v95",
+  "sed": "",
+  "champion": "opponents/v95net",
+  "games": 600,
+  "workers": 4,
+  "net": "overnight/nets/191-v10-scaled.npz"
+ },
+ {
+  "name": "200-v97-prune",
+  "sed": "s/^DRAW_BUDGET: Final = False$/DRAW_BUDGET: Final = True/; s/^CUTNODE: Final = False$/CUTNODE: Final = True/; s/^SEE_QUIET: Final = False$/SEE_QUIET: Final = True/",
+  "games": 600,
+  "workers": 4
+ },
+ {
   "name": "p8-sf10",
   "kind": "switch",
   "sed": "",
@@ -15,13 +53,6 @@
   "name": "v96-clocktest-l",
   "kind": "clocktest",
   "sed": "s/^INIT_FOLD: Final = False$/INIT_FOLD: Final = True/; s/^INIT_ASYNC: Final = False$/INIT_ASYNC: Final = True/"
- },
- {
-  "name": "182-v95-vs-v94",
-  "sed": "",
-  "champion": "opponents/v94net",
-  "games": 600,
-  "workers": 4
  },
  {
   "name": "p8-sf12",
@@ -46,5 +77,18 @@
   "openings": "platform",
   "elo0": -200,
   "elo1": 200
+ },
+ {
+  "name": "183-v95-vs-v94",
+  "sed": "",
+  "champion": "overnight/challengers/v94-champion",
+  "games": 600
+ },
+ {
+  "name": "182-v95-vs-v94",
+  "sed": "",
+  "champion": "opponents/v94net",
+  "games": 600,
+  "workers": 4
  }
 ]

@@ -23,6 +23,12 @@ VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.
 
 
 def load_agent(directory: Path) -> ModuleType:
+    # The candidate dir must lead sys.path and any root kernel already imported must go,
+    # or `import fastboard` inside the candidate binds the tree's copy and this measures a
+    # chimera: the candidate's agent.py driving the tree's kernels. Mirroring lives in both.
+    sys.path.insert(0, str(directory))
+    for stale in ("fastboard", "fastsearch"):
+        sys.modules.pop(stale, None)
     spec = importlib.util.spec_from_file_location("draws_agent", directory / "agent.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

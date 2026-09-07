@@ -5,6 +5,15 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 PY=./.venv/Scripts/python.exe
+# GATED: the shipped files only. The repo-wide sweep is permanently red -- ~99 ruff and
+# ~136 mypy errors, all of them in testing/ and training/ scratch audit scripts -- so
+# gating on it meant the zip could never be built. These four are clean on both, and are
+# the only things the platform ever imports.
+# Plus the files whose breakage would corrupt a SHIPPED artifact rather than a scratch
+# report: export.py writes weights/net.npz, check_nnue.py is the only guard that a bad
+# export is caught, and the testing/ harnesses produce the PROMOTE/REJECT exit code that
+# decides what gets copied into agent.py. The ~99 dirty files are all audit_* scratch.
+GATED="agent.py fastboard.py fastsearch.py harness training/export.py training/check_nnue.py training/features.py testing/gauntlet.py testing/arena.py testing/sprt.py testing/referee.py testing/openings.py testing/clocktest.py testing/check_fastboard.py testing/check_fastsearch.py testing/mistakes.py testing/replay_eval.py testing/audit_mirrorplay.py testing/check_bundle.py"
 STATE=overnight/night2
 mkdir -p "$STATE"
 MAIN="$STATE/night.log"
@@ -18,7 +27,10 @@ mark() { date -u +%FT%TZ > "$STATE/$1.done"; }
 challenger() {  # name switch
     local d="overnight/challengers/$1"
     rm -rf "$d"; mkdir -p "$d/weights"
-    cp agent.py fastboard.py "$d/"
+    # fastsearch too: _scan_agent_flags() reads the agent.py next to FASTSEARCH, so a dir
+    # without its own copy silently takes HISTORY_V2 (and INIT_FOLD) from the tree --
+    # which makes an SPRT that seds those switches measure nothing at all.
+    cp agent.py fastboard.py fastsearch.py "$d/"
     sed -i "s/^$2: Final = False\$/$2: Final = True/" "$d/agent.py"
     grep -q "^$2: Final = True\$" "$d/agent.py" || { say "switch $2 not found"; return 1; }
     cp weights/net.npz weights/book.bin "$d/weights/"; cp -r weights/syzygy "$d/weights/"
@@ -33,14 +45,18 @@ verdict_line() { grep -E "^(PROMOTE|REJECT|INCONCLUSIVE)" "$STATE/$1.gauntlet.lo
 promote() {  # name what
     local d="overnight/challengers/$1"
     local b="overnight/champion_backup_$(date -u +%Y%m%dT%H%M%SZ)"
-    mkdir -p "$b/weights"; cp agent.py "$b/"; cp weights/net.npz "$b/weights/"
+    # Kernels too -- a backup without them is not a runnable engine.
+    mkdir -p "$b/weights"; cp agent.py fastboard.py fastsearch.py "$b/"; cp weights/net.npz "$b/weights/"
     cp "$d/agent.py" agent.py
-    if $PY -m ruff check . >> "$MAIN" 2>&1 && $PY -m mypy >> "$MAIN" 2>&1; then
+    [ -f "$d/fastboard.py" ] && cp "$d/fastboard.py" fastboard.py
+    [ -f "$d/fastsearch.py" ] && cp "$d/fastsearch.py" fastsearch.py
+    if $PY -m ruff check $GATED >> "$MAIN" 2>&1 && $PY -m mypy $GATED >> "$MAIN" 2>&1; then
         git add agent.py && git -c core.safecrlf=false commit -q -m "promote $1: $2" \
             -m "Unattended, by overnight/night2.sh. Backup in $b." && say "promoted $1, committed"
         note "**PROMOTED $1** -- $2"
     else
-        say "GATE RED after promoting $1 -- restored"; cp "$b/agent.py" agent.py
+        say "GATE RED after promoting $1 -- restored"
+        cp "$b/agent.py" agent.py; cp "$b/fastboard.py" fastboard.py; cp "$b/fastsearch.py" fastsearch.py
         note "$1 passed but the gate went red; NOT promoted"
     fi
 }
@@ -110,15 +126,31 @@ if ! finished final; then
     C=$?; tail -n 2 "$STATE/clock.final.log" | tee -a "$MAIN"; note "final clock replay x1.5: $(tail -n 2 "$STATE/clock.final.log" | head -n 1) (exit $C)"
     if ! cmp -s agent.py "$STATE/agent.start.py"; then
         PRE="$STATE/start-build"; rm -rf "$PRE"; mkdir -p "$PRE/weights"
-        cp "$STATE/agent.start.py" "$PRE/agent.py"; cp fastboard.py "$PRE/"; cp weights/net.npz weights/book.bin "$PRE/weights/"; cp -r weights/syzygy "$PRE/weights/"
+        cp "$STATE/agent.start.py" "$PRE/agent.py"; cp fastboard.py fastsearch.py "$PRE/"; cp weights/net.npz weights/book.bin "$PRE/weights/"; cp -r weights/syzygy "$PRE/weights/"
         $PY -u -m testing.arena --agent . --opponent "$PRE" --games 40 --base-ms 120000 --increment-ms 500 > "$STATE/match.final.120s.log" 2>&1
         tail -n 5 "$STATE/match.final.120s.log" | tee -a "$MAIN"; note "120 s match, morning build vs night start: $(grep -E 'score' "$STATE/match.final.120s.log" | tail -n 1)"
     else
         note "nothing promoted tonight; no 120 s match needed"
     fi
-    $PY -m harness.package --include fastboard.py | head -n 1 | tee -a "$MAIN"
+    # No pipefail in this script, so a pipeline reports tee's status: package.py can refuse
+    # (missing kernel, missing net), delete the partial zip, exit 1 -- and the loop would
+    # log a blank line and mark the night finished with no submission at all.
+    if $PY -m harness.package > "$STATE/package.out" 2>&1; then
+        head -n 1 "$STATE/package.out" | tee -a "$MAIN"
+        # Presence is not importability -- cold-import the zip as the platform will.
+        if ! $PY -m testing.check_bundle submission.zip >> "$MAIN" 2>&1; then
+            say "BUNDLE FAILED ITS COLD IMPORT -- do not upload"
+            note "**submission.zip built but fails a cold import; do not upload**"
+            packaged=0
+        fi
+    else
+        cat "$STATE/package.out" >> "$MAIN"; say "PACKAGE FAILED -- no new submission.zip"
+        note "**package failed -- submission.zip is stale or absent, do not upload blind**"
+        packaged=0
+    fi
     { echo; echo "## Switches now on"; grep -E "^(TIME_V2|HYGIENE|FAST_BOARD|CONTEMPT|FUTILITY|TT_AGE|PVS): Final" agent.py; echo; echo "## Commits"; git log --oneline -8; } >> "$SUMMARY"
-    mark final
+    # Not marked done unless a zip was actually built: final.done is what a resume skips on.
+    [ "${packaged:-1}" = 1 ] && mark final
 fi
 
 if ! finished review; then

@@ -2479,3 +2479,412 @@ alone (both sides shared the rule), but do not defend a borderline old verdict w
 (8) Standing power caveat: a +19 checkpoint promotion is weak (155-mixnet2s went +69 at 76
 games to -3 by 346). A promotion that CROSSES the llr bound, as v9.4's +70/llr +2.86 did, is
 a different class of evidence. Read the llr, not only the Elo.
+
+## v10 data check (6 Sep 21:20, pre-training)
+
+`sf80kf_00` (n80000) vs `sf20k_00` (n20000, what v9.5 trained on), 1 M rows each:
+
+| | n80000 (v10) | n20000 (v9.5) |
+|---|---|---|
+| at +/-2000 clamp | 7.25% | 5.51% |
+| \|cp\| < 50 | 44.6% | 43.0% |
+| std | 596.0 | 544.8 |
+| IQR | 211.0 | 216.0 |
+
+The IQR is the same, so the bulk of the distribution has not moved; the difference
+is entirely in the tails. Deeper search resolves positions that n20000 leaves
+unclear, which is the signature we wanted -- sharper labels, not merely more rows.
+Feature density (16.7 nonzero/row), stm balance and cp mean all match v9.5's shards,
+so `--scale 0.2479` is calibrated and the malformed-entry guard did not corrupt data.
+
+Caveat: more clamping also means slightly more information lost at the +/-2000 rail.
+Watch the 21-32 strata in `train-v10.log` -- that is where clamped positions live.
+
+## v10 corpus audit (6 Sep 21:25, pre-training) -- `training/audit_corpus.py`
+
+New tool. Every check in it is one that fails SILENTLY, so it has to be measured.
+Calibrated first against corpora with known answers: it reproduces the human-data
+attack lie at +479cp, so its numbers can be trusted.
+
+| | v10 sf80kf (n80000) | v9.5 sf20k (n20000) | v9.4 Lichess (human) |
+|---|---|---|---|
+| corr(material, cp) white-POV | **+0.909** | +0.902 | +0.850 |
+| ...read as stm-POV | +0.016 | -0.013 | +0.003 |
+| attack reward (truth ~ +5) | **+6.0** | +14.0 | **+479.5** |
+| bucket 0 (endgames) | **8.7%** | 8.8% | **0.8% STARVED** |
+| bucket spread | 8.7-15.1% | 8.8-15.2% | 0.8-24.5% |
+| distinct rows | 99.8% | 99.8% | 100.0% |
+| clamp +/-2000 | 7.26% | 5.56% | 7.46% |
+| white to move | 50.4% | 50.2% | 50.7% |
+
+Four things this establishes:
+
+1. `binpack_decode` stores cp WHITE-POV, same as `pack.py`. This is the trap pack.py
+   documents -- backwards, it trains a net to prefer losing positions and nothing
+   raises. Measured, not assumed: +0.909 vs +0.016.
+2. The attack reward is +6cp, i.e. the truth. The corpus that broke v9.4 taught +480.
+3. Bucket 0 holds 8.7% of v10's data against 0.8% in the human corpus -- ~11x the
+   endgame data. This is the mechanical reason v9.5 posted the best-ever endgame
+   suite (7.5); v10 keeps that property.
+4. No drift: shards 00/05/10 agree to 0.1% on every metric, so auditing a few shards
+   is enough for all 40.
+
+Nothing here blocks training. The one thing to watch is the 21-32 strata in
+`train-v10.log`, where the extra clamping (7.26% vs 5.56%) concentrates.
+
+## v11 candidate + one cost correction (6 Sep 21:45)
+
+Human stopped `overnight/continuous/loop.sh` at 21:30 (autonomous loop OFF; worker,
+watchdog and the v10 chain left running). NOTES from here is a handover, not a baton.
+
+`net_architecture.md` recommends **kz32 @ accumulator 256, 768 features, from scratch**:
+same parameter count (6.42 M vs 6.55 M), 0.53 MB smaller, an ESTIMATED 1.248x node
+rate (+10.2 Elo at 120 s), and NO engine edits -- `KING_ZONES` is `W1.shape[0] // 768`
+and the 32-zone map already exists in features.py, agent._zone and fastboard.zone_of,
+so the .npz shape alone selects the architecture.
+
+TWO CORRECTIONS to that report, both arithmetic:
+
+1. It assumed 1.16 B positions -> 36.2 M/zone at kz32. The v10 corpus is 800 M ->
+   **25.0 M/zone**, just UNDER the 27.2 M/zone density that won kz8->kz16 (+31 Elo).
+   kz32 wants ~870 M. v10 itself is fine: kz16 at 800 M is 50.0 M/zone.
+2. There is no cheap way to reach 870 M. `binpack_decode` has no --skip/--offset; it
+   reads chunks sequentially from the start and stops at --target. A larger target
+   re-decodes everything (~65 min at the measured 86 s/shard), it does not append.
+   Anyone planning kz32 must budget that hour, or add a --skip option first.
+
+ALSO MEASURED AND REJECTED (do not re-raise): 8 -> 12/16 output buckets. The pilot put
+12 endgame-dense heads 0.5% better on val -- inside the noise of an instrument already
+shown to be a weak Elo proxy -- and it costs three engine edits (agent._bucket, the
+fastsearch bucket line, export). King resolution is where the measured Elo is.
+
+## Correction: king-zone density was computed on a false assumption (6 Sep 22:00)
+
+`net_architecture.md` (and my own note above) computed density as positions / zones.
+That assumes kings are spread evenly over the board. Measured on 600 k real positions
+from `sf80kf_00`, they are not: at kz16 the busiest zone takes **35.4% of all data**
+(5.67x uniform) and the quietest 0.96% (0.15x). At kz32 the busiest takes 29.6%.
+
+Redone on real occupancy (median zone, both perspectives counted):
+
+| run | uniform figure | REAL median zone | REAL quietest |
+|---|---|---|---|
+| kz16 @ 436 M -- **WON, +31 Elo** | 27.2 M | **14.4 M** | 4.2 M |
+| kz32 @ 436 M -- **LOST** | 13.6 M | 7.4 M | 1.7 M |
+| kz32 @ 800 M -- v11 proposal | 25.0 M | **13.6 M** | 3.1 M |
+
+**v11 lands at 0.95x the density of the run that won and 1.83x the run that lost.**
+
+Two consequences:
+
+1. The earlier "kz32 needs ~870 M, so budget a 65-minute re-decode" is WITHDRAWN. It
+   came from the uniform figure. On real occupancy 800 M already puts kz32 at parity
+   with the winning configuration. No re-decode. Run v11 on v10's shards as-is.
+2. The honest caveat is the tail, not the median: v11's quietest zone gets 3.1 M
+   against the winner's 4.2 M (0.74x). If kz32 fails, look at positions with the king
+   on the rare squares (ranks 5-8) before blaming the architecture.
+
+The 32-zone map is verified identical across features.py, agent.py and fastboard.py on
+all 64 squares, and all 32 zones are reachable.
+
+## CLOSED: exact tablebase labels for endgames (6 Sep 22:35)
+
+Fetched 5-man Syzygy (290 files, 984 MB, `data/syzygy5`) to relabel the 12.3% of the
+corpus that is <= 5 men -- 98.2 M positions -- with exact ground truth instead of
+Stockfish scores. `training/tb_audit.py` measures whether that would change anything.
+
+It would not. Over 7,413 probed positions from `sf80kf_00`:
+
+    AGREE     99.879%
+    DISAGREE   0.121%   (all "labelled ~drawn, actually won"; median |cp| 56)
+    wrong sign 0.000%   claims-a-win-that-is-a-draw 0.000%
+
+The n80000 endgame labels are already right. The 0.121% are long-DTZ wins that
+Stockfish scores as practically unwinnable, and for training a net whose engine also
+cannot win them, the Stockfish label is arguably the better target than the truth.
+
+Do not spend a slot relabelling endgames. Keep `data/syzygy5` -- it is a cheap oracle
+for future audits -- but the conversion weakness is NOT a <=5-man labelling problem.
+Caveat: tablebases stop at 5 men; this says nothing about 6-10 man endings, which is
+where conversion actually fails.
+
+## OPEN, and now empirically confirmed: the engine's ply cap is wrong (6 Sep 22:45)
+
+NOTES ~line 723 raised this and said "longest game we have on record is 323". Measured
+across the 29 ladder PGNs tonight: **the longest real platform game is 525 plies** (a
+draw). A 300-ply cap would have adjudicated it at move 150. So the platform cap is
+empirically NOT 300, and `harness/rules.py`'s `PLY_CAP = 300` is stale --
+`testing/referee.py` was right to override it with `PLATFORM_PLY_CAP = 600`.
+
+Step 1 of the old plan IS DONE: `testing/referee.py` uses 600 and `testing/gauntlet.py`
+imports it, so our gauntlets already play the platform's game. The old warning that a
+corrected ADJ_V2 "will look worse in our own SPRT" no longer applies.
+
+**Step 2 was never done. The ENGINE still believes the cap is 300:**
+
+    agent.py:1033  ADJUDICATION_PLY = 300
+    agent.py:1047  ADJ_BEHIND_LATE  = 300   cp added to the behind-side draw score
+    agent.py:1048  ADJ_WINDOW       = 80    arms the fifty-move plan near the cap
+
+Size of the prize, measured over the 29 ladder games:
+
+| gate | games | share | what is wrong there |
+|---|---|---|---|
+| ply >= 220 | 4 / 29 | 13.8% | ADJ_WINDOW arms; should arm at 520-600 |
+| ply >= 300 | 1 / 29 | 3.4% | `late` ramp PINNED at 1.0; correct value at ply 525 is 0.75, at 323 is 0.077 |
+
+In the 525-ply drawn game the engine spent ~225 plies with the behind-side draw score
+inflated by up to +300 cp and `CONTEMPT_AHEAD_LATE` at maximum -- in a game it drew.
+
+This is contained in agent.py, no kernel. It is correctness, not tuning: re-base every
+`ADJUDICATION_PLY` consumer to 600 and re-derive `late` as `(game_ply - 300) / 300`.
+
+## THE 53.8% HORIZON BUCKET IS TIME ALLOCATION (6 Sep 23:40) -- see overnight/eval/v10/HORIZON.md
+
+Attributed every centipawn we lose in the games we failed to win (13 games, v9.5's net,
+depth-18 reference): horizon 53.8% (8,901 cp), evaluation 26.9%, search 17.5%, time 1.3%,
+book 0.5%. Then characterised the horizon moves against all 1,085 of our moves:
+
+  spent 2.2 s vs 1.1 s median | clock left 62.3 s vs 26.5 s | move 45 vs 93 | |eval| 122 vs 10
+
+The engine ALREADY spends above its median on 31 of 33 of them. They are middlegame moves
+in sharp positions played with 62 s on the clock. The median game's clock never drops
+below 17.4 s, and funding every horizon move costs 2.5 s per game.
+
+The constant that binds: `Engine.choose` will not start an iteration unless predicted to
+finish inside **1.5x the soft budget**; the median horizon move needed **1.57x**.
+
+Do NOT read this as "time management was under-explored" -- the `time` CAUSE is only 1.3%,
+but that cause means "played under a second on a low clock", which is a different thing
+from "did not spend the clock we had". And do NOT read it as WIN_FOCUS/CONVERT_BUDGET
+again: those fired on winning positions and measured null; this population is sharp
+unstable middlegames at |eval| 122 cp.
+
+Caveats in the report; the important one is that 12% of the bucket got LESS time on
+re-search and flipped anyway, so the bucket is ~88% real, and one game's clock hit 1.1 s
+so any change must be gated on clock health.
+
+## v10 trained (7 Sep 02:14) -- beats v9.5 on BOTH held-out sets
+
+From scratch, 800 M n80000 positions, 38 shards (shard 38 held out with val), kz16 @
+acc512, 200 epochs, lr 1e-3, WDL lambda 0.75.
+
+**It ran the full 200 epochs and never early-stopped -- and it was still marking `*best`
+at epochs 196, 197 and 198.** Train/val gap +0.00056, so it is not overfitting: it ran
+out of epochs while still improving, exactly as v9.5 did at 14. **v11 should budget more
+than 200 epochs**, or accept that we keep shipping undertrained nets.
+
+`training/common_val.py` -- both nets scored on the SAME held-out sets, because each
+run's own `best_val` is measured on its own corpus and the two are not comparable:
+
+| held-out set | v9.5 | v10 | change |
+|---|---|---|---|
+| sf20k_val (v9.5's OWN corpus) | 0.006792 | **0.006454** | **-4.98%** |
+| sf80kf_val (v10's corpus) | 0.007213 | **0.007100** | -1.57% |
+
+v10 wins on the rival's home turf, which is the strongest form of this comparison.
+
+Attack bias, same 2,000-position probe, so like for like:
+
+| | v9.5 | v10 |
+|---|---|---|
+| attacking signed | +11 cp | -13 cp |
+| attacking \|err\| | 199 | **187** |
+| quiet \|err\| | **126** | 130 |
+| weighted \|err\| | 148 | **147** |
+
+Essentially unchanged -- as expected. The attack-bias defect was v9.4's and v9.5 fixed
+it; v10's gain is general accuracy from 3x the data and 14x the epochs, not bias.
+
+`check_nnue: all checks passed` -- the exported .npz matches the torch model.
+
+Suite and the 600-game A/B vs `opponents/v95net` still to come. DO NOT SHIP on the
+validation numbers alone: a 5% val gain is not a known quantity in Elo, and NOTES has
+already recorded one case (kz16 vs kz8) where val moved one way and the suite the other.
+
+## v10 staged 02:32 -- but the suite number is CONTAMINATED and the 9-12 band looks wrong
+
+`overnight/nets/190-v10.npz`. check_nnue passed. Suite, against v9.5 (180-sf100):
+
+| band | v9.5 | v10 (contaminated) |
+|---|---|---|
+| 5-8 pieces | 5.9 | **5.8** |
+| **9-12 pieces** | **9.8** | **18.2** |
+| 13-16 pieces | 6.7 | **6.6** |
+
+**DO NOT ACT ON THAT 18.2 EITHER WAY UNTIL THE CLEAN RE-RUN LANDS.** The worker started
+`183-v95-vs-v94` at 02:14:16 -- the instant training ended, because `busy_gauntlets` did
+not count `common_val`/`attack_bias`/`export`, so the box looked idle -- and it ran until
+I killed it at 02:31, overlapping nearly the whole suite at 81% CPU. The suite is
+time-controlled at 2.5 s/position, so starvation costs the engine nodes and inflates loss.
+
+Two live hypotheses, and they are distinguishable:
+* CONTAMINATION: 5-8 piece positions are nearly tablebase-simple and barely search-bound,
+  9-12 need real search, so starvation would hit the middle band hardest -- which is
+  exactly the shape observed (5-8 and 13-16 both match v9.5; only 9-12 blew up).
+* REAL REGRESSION: v9.5 specifically fixed this band (21.5 -> 9.8). If v10 gave it back,
+  that is a ship-blocker no validation gain compensates for.
+
+`overnight/suite_clean.sh` is armed: waits for the paired postmortem to finish, then
+re-runs the suite on a quiet machine into `suite-190-v10-clean.log`.
+
+Guards tightened tonight, both after they failed live:
+* `busy_gauntlets` was FAIL-OPEN (empty probe read as idle) -- now fail-closed, and now
+  also counts postmortem, common_val, attack_bias, export and check_nnue.
+* the watchdog cried STALLED at 02:29 while the suite was at 300/400; it now counts the
+  post-training pipeline as work. Note `count()` matches with -like, NOT regex, so
+  alternation there must be a SUM of counts, not a `\|` pattern.
+
+## Near miss: an A/B that would have tested v9.5 against itself (7 Sep 02:35)
+
+`overnight/queue_v10_ab.sh` queued `190-v10-vs-v95` with a champion and games but NO
+`net` field. worker.sh's task setup does `rm -rf "$d"` and rebuilds the challenger from
+the TREE -- `cp weights/net.npz ...` -- and only substitutes a different net when the
+task carries `net`. The tree's net is still v9.5's (md5 9e2b0006), and the champion
+`opponents/v95net` is the same net, so the run would have been 600 games of v9.5 against
+itself. The net-equals-tree guard would NOT have caught it: that guard is inside
+`if [ -n "$net" ]`, so a task with no `net` field skips it entirely.
+
+Fixed in tasks.json and in the queuer. Verified before it ran: challenger net eb0035b5
+(v10) vs champion net 9e2b0006 (v9.5), identical code on both sides.
+
+RULE: a net A/B task MUST carry `net`. Without it the task silently tests the tree
+against itself, and the only symptom is a result that looks like a clean draw.
+
+## The paired postmortem was INVALID as first run (7 Sep 04:30) -- two defects, both avoidable
+
+First attempt reported "total value lost 32,432 -> 28,618 cp, -11.8%" for v9.5 -> v10.
+**That number is meaningless and could not have been anything else.** `delta` is
+`eval_after - eval_before`, both from Stockfish on the SAME historical games. The moves
+were played by v9.4/v9.5 months ago and cannot change. Total value lost is a property of
+the games and the reference, NOT of the net being probed. The net can only change how
+each fixed loss is CLASSIFIED.
+
+Two defects produced the illusion:
+
+1. **Side detection is a guess.** `postmortem.detect_side` replays the engine and takes
+   whichever side it reproduces. Checked against the colour in the filenames: v9.5 run
+   72% correct, v10 run 79%, both correct in only **19 of 29 games**. Ten games had one
+   net analysing the OPPONENT's moves.
+2. **Stockfish is not deterministic across invocations.** It is a persistent engine with
+   a shared hash, so a depth-18 score depends on how many positions preceded it. I killed
+   the v9.5 baseline at 13 games and resumed the remaining 16 separately; v10 ran all 29
+   in one. Result: **46.6% of paired moves disagreed on delta** (median 8 cp, max 1,217),
+   and the total absolute disagreement was 21,445 cp against a claimed effect of 2,100.
+
+`overnight/pm_clean.sh` re-runs both nets with `--colour` passed explicitly, in identical
+white/black batches in identical order, so delta becomes identical and only `cause` can
+move. Output `pm2-v95` / `pm2-v10`, compared into `PAIRED2.md`.
+
+RULE for any future postmortem comparison: pass --colour, run both agents over the same
+batches in the same order in one invocation each, and CHECK that delta is bit-identical
+between the two runs before reading anything into the cause table. If delta moved, the
+instrument moved, not the engine.
+
+## v10 VERDICT SO FAR: a real 9-12 piece regression that static eval does NOT explain
+
+Clean suite on a quiet machine (`suite-190-v10-clean.log`) reproduces the contaminated
+run almost exactly -- mean 10.2 vs 10.3, 975 s vs 978 s. **My contamination hypothesis was
+wrong; the gauntlet load did not measurably affect the suite.** The regression is real.
+
+| | v9.5 (180-sf100) | v10 (190-v10) |
+|---|---|---|
+| mean loss, 400 pos @ 2.5 s | **7.5** | 10.2 (+36%) |
+| best-move rate | 56.5% | **58.5%** |
+| >=100 cp errors | **2.0%** | 2.8% |
+| 5-8 pieces | 5.9 | **5.8** |
+| **9-12 pieces** | **9.8** | **18.3** |
+| 13-16 pieces | 6.7 | **6.3** |
+
+v10 finds the best move MORE often and blunders BIGGER, entirely in the 9-12 band.
+
+The band is not under-represented in the corpus: 9-12 pieces is 15.10% of sf80kf against
+15.08% of sf20k, median |cp| 37 vs 45, clamped 6.68% vs 5.77%. Not a data-composition
+problem.
+
+And `stratified_loss` on the SAME val set for both nets:
+
+    v9.5  2-8:3.85  9-12:6.37  13-16:7.09  17-20:8.31  21-24:9.08  25-28:9.27  29-32:9.18
+    v10   2-8:2.99  9-12:6.36  13-16:7.24  17-20:8.45  21-24:9.24  25-28:9.29  29-32:9.14
+
+**Static eval at 9-12 is IDENTICAL (6.37 vs 6.36) while play there is 87% worse.** So this
+is not evaluation accuracy. It is how the eval drives search on those 135 positions.
+v10's validation gain is concentrated in 2-8 pieces (-22%); it is slightly WORSE at
+13-16, 17-20 and 21-24 -- so the headline -4.98% common-val gain is a deep-endgame gain,
+not a general one.
+
+Leads for whoever picks this up, cheapest first:
+1. Dump the 9-12 suite positions where v10 loses >=100 cp and v9.5 does not, and look at
+   what they have in common. 135 positions, so this is minutes of work.
+2. Check whether v10's output DISTRIBUTION (not accuracy) moved. Search margins --
+   futility, razoring, LMR -- are hard-coded in centipawns; a net with the same loss but
+   a different score scale changes every one of those thresholds. NOTE: my first attempt
+   at this measured ~0.00 correlation for BOTH nets and was WRONG -- `Batches.epoch()`
+   shuffles, so predictions did not line up with labels. Build an unshuffled path.
+3. DO NOT ship v10 on the -4.98% validation number. The suite says the engine is worse.
+
+## Corrected paired postmortem (7 Sep 06:45) -- v10 trades HORIZON errors for EVALUATION errors
+
+`pm2-v95` vs `pm2-v10`, 29 games, --colour passed explicitly, identical batches in
+identical order. Instrument validated before reading anything:
+
+    games disagreeing on our colour : 0     (the first attempt had 10)
+    paired moves with IDENTICAL delta: 100.0%  (the first attempt had 53.4%)
+    total value lost                : 37,326 both -- as it MUST be, these are historical games
+    `time` and `book` buckets        : identical -- they are classified from the PGN alone
+
+| cause | cp v9.5 | cp v10 | delta | share v9.5 | share v10 |
+|---|---|---|---|---|---|
+| horizon | 13,231 | 12,419 | **-812** | 35.4% | 33.3% |
+| search | 9,288 | 8,903 | -385 | 24.9% | 23.9% |
+| time | 8,059 | 8,059 | +0 | 21.6% | 21.6% |
+| **evaluation** | 6,611 | **7,808** | **+1,197** | 17.7% | 20.9% |
+
+**v10 moves errors from a fixable class into an unfixable one.** A horizon error is one
+more search would solve; an evaluation error survives more search AND the searched score
+sits >=150 cp from the reference. v10 has 6 fewer horizon moves and 9 more evaluation
+moves. That is the wrong direction, and it is consistent with the suite's 9-12 regression.
+
+**This REVERSES the pre-registered horizon test.** On the broken run the bucket moved
++33 cp (29 games) / +441 (valid 19), which I read as "a better net does not shrink
+horizon, so the reach is speed-bound". Measured properly it moved **-812 cp (-6.1%)**. A
+better net DOES shrink the horizon bucket. The pure-speed case for accumulator-256 is
+weaker than SCOPE.md's revision claims -- treat that section as superseded by this table.
+
+Caveat: match_rate is nan in pm2 because --colour skips detect_side, which is what
+computed it. Harmless here; the cause table does not use it.
+
+## THE ENDGAME SUITE WAS A BROKEN INSTRUMENT (7 Sep 09:50) -- fixed, all prior verdicts suspect
+
+`testing/endgame_suite.py` scored moves on a long-lived Stockfish and NEVER passed a
+`game=` token. python-chess only emits `ucinewgame` when that token changes, so the hash
+was never cleared and a score depended on what had been analysed before it. Measured on
+one position, same move, same depth 17: **339 cold, 532 after analysing the parent, 585
+after the siblings.** Those values were then cached in `after[]` PERMANENTLY, across every
+agent and every run.
+
+Two consequences, both of which fooled us for a full night:
+
+1. **"It reproduced three times" meant nothing.** Once a move is in `after[]` the number is
+   read from cache, so re-running any agent returns the identical loss by construction. The
+   "clean-machine control" I ran at 04:25 could not have produced a different answer.
+2. **The metric compared different depths**: `loss = eval(root @ depth) - after[move](child
+   @ depth-1)`, so a move was charged for the depth difference. On mate-clamped positions
+   that is enormous.
+
+Worked example, suite index 144, `8/p5p1/P4pk1/3b4/5rpP/2P5/7K/8 b - - 1 47`:
+v10 played g6f5, cached at +1180 against a root of +2000 = **820 cp charged**. Rescored
+with a fresh hash it is **+2000, loss 0** -- and deeper analysis shows g6f5 is mate in 9 at
+depth 22 against v9.5's mate in 11. **v10 was penalised 820 cp for finding a FASTER MATE.**
+That single position was 67% of the entire 9-12 band regression. Corrected, the band is
+about 10.5 vs 9.0, not 18.3 vs 9.2.
+
+FIXED in `testing/endgame_suite.py`:
+* every `sf.analyse` now passes `game=object()`, so the hash resets per call;
+* loss is now `after[best] - after[move]`, two CHILDREN scored at the SAME depth, instead of
+  root-at-depth minus child-at-depth-minus-one;
+* a `PROTOCOL = 2` stamp discards every `after` cache written by the old scorer.
+ruff clean; the two mypy errors are pre-existing (verified against the .prev copy).
+
+**Every historical net verdict that leaned on this suite is suspect, including v9.5's own
+selection.** The gauntlet is unaffected and remains the only trustworthy judge.

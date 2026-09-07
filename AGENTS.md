@@ -21,7 +21,9 @@ There is no copy of either in this repo on purpose. Fetch the URLs.
 - Your colour is the side to move in the fen. There is no other input.
 - The process starts once per game and stays alive between your moves. Module state survives to
   your next move in the same game, never to the next game.
-- Import time has a 60 second budget before the clock starts. Load weights there.
+- Import time has roughly a 90 second budget before the clock starts (measured on the
+  platform: 74.1 s and 88.1 s both played, >90 s lost the game). `INIT_READY_S = 72.0`
+  is the margin we hand the runner. Load weights there.
 - 120 s + 0.5 s per move, per side, on wall time. One core, 2 GB, no network, no GPU.
 - Illegal move, malformed output, crash, out of memory, or flag fall loses that game.
 

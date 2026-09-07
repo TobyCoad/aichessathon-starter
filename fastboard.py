@@ -31,6 +31,7 @@ compiled functions take:
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import chess
@@ -632,10 +633,42 @@ def unmake_light(bb: Any, sqa: Any, meta: Any, undo: Any, keys: Any) -> Any:
 
 FEATURES = 768
 
+# Whether the shipped net is mirrored. Read from the weights rather than from agent.py's
+# flags, because MIRRORED is a property of the .npz, not a switch. numba folds this global,
+# so the unmirrored build compiles exactly the code it compiled before.
+try:
+    _F_MIRRORED = bool(
+        int(np.load(os.path.join(os.path.dirname(__file__), "weights", "net.npz"))["mirrored"])
+    )
+except (KeyError, OSError, ValueError):
+    _F_MIRRORED = False
+
 
 @njit(cache=False)
 def zone_of(square: Any, zones: Any) -> Any:
-    """Mirrors training.features.king_zone for 1, 4, 8 or 32 zones."""
+    """Mirrors training.features.king_zone for 1, 4, 8, 16 or 32 zones.
+
+    For a mirrored net this returns the W1 BLOCK, not the zone: files e-h are reflected
+    onto a-d and the result is offset by `zones` to select the reflected half of W1. Every
+    caller stores it into `zones[]` and multiplies by FEATURES, so the reflection needs no
+    signature change -- and the crossing test `zone_of(...) != zones[us]` then fires when
+    the king changes WING as well as zone, which a bare zone comparison would miss (d1->e1
+    keeps the zone but changes every other piece's index).
+    """
+    if _F_MIRRORED:
+        flip = 7 if (square & 7) >= 4 else 0
+        folded = square ^ flip
+        frank = folded >> 3
+        ffile = folded & 7
+        if frank <= 1:
+            block = frank * 4 + ffile
+        elif frank <= 3:
+            block = 8 + (frank - 2) * 2 + (ffile >> 1)
+        else:
+            block = 12 + ((frank - 4) >> 1) * 2 + (ffile >> 1)
+        if flip:
+            block += zones
+        return block
     rank = square >> 3
     file = square & 7
     if zones == 4:
@@ -1226,13 +1259,22 @@ def warm_up() -> None:
     n = gen_legal(pos.bb, pos.sq, pos.meta, out, False)
     gen_legal(pos.bb, pos.sq, pos.meta, out, True)
     width = 8
-    w1 = np.zeros((FEATURES * 8, width), dtype=np.float32)
+    # `zone_of` IGNORES its `zones` argument when mirrored -- it always applies the 16-zone
+    # folded map and then adds `zones` to select the reflected half -- so a mirrored build
+    # asking for 8 zones still returns blocks up to 23, i.e. row 18431 against a 6144-row
+    # buffer. numba compiles with bounds checking OFF, so that is a raw read of ~96 KB of
+    # arbitrary heap at every process start: today it returns garbage into throwaway buffers,
+    # but on a different allocation layout it is an access violation during import, which
+    # `except Exception` cannot catch -- the process dies and every game is an init forfeit.
+    warm_zones = 16 if _F_MIRRORED else 8
+    warm_blocks = warm_zones * 2 if _F_MIRRORED else warm_zones
+    w1 = np.zeros((FEATURES * warm_blocks, width), dtype=np.float32)
     b1 = np.zeros(width, dtype=np.float32)
     white = np.zeros(width, dtype=np.float32)
     black = np.zeros(width, dtype=np.float32)
     astack = np.zeros((MAX_PLY, 2, width), dtype=np.float32)
     zones = np.zeros(2, dtype=np.int64)
-    refresh(pos.bb, pos.sq, pos.meta, w1, b1, white, black, zones, 8)
+    refresh(pos.bb, pos.sq, pos.meta, w1, b1, white, black, zones, warm_zones)
     for i in range(n):
         make_full(
             pos.bb,
@@ -1247,7 +1289,7 @@ def warm_up() -> None:
             black,
             astack,
             zones,
-            8,
+            warm_zones,
         )
         in_check(pos.bb, pos.meta)
         repeats(pos.meta, pos.keys)

@@ -23,7 +23,7 @@ import chess.polyglot
 import numpy as np
 from numba import njit
 
-import fastboard as fb
+import fastboard as fb  # rebound by load_agent when the candidate ships its own copy
 
 # (fen, depth, nodes) from the Chess Programming Wiki perft page.
 PERFT = [
@@ -92,11 +92,28 @@ def compare(pos: fb.Position, board: chess.Board, where: str) -> list[str]:
 
 
 def load_agent(directory: Path) -> ModuleType:
+    # The candidate dir must lead sys.path and any root kernel already imported must go,
+    # or `import fastboard` inside the candidate binds the tree's copy and this measures a
+    # chimera: the candidate's agent.py driving the tree's kernels. Mirroring lives in both.
+    # Complication: this module binds `fb` at import so the annotations below resolve, which means a
+    # naive sys.modules pop would leave `fb` on the repo root while the candidate's
+    # agent.py used its own copy: two live numba compilations and exactly the chimera
+    # (root kernel driving a candidate accumulator) this file exists to rule out. So
+    # rebind, and only reload when the candidate actually ships its own kernels -- a
+    # pointless pop costs a full recompile of the board.
+    global fb
+    sys.path.insert(0, str(directory))
+    if (directory / "fastboard.py").resolve() != Path(fb.__file__).resolve():
+        for stale in ("fastboard", "fastsearch"):
+            sys.modules.pop(stale, None)
     spec = importlib.util.spec_from_file_location("fb_check_agent", directory / "agent.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules["fb_check_agent"] = module
     spec.loader.exec_module(module)
+    import fastboard  # the object the candidate's agent.py holds, whichever dir won
+
+    fb = fastboard
     return module
 
 
@@ -111,6 +128,14 @@ def main() -> None:
     parser.add_argument("--skip-perft", action="store_true")
     arguments = parser.parse_args()
     failures = 0
+
+    # Load the candidate FIRST. Everything below -- warm_up, the perft closure, the
+    # differential fuzz -- resolves `fb` at its first call, and numba freezes module
+    # globals into the compiled function at that moment. Loading after them left perft
+    # and the fuzz permanently bound to the ROOT move generator, so the two stages this
+    # file exists for ("an illegal move loses the game outright") never once tested the
+    # candidate's kernel, and only the accumulator stage did.
+    agent = load_agent(arguments.agent)
 
     started = time.perf_counter()
     fb.warm_up()
@@ -188,7 +213,6 @@ def main() -> None:
     )
 
     # 3. Fused accumulator against the agent's own, through zone crossings.
-    agent = load_agent(arguments.agent)
     zones_n = getattr(agent, "KING_ZONES", 1)
     width = agent.ACC_SIZE
     white = np.zeros(width, dtype=np.float32)

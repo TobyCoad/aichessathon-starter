@@ -73,6 +73,12 @@ must remain shippable at all times.
 ```
 mkdir overnight\challengers\NNN-short-name
 copy agent.py overnight\challengers\NNN-short-name\agent.py
+copy fastboard.py overnight\challengers\NNN-short-name\fastboard.py
+copy fastsearch.py overnight\challengers\NNN-short-name\fastsearch.py
+rem BOTH kernels, always. harness/runner.py puts ONLY the engine dir on sys.path,
+rem so a dir missing either one imports neither and silently plays the pure-python
+rem engine at ~4x fewer nodes -- recorded as the challenger's strength. 44 dirs on
+rem disk are already in that state; their historical results cannot be trusted.
 # edit the copy, then:
 .\.venv\Scripts\python.exe -m testing.gauntlet --challenger overnight\challengers\NNN-short-name
 ```
@@ -80,7 +86,9 @@ copy agent.py overnight\challengers\NNN-short-name\agent.py
 The gauntlet runs a crash gate and then an SPRT against the champion. Obey its exit
 code and nothing else:
 
-- **0 PROMOTE** — copy the challenger over `agent.py`, then commit both.
+- **0 PROMOTE** - copy the challenger's `agent.py` AND both kernels over the
+  tree's, then commit them together. Promoting `agent.py` alone ships half of what
+  was measured.
 - **1 REJECT** — leave `agent.py` alone. Record why in the journal.
 - **2 INCONCLUSIVE** — leave `agent.py` alone. Record it; a re-run with more games
   is a legitimate next experiment if the Elo estimate looked promising.

@@ -32,3 +32,5 @@ overnight/challengers/
 overnight/postmortem/
 overnight/pgn/
 overnight/eval/*.sh
+submission.zip.tmp
+submission-*.zip.tmp

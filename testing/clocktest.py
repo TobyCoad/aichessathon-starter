@@ -31,6 +31,12 @@ from testing import openings
 
 
 def load_agent(directory: Path) -> ModuleType:
+    # The candidate dir must lead sys.path and any root kernel already imported must go,
+    # or `import fastboard` inside the candidate binds the tree's copy and this measures a
+    # chimera: the candidate's agent.py driving the tree's kernels. Mirroring lives in both.
+    sys.path.insert(0, str(directory))
+    for stale in ("fastboard", "fastsearch"):
+        sys.modules.pop(stale, None)
     spec = importlib.util.spec_from_file_location("clocktest_agent", directory / "agent.py")
     if spec is None or spec.loader is None:
         raise SystemExit(f"cannot import {directory / 'agent.py'}")

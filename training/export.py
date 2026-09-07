@@ -108,9 +108,14 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, default=Path("weights/net.pt"))
     parser.add_argument("--out", type=Path, default=Path("weights/net.npz"))
     parser.add_argument("--half", action="store_true", help="store W1 as float16")
+    parser.add_argument(
+        "--mirror",
+        action="store_true",
+        help="the checkpoint is a mirrored net; load_checkpoint refuses one otherwise",
+    )
     arguments = parser.parse_args()
 
-    net = load_checkpoint(arguments.checkpoint).eval()
+    net = load_checkpoint(arguments.checkpoint, mirror=arguments.mirror).eval()
     weights = convert(net)
     if arguments.half:
         weights = halve(weights)

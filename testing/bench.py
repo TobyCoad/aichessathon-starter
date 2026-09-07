@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import chess
 
@@ -82,7 +83,7 @@ def load_agent(path: Path) -> ModuleType:
     return module
 
 
-def engine_for(agent: ModuleType, board: chess.Board):
+def engine_for(agent: ModuleType, board: chess.Board) -> Any:
     """A fresh FastEngine on `board`; None if the agent has no compiled board."""
     if getattr(agent, "_FAST", None) is None:
         return None
@@ -101,16 +102,16 @@ def engine_for(agent: ModuleType, board: chess.Board):
     return engine
 
 
-def root_search(engine, depth: int, alpha: int, beta: int) -> int:
+def root_search(engine: Any, depth: int, alpha: int, beta: int) -> int:
     if hasattr(engine, "root_search"):
         return int(engine.root_search(depth, alpha, beta, 0))
     return int(engine.search(depth, alpha, beta, 0))
 
 
-def best_move(agent: ModuleType, engine, board: chess.Board) -> str:
+def best_move(agent: ModuleType, engine: Any, board: chess.Board) -> str:
     entry = engine.table.get(int(engine.pos.keys[0])) if hasattr(engine.table, "get") else None
     if entry and entry[3]:
-        return agent._fb.move_to_uci(entry[3])
+        return str(agent._fb.move_to_uci(entry[3]))
     tt = getattr(engine, "tt", ())
     if tt:
         key = engine.pos.keys[0]
@@ -118,11 +119,11 @@ def best_move(agent: ModuleType, engine, board: chess.Board) -> str:
         if tt[0][slot] == key:
             move = int(agent._fs.unpack_move(tt[1][slot]))
             if move:
-                return agent._fb.move_to_uci(move)
+                return str(agent._fb.move_to_uci(move))
     return "?"
 
 
-def run_depth(agent: ModuleType, board: chess.Board, depth: int) -> dict:
+def run_depth(agent: ModuleType, board: chess.Board, depth: int) -> dict[str, Any]:
     engine = engine_for(agent, board)
     engine.deadline = time.monotonic() + 3600
     started = time.perf_counter()
@@ -136,7 +137,7 @@ def run_depth(agent: ModuleType, board: chess.Board, depth: int) -> dict:
     }
 
 
-def run_time(agent: ModuleType, board: chess.Board, seconds: float) -> dict:
+def run_time(agent: ModuleType, board: chess.Board, seconds: float) -> dict[str, Any]:
     engine = engine_for(agent, board)
     engine.deadline = time.monotonic() + seconds
     started = time.perf_counter()

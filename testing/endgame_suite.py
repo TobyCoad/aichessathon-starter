@@ -78,6 +78,24 @@ def sample_positions(count: int, seed: int, lo: int, hi: int) -> list[str]:
     return candidates[:count]
 
 
+PROTOCOL = 2  # bump to invalidate `after` caches written by an older, hash-contaminated scorer
+
+
+def score_child(
+    sf: chess.engine.SimpleEngine, board: chess.Board, uci: str, depth: int
+) -> int:
+    """Score the position after `uci`, from `board.turn`'s point of view."""
+    child = board.copy()
+    child.push(chess.Move.from_uci(uci))
+    if child.is_game_over():
+        outcome = child.outcome()
+        if outcome is None or outcome.winner is None:
+            return 0
+        return MATE_CP if outcome.winner == board.turn else -MATE_CP
+    info = sf.analyse(child, chess.engine.Limit(depth=max(depth - 1, 1)), game=object())
+    return int(cp(info["score"], board.turn))
+
+
 def build(arguments: argparse.Namespace) -> None:
     fens = sample_positions(
         arguments.count, arguments.seed, arguments.min_pieces, arguments.max_pieces
@@ -89,7 +107,10 @@ def build(arguments: argparse.Namespace) -> None:
     started = time.time()
     for index, fen in enumerate(fens, start=1):
         board = chess.Board(fen)
-        info = sf.analyse(board, chess.engine.Limit(depth=arguments.depth))
+        # A unique game token per call: python-chess only emits `ucinewgame` when the
+        # token changes, so without one a long-lived Stockfish carries its hash from
+        # position to position and the "reference" depends on what was analysed before.
+        info = sf.analyse(board, chess.engine.Limit(depth=arguments.depth), game=object())
         best = info["pv"][0].uci() if info.get("pv") else ""
         suite["positions"].append({
             "fen": fen, "best": best, "eval": cp(info["score"], board.turn), "after": {},
@@ -124,6 +145,12 @@ def run(arguments: argparse.Namespace) -> None:
     by_band: dict[str, list[int]] = {}
     matches = 0
     dirty = False
+    if int(suite.get("protocol", 1)) != PROTOCOL:
+        for entry in suite["positions"]:
+            entry["after"] = {}
+        suite["protocol"] = PROTOCOL
+        dirty = True
+        print(f"  cache from protocol {suite.get('protocol')} discarded; rescoring")
     started = time.time()
     for index, entry in enumerate(suite["positions"], start=1):
         board = chess.Board(entry["fen"])
@@ -132,21 +159,16 @@ def run(arguments: argparse.Namespace) -> None:
             loss = 0
             matches += 1
         else:
-            if move not in entry["after"]:
-                child = board.copy()
-                child.push(chess.Move.from_uci(move))
-                if child.is_game_over():
-                    outcome = child.outcome()
-                    if outcome is None or outcome.winner is None:
-                        value = 0
-                    else:
-                        value = MATE_CP if outcome.winner == board.turn else -MATE_CP
-                else:
-                    info = sf.analyse(child, chess.engine.Limit(depth=max(depth - 1, 1)))
-                    value = cp(info["score"], board.turn)
-                entry["after"][move] = value
-                dirty = True
-            loss = max(0, int(entry["eval"]) - int(entry["after"][move]))
+            for uci in (entry["best"], move):
+                if uci and uci not in entry["after"]:
+                    entry["after"][uci] = score_child(sf, board, uci, depth)
+                    dirty = True
+            # Both sides of the comparison are now children scored at the SAME depth with a
+            # fresh hash. The old metric subtracted a child at depth-1 from the ROOT at depth,
+            # which charged a move for the depth difference and, on mate-clamped positions,
+            # reported ~820 cp for a move that mates FASTER than the reference.
+            reference = int(entry["after"].get(entry["best"], entry["eval"]))
+            loss = max(0, reference - int(entry["after"][move]))
         losses.append(loss)
         pieces = chess.popcount(board.occupied)
         band = "5-8" if pieces <= 8 else ("9-12" if pieces <= 12 else "13-16")
