@@ -2232,3 +2232,11 @@ exported, checked, eval_rank'd, replayed at 300/400; then v13 vs v12@400, 400 ga
 7 Sep 22:15 v12 gates complete: clocktest PASS (0/6 flags, lowest clock 5.5 s, longest move
 11.7 s); bundle cold import 32.5 s when quiet (63 s earlier was load). Fully gated except a
 long SPRT. v13 at epoch 19/150.
+
+8 Sep 01:55 (Fable) -- OVERNIGHT v13: NO NEW NET. The continuation from v12 at lr 1e-4 (with the
+schedule's warm restart) never got back under v12's mixed-val (0.006376): epochs 1-31 sat at
+0.0065-0.0066, patience expired, and train.py restored the best = the INITIAL checkpoint, so
+v13 == v12 (export md5 identical), v13b likewise. Its "gauntlet" was therefore v12 vs v12:
+48.4% over 400 games (REJECT), a useful read of the rig's noise. Fix: continue at a low
+learning rate with no warm-up spike -- overnight/v14_train.sh, lr 3e-5, 100 epochs,
+patience 40, same wide rotation; then audit, replay, and 400 games vs v12@400.
