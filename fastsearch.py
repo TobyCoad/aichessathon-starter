@@ -39,7 +39,16 @@ import fastboard as fb
 MATE = 30_000
 DISTANCE_THRESHOLD = 19_000
 INFINITY = 1 << 20
+# agent.OUTPUT_SCALE and agent.PIECE_SCALE; see the long note there for the fit that
+# produced the numbers. Built below from the flags scanned out of agent.py, so a
+# challenger sed that flips EVAL_SCALE or EVAL_SCALE_PHASE is honoured here too, and
+# testing/check_fastsearch compares both against the agent's own copies.
 OUTPUT_SCALE = 400.0
+EVAL_SCALE_VALUE = 300.0
+EVAL_SCALE_PHASE_FIT = (220.0, 255.0, 275.0, 270.0, 270.0, 250.0, 200.0, 125.0)
+EVAL_SCALE_SMOOTH_FIT = (273.43, -24.18, -120.24)
+EVAL_SCALE_SMOOTH_CLIP = (150.0, 300.0)
+PIECE_SCALE = np.full(33, OUTPUT_SCALE, dtype=np.float64)
 MVV = np.array([100, 320, 330, 500, 900, 20000], dtype=np.int64)
 DELTA_MARGIN = 200
 BIG_DELTA = 975
@@ -310,6 +319,29 @@ _F_RAZOR = _AGENT_FLAGS.get("RAZOR", False)
 _F_SEE_QUIET = _AGENT_FLAGS.get("SEE_QUIET", False)
 _F_SING_EXT2 = _AGENT_FLAGS.get("SINGULAR_EXT2", False)
 
+# EVAL_SCALE / EVAL_SCALE_PHASE (agent.py holds the switches and the measurement that
+# produced the numbers). Both rebind module globals rather than reading a ctrl slot,
+# because `evaluate` runs on 62% of nodes and numba freezes a global at compile time --
+# which happens on the first call, long after this line, so the rebinding is honoured
+# and costs nothing at run time. A flat table is bit-identical to the old
+# `float(out) * OUTPUT_SCALE`: it is the same single float64 multiply.
+if _AGENT_FLAGS.get("EVAL_SCALE", False):
+    OUTPUT_SCALE = EVAL_SCALE_VALUE
+PIECE_SCALE = np.full(33, OUTPUT_SCALE, dtype=np.float64)
+if _AGENT_FLAGS.get("EVAL_SCALE_PHASE", False):
+    # Supersedes EVAL_SCALE: the fitted table is already at its own level.
+    _fit = np.asarray(EVAL_SCALE_PHASE_FIT, dtype=np.float64)
+    _width = 32.0 / len(EVAL_SCALE_PHASE_FIT)
+    _mids = np.array([_width * k + _width / 2.0 + 0.5 for k in range(len(_fit))])
+    PIECE_SCALE = np.interp(np.arange(33, dtype=np.float64), _mids, _fit).astype(np.float64)
+if _AGENT_FLAGS.get("EVAL_SCALE_SMOOTH", False):
+    # Supersedes both of the above; agent._piece_scale_table runs this same expression
+    # and check_fastsearch compares the two arrays entry for entry.
+    _q = (np.arange(33, dtype=np.float64) - 16.0) / 16.0
+    _a, _b, _c = EVAL_SCALE_SMOOTH_FIT
+    _lo, _hi = EVAL_SCALE_SMOOTH_CLIP
+    PIECE_SCALE = np.clip(_a + _b * _q + _c * _q * _q, _lo, _hi)
+
 FOLDED = {
     C_HYGIENE: _F_HYGIENE, C_FUTILITY: _F_FUTILITY, C_PVS: _F_PVS, C_LMR: _F_LMR,
     C_LMP: _F_LMP, C_SEE: _F_SEE, C_NMP_GUARD: _F_NMP_GUARD, C_RFP_PHASE: _F_RFP_PHASE,
@@ -517,7 +549,7 @@ def evaluate(
             out += t2 * w3[k, j + 2, 0]
         if t3 > 0.0:
             out += t3 * w3[k, j + 3, 0]
-    score = int(float(out) * OUTPUT_SCALE)
+    score = int(float(out) * PIECE_SCALE[meta[fb.PIECES]])
     if (
         not (_F_EG_SHRINK if _FOLD else ctrl[C_EG_SHRINK] != 0)
         or meta[fb.PIECES] >= EG_HI

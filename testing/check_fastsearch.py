@@ -57,6 +57,13 @@ def check_constants() -> None:
     }
     for name, value in pairs.items():
         assert getattr(fs, name) == value, f"{name}: fastsearch {getattr(fs, name)} agent {value}"
+    # EVAL_SCALE / EVAL_SCALE_PHASE build this table twice, once in each module, from
+    # the same fitted numbers. A drift between them would scale the kernel's leaves
+    # differently from the numpy reference's -- which the exact check below would
+    # catch, but only as an unexplained score mismatch a hundred lines further on.
+    assert np.array_equal(fs.PIECE_SCALE, agent.PIECE_SCALE), (
+        f"PIECE_SCALE: fastsearch {fs.PIECE_SCALE} agent {agent.PIECE_SCALE}"
+    )
     assert tuple(fs.MVV) == agent._MVV
     assert tuple(fs.FUTILITY_MARGIN) == agent.FUTILITY_MARGIN
     print("constants: identical")
