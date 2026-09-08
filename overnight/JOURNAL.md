@@ -2240,3 +2240,9 @@ v13 == v12 (export md5 identical), v13b likewise. Its "gauntlet" was therefore v
 48.4% over 400 games (REJECT), a useful read of the rig's noise. Fix: continue at a low
 learning rate with no warm-up spike -- overnight/v14_train.sh, lr 3e-5, 100 epochs,
 patience 40, same wide rotation; then audit, replay, and 400 games vs v12@400.
+
+8 Sep 02:15 (Fable) -- v14 (lr 3e-5 continuation of v12) also never beat v12's mixed-val in ten
+epochs (0.00643-0.00659 oscillating by shard type vs 0.006376); stopped. The warm-start line
+is exhausted for this recipe. Launched v15 = mirrored architecture FROM SCRATCH on the wide
+mixed rotation (lr 1e-3, 300 epochs, patience 60, warm-up 2) -- overnight/v15_scratch.sh;
+~9 h, then audit / replay / 400 games vs v12@400 automatically. v12 remains the shipped net.
