@@ -2246,3 +2246,11 @@ epochs (0.00643-0.00659 oscillating by shard type vs 0.006376); stopped. The war
 is exhausted for this recipe. Launched v15 = mirrored architecture FROM SCRATCH on the wide
 mixed rotation (lr 1e-3, 300 epochs, patience 60, warm-up 2) -- overnight/v15_scratch.sh;
 ~9 h, then audit / replay / 400 games vs v12@400 automatically. v12 remains the shipped net.
+
+8 Sep 09:45 (Fable) -- v15 (from scratch, mixed rotation, 300 epochs) finished 09:26: best mixed-val
+0.006163 vs v12's 0.006376 (-3.3%), still improving in the LR tail. The chain script's later
+stages were inherited from the v13 script unedited (my name replacements missed them), so it
+re-audited v12's net as "210-v13" and its gauntlet found no 230-v15 dir. Evaluating v15 by hand:
+export --mirror, check_nnue, eval_rank, replays at 400 and 300, xval; the 400-game match is
+skipped at the human's request. Side note: "210-v13" was audited with EVAL_SCALE True (its dir
+predates the tree flip), which is why its numbers differ from v12's -- scale, not noise.
