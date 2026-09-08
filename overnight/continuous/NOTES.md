@@ -277,6 +277,10 @@ checkpoint; keep the exactness check green at every commit; never edit results f
   RULE: a net's scale is chosen by the mistake replay (testing.mistakes retest, 300 vs 400),
   and nothing ships on the replay alone -- games decide.
 
+- v15 (8 Sep 10:05, emailed) = mirrored net FROM SCRATCH on the wide mixed rotation, unscaled:
+  IS the tree now (net md5 cca8f2d6). Held-out: Lichess 0.004852, SF 0.007485, mixed 0.006171
+  (all better than v12). Audit/replays/clocktest results in JOURNAL when they land.
+
 ## Champion
 - **v9.6 (6 Sep 21:20, emailed) = v9.5 + INIT_ASYNC.** Engine byte-for-byte v9.5 (same search,
   same net 9e2b0006, d8 bench 1,014,119, identical to v9.5); the kernel compile moves to a

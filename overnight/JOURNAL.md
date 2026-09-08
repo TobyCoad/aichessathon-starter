@@ -2254,3 +2254,8 @@ re-audited v12's net as "210-v13" and its gauntlet found no 230-v15 dir. Evaluat
 export --mirror, check_nnue, eval_rank, replays at 400 and 300, xval; the 400-game match is
 skipped at the human's request. Side note: "210-v13" was audited with EVAL_SCALE True (its dir
 predates the tree flip), which is why its numbers differ from v12's -- scale, not noise.
+
+8 Sep 10:05 v15 SHIPPED (human's call, before the audit/replays finished): from-scratch mixed
+net, val Lichess -7% / SF -0.5% / mixed -3% vs v12, slope 1.01; promoted into the tree (md5
+cca8f2d6, EVAL_SCALE off), check_fastsearch 70/70, bundle shippable (import 38.2 s under load).
+Ranking audit, replays (400/300/bucketed) and clocktest still running; recorded when done.
