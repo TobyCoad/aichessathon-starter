@@ -60,6 +60,11 @@ NMP_VERIFY_DEPTH = 10
 MAX_PLY = 72  # agent.MAX_PLY: the check-extension limit
 FUTILITY_MARGIN = np.array([0, 150, 300], dtype=np.int64)
 RAZOR_MAX_DEPTH = 3
+PROBCUT_MIN_DEPTH = 5
+PROBCUT_MARGIN = 300       # cp above beta the capture must hold; ~Alexandria's 287
+PROBCUT_DEPTH_CUT = 4      # verification search depth = depth - 4, stored at depth - 3
+HINDSIGHT_EVAL = 155       # sum of the two side-to-move evals; the reference's default
+FUT_LMR_MAX_DEPTH = 8      # prune2's table covers reduced depth <= 4; nominal 5..8 here
 # RAZOR (search.md #11): indexed by depth, cp below alpha at which a node is
 # assumed unrescuable by a quiet move and verified with a quiescence search.
 RAZOR_MARGIN = np.array([0, 500, 700, 900], dtype=np.int64)
@@ -235,6 +240,27 @@ C_EG_CAP = 49
 C_SING_EXT2 = 50
 # RAZOR: fail-low shortcut at depth <= RAZOR_MAX_DEPTH (see agent.RAZOR).
 C_RAZOR = 51
+# C_PROBCUT: at a non-PV node of depth >= PROBCUT_MIN_DEPTH, try each capture whose
+# SEE gain could lift the standing eval past beta + PROBCUT_MARGIN; a capture that
+# holds that raised beta in quiescence AND in a search PROBCUT_DEPTH_CUT plies
+# shallower cuts the node with a lower bound stored at depth - 3. The idea is the
+# reference engines' ProbCut (Alexandria 9.0 search.cpp ~612); the margins and the
+# SEE gate are ours. Skipped when the table already holds an upper bound below the
+# raised beta at a useful depth -- the probe could not succeed.
+C_PROBCUT = 52
+# C_HINDSIGHT: the parent reduced this move (exts lane 2 holds its reduction) and
+# the two static evals -- parent's, from its side, plus this node's, from ours --
+# sum past HINDSIGHT_EVAL, i.e. the reduced move swung the eval against the side
+# that played it. In hindsight the reduction was deserved: search one ply less.
+# Reads the per-ply static eval the IMPROVING lane already stores, so turning
+# this on also stores that lane (IMPROVING's own pruning stays gated on its flag).
+C_HINDSIGHT = 53
+# C_FUT_LMR: prune2's futility table stops at depth 4. A late quiet at depth 5-8
+# will be searched at depth - LMR_TABLE_AGGR[depth, searched] anyway, so judge
+# it by THAT depth: if the reduced depth is <= 4 and the standing eval plus the
+# table's margin at the reduced depth cannot reach alpha, skip the move. Same
+# margins as prune2, applied where the reference engines apply theirs (lmrDepth).
+C_FUT_LMR = 54
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -242,7 +268,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 52
+CTRL_SIZE = 55
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -316,6 +342,9 @@ _F_EG_SHRINK = _AGENT_FLAGS.get("ENDGAME_SHRINK", False)
 # folding deletes their branches from its compile. A challenger sed flips the source,
 # _scan_agent_flags picks that up, and the fold follows -- so they stay testable.
 _F_RAZOR = _AGENT_FLAGS.get("RAZOR", False)
+_F_PROBCUT = _AGENT_FLAGS.get("PROBCUT", False)
+_F_HINDSIGHT = _AGENT_FLAGS.get("HINDSIGHT", False)
+_F_FUT_LMR = _AGENT_FLAGS.get("FUTILITY_LMR", False)
 _F_SEE_QUIET = _AGENT_FLAGS.get("SEE_QUIET", False)
 _F_SING_EXT2 = _AGENT_FLAGS.get("SINGULAR_EXT2", False)
 
@@ -351,7 +380,8 @@ FOLDED = {
     C_NMP_V2: _F_NMP_V2, C_NMP_V2B: _F_NMP_V2B, C_QS_TT: _F_QS_TT,
     C_CAPTURE_ORDER: _F_CAPTURE_ORDER, C_CONT_HIST: _F_CONT_HIST,
     C_EG_SHRINK: _F_EG_SHRINK, C_RAZOR: _F_RAZOR, C_SEE_QUIET: _F_SEE_QUIET,
-    C_SING_EXT2: _F_SING_EXT2,
+    C_SING_EXT2: _F_SING_EXT2, C_PROBCUT: _F_PROBCUT, C_HINDSIGHT: _F_HINDSIGHT,
+    C_FUT_LMR: _F_FUT_LMR,
 }
 
 
@@ -503,13 +533,23 @@ def evaluate(
     bb: Any, meta: Any, white: Any, black: Any, w2t: Any, b2: Any, w3: Any, b3: Any,
     scratch: Any, ctrl: Any,
 ) -> Any:
-    """agent._eval_bucket_kernel with the side and bucket chosen here."""
-    buckets = w2t.shape[0]
-    k = (meta[fb.PIECES] - 1) * buckets // 32
+    """agent._eval_bucket_kernel with the side and head chosen here.
+
+    The head arrays arrive indexed by PIECE COUNT, not by output bucket -- agent.py
+    expands them once at import -- so there is no bucket formula here to fall out of
+    step with the one the net was trained with, and no division on the hot path.
+
+    Pairwise and dual are read off the shapes, exactly as agent.py reads them: a
+    pairwise head takes `acc` inputs against a squaring head's `2 * acc`, and a
+    dual output layer is twice the hidden width. This module cannot import agent.py
+    to be told, and a flag threaded through nine call sites is a flag that can be
+    threaded wrongly.
+    """
+    k = meta[fb.PIECES]
     if k < 0:
         k = 0
-    elif k >= buckets:
-        k = buckets - 1
+    elif k > 32:
+        k = 32
     if meta[fb.SIDE] == 0:
         own = white
         opponent = black
@@ -517,16 +557,32 @@ def evaluate(
         own = black
         opponent = white
     acc = own.shape[0]
+    head_in = w2t.shape[2]
+    hidden_n = b2.shape[1]
     hidden = scratch  # caller-owned: no allocation per evaluation
-    for i in range(acc):
-        x = own[i]
-        x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-        hidden[i] = x * x
-        y = opponent[i]
-        y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
-        hidden[acc + i] = y * y
+    if head_in == acc:
+        half = acc // 2
+        for i in range(half):
+            x0 = own[i]
+            x0 = 0.0 if x0 < 0.0 else (1.0 if x0 > 1.0 else x0)
+            x1 = own[half + i]
+            x1 = 0.0 if x1 < 0.0 else (1.0 if x1 > 1.0 else x1)
+            hidden[i] = x0 * x1
+            y0 = opponent[i]
+            y0 = 0.0 if y0 < 0.0 else (1.0 if y0 > 1.0 else y0)
+            y1 = opponent[half + i]
+            y1 = 0.0 if y1 < 0.0 else (1.0 if y1 > 1.0 else y1)
+            hidden[half + i] = y0 * y1
+    else:
+        for i in range(acc):
+            x = own[i]
+            x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+            hidden[i] = x * x
+            y = opponent[i]
+            y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
+            hidden[acc + i] = y * y
     out = b3[k, 0]
-    for j in range(0, 32, 4):
+    for j in range(0, hidden_n, 4):
         t0 = b2[k, j]
         t1 = b2[k, j + 1]
         t2 = b2[k, j + 2]
@@ -535,7 +591,7 @@ def evaluate(
         r1 = w2t[k, j + 1]
         r2 = w2t[k, j + 2]
         r3 = w2t[k, j + 3]
-        for i in range(2 * acc):
+        for i in range(head_in):
             h = hidden[i]
             t0 += h * r0[i]
             t1 += h * r1[i]
@@ -549,6 +605,16 @@ def evaluate(
             out += t2 * w3[k, j + 2, 0]
         if t3 > 0.0:
             out += t3 * w3[k, j + 3, 0]
+        # Dual activation. agent.py zero-fills the second half of W3 for a net that
+        # has none, so this always runs and a net without one is unaffected.
+        c0 = 0.0 if t0 < 0.0 else (1.0 if t0 > 1.0 else t0)
+        c1 = 0.0 if t1 < 0.0 else (1.0 if t1 > 1.0 else t1)
+        c2 = 0.0 if t2 < 0.0 else (1.0 if t2 > 1.0 else t2)
+        c3 = 0.0 if t3 < 0.0 else (1.0 if t3 > 1.0 else t3)
+        out += c0 * c0 * w3[k, hidden_n + j, 0]
+        out += c1 * c1 * w3[k, hidden_n + j + 1, 0]
+        out += c2 * c2 * w3[k, hidden_n + j + 2, 0]
+        out += c3 * c3 * w3[k, hidden_n + j + 3, 0]
     score = int(float(out) * PIECE_SCALE[meta[fb.PIECES]])
     if (
         not (_F_EG_SHRINK if _FOLD else ctrl[C_EG_SHRINK] != 0)
@@ -976,8 +1042,13 @@ def search(
         )
 
     standing = -INFINITY
+    # Lane 2 of exts is "the reduction this node applied to the child it is
+    # searching"; a child reads its parent's slot. Zero here so a child reached
+    # through null, singular or probcut sees no reduction.
+    exts[2 * fb.MAX_PLY + ply] = 0
+    hindsight = _F_HINDSIGHT if _FOLD else ctrl[C_HINDSIGHT] != 0
     improving = 1  # ply < 2 and sentinel ancestors default to improving (never over-prune)
-    if ctrl[C_IMPROVING] != 0:
+    if ctrl[C_IMPROVING] != 0 or hindsight:
         if in_check:
             if excluded == 0:
                 exts[fb.MAX_PLY + ply] = -INFINITY  # sentinel: no usable eval at this ply
@@ -995,6 +1066,18 @@ def search(
                 prev2 = exts[fb.MAX_PLY + ply - 2]
                 if prev2 != -INFINITY and cached_eval <= prev2:
                     improving = 0
+    if (
+        hindsight
+        and depth >= 2
+        and ply > 0
+        and not in_check
+        and excluded == 0
+        and cached_eval != NO_EVAL
+        and exts[2 * fb.MAX_PLY + ply - 1] >= 1
+    ):
+        parent_eval = exts[fb.MAX_PLY + ply - 1]
+        if parent_eval != -INFINITY and cached_eval + parent_eval >= HINDSIGHT_EVAL:
+            depth -= 1
     percent = 100
     if _F_RFP_PHASE if _FOLD else ctrl[C_RFP_PHASE] != 0:
         percent = phase_percent(ctrl, meta[fb.PIECES])
@@ -1137,6 +1220,72 @@ def search(
                 else:
                     return beta
 
+    if (
+        (_F_PROBCUT if _FOLD else ctrl[C_PROBCUT] != 0)
+        and depth >= PROBCUT_MIN_DEPTH
+        and not in_check
+        and excluded == 0
+        and beta - alpha <= 1
+        and abs(beta) < DISTANCE_THRESHOLD
+    ):
+        pc_beta = beta + PROBCUT_MARGIN
+        # A stored upper bound below the raised beta, at a depth the probe would
+        # store at, already says no capture can hold it: skip the probe.
+        if not (tt_depth >= depth - 3 and tt_flag == 2 and tt_score < pc_beta):
+            if standing == -INFINITY:
+                if cached_eval != NO_EVAL:
+                    standing = cached_eval
+                else:
+                    if (_F_LAZY_ACC if _FOLD else ctrl[C_LAZY_ACC] != 0):
+                        sync_acc(undo, w1, white, black, astack, zones, ctrl, meta[fb.PLY])
+                    standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
+                    cached_eval = standing
+            pc_caps = moves[ply]  # the main loop regenerates into this buffer below
+            pc_n = fb.gen_legal(bb, sq, meta, pc_caps, True)
+            pc_thresh = pc_beta - standing
+            for pc_i in range(pc_n):
+                pc_move = pc_caps[pc_i]
+                if fb.see(bb, sq, meta, pc_move) < pc_thresh:
+                    continue  # cannot gain enough material to reach the raised beta
+                make_move(
+                    bb, sq, meta, undo, keys, pc_move, w1, b1, white, black, astack, zones,
+                    king_zones, ctrl
+                )
+                pc_score = -quiesce(
+                    bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
+                    w2t, b2, w3, b3, butterfly, moves, scores, ctrl, deadline,
+                    -pc_beta, -pc_beta + 1, 0, ply + 1, scratch, ec_key, ec_val, exts,
+                    tt_key, tt_data,
+                )
+                if pc_score >= pc_beta and ctrl[C_ABORT] == 0:
+                    pc_score = -search(
+                        bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
+                        king_zones, w2t, b2, w3, b3, tt_key, tt_data,
+                        killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
+                        depth - PROBCUT_DEPTH_CUT, -pc_beta, -pc_beta + 1, ply + 1, scratch,
+                        counter, quiets, ec_key, ec_val, exts, conthist1, 1 - cutnode,
+                    )
+                unmake_move(bb, sq, meta, undo, keys, white, black, astack, zones, ctrl)
+                if ctrl[C_ABORT]:
+                    return 0
+                if pc_score >= pc_beta:
+                    if ctrl[C_TT_OFF] == 0:
+                        # Lower bound at the verification depth; never evict a
+                        # deeper entry for a probe result.
+                        pc_old = tt_data[slot]
+                        # Same key or not, a deeper entry outranks a probe result:
+                        # a depth+2 lower bound that merely failed to cut here must
+                        # not be replaced by a depth-3 one (reviewer's scenario).
+                        if unpack_depth(pc_old) <= depth - 3 or (
+                            tt_key[slot] != key and unpack_age(pc_old) != (ctrl[C_AGE] & 63)
+                        ):
+                            tt_key[slot] = key
+                            tt_data[slot] = pack(
+                                to_table(pc_score, ply), pc_move, 1, depth - 3,
+                                ctrl[C_AGE], cached_eval,
+                            )
+                    return pc_score
+
     extend_hash = 0
     if (
         (_F_SINGULAR if _FOLD else ctrl[C_SINGULAR] != 0)
@@ -1198,6 +1347,17 @@ def search(
     full_cut = 0 if beta - alpha > 1 else scout_cut
     pvs = _F_PVS if _FOLD else ctrl[C_PVS] != 0
     lmr = (_F_LMR if _FOLD else ctrl[C_LMR] != 0) and depth >= 3 and not in_check
+    fut_lmr = (
+        (_F_FUT_LMR if _FOLD else ctrl[C_FUT_LMR] != 0)
+        and lmr
+        # lmr_depth below is read off LMR_TABLE_AGGR, so require the switch that uses it
+        and (_F_LMR_AGGR if _FOLD else ctrl[C_LMR_AGGR] != 0)
+        and depth > 4
+        and depth <= FUT_LMR_MAX_DEPTH
+        and not in_check
+        and abs(alpha) < DISTANCE_THRESHOLD
+        and standing != -INFINITY
+    )
     aggr = _F_LMR_AGGR if _FOLD else ctrl[C_LMR_AGGR] != 0
     lmp = (
         (_F_LMP if _FOLD else ctrl[C_LMP] != 0)
@@ -1226,6 +1386,10 @@ def search(
             if ch_base >= 0:
                 hist += conthist1[ch_base + sq[move & 63] * 64 + ((move >> 6) & 63)]
             if hist < -(HIST_PRUNE_SLOPE_V2 if _F_HISTORY_V2 else HIST_PRUNE_SLOPE) * depth:
+                continue
+        if fut_lmr and plain and searched > 0:
+            lmr_depth = depth - LMR_TABLE_AGGR[min(depth, 63), min(searched, 63)]
+            if 1 <= lmr_depth <= 4 and standing + FUTILITY_MARGIN2[lmr_depth] <= alpha:
                 continue
         if (
             (_F_SEE_MAIN if _FOLD else ctrl[C_SEE_MAIN] != 0)
@@ -1293,6 +1457,7 @@ def search(
             reduced = depth - 1 - reduction
             if reduced < 1:
                 reduced = 1  # never reduce straight into quiescence
+            exts[2 * fb.MAX_PLY + ply] = reduction  # the child's hindsight reads this
             score = -search(
                 bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones, king_zones,
                 w2t, b2, w3, b3, tt_key, tt_data,
@@ -1300,6 +1465,7 @@ def search(
                 reduced, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
                 ec_key, ec_val, exts, conthist1, scout_cut,
             )
+            exts[2 * fb.MAX_PLY + ply] = 0  # re-searches below are at full depth
             if score > alpha and ctrl[C_ABORT] == 0:
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
                 # first (the full-window re-search below follows if it holds);

@@ -267,11 +267,44 @@ def _stacked(name: str) -> npt.NDArray[np.float32]:
 # positions within 120 cp of each other and could not convert; a head that only
 # ever sees few-piece positions has the capacity to tell them apart. Costs nothing
 # at inference: one head's matrices are picked, and the same kernel runs.
-W2: Final = _stacked("W2")   # (B, 2A, 32)
+W2: Final = _stacked("W2")   # (B, 2A, 32) squaring, (B, A, 32) pairwise
 B2: Final = _stacked("b2")   # (B, 32)
-W3: Final = _stacked("W3")   # (B, 32, 1)
+W3: Final = _stacked("W3")   # (B, 32, 1), or (B, 64, 1) with a dual activation
 B3: Final = _stacked("b3")   # (B, 1)
 BUCKETS: Final = int(W2.shape[0])
+HIDDEN: Final = int(B2.shape[1])
+
+# PAIRWISE: the accumulator's own two halves are clipped and multiplied together
+# instead of each lane being squared on its own, so the head reads a product of two
+# learned features rather than the square of one. Read off the shapes rather than a
+# flag: a pairwise head takes A inputs (A/2 from each perspective) and a squaring
+# head takes 2A, and those cannot collide. Same for DUAL, whose output layer reads
+# both relu(z) and clamp(z, 0, 1)**2 and so is twice as tall.
+PAIRWISE: Final = int(W2.shape[1]) == ACC_SIZE
+DUAL: Final = int(W3.shape[1]) == 2 * HIDDEN
+if int(W2.shape[1]) not in (ACC_SIZE, 2 * ACC_SIZE):
+    raise RuntimeError(
+        f"W2 takes {W2.shape[1]} inputs, which is neither {ACC_SIZE} (pairwise) "
+        f"nor {2 * ACC_SIZE} (squaring): this net does not match this engine"
+    )
+if PAIRWISE and ACC_SIZE % 2:
+    raise RuntimeError(f"a pairwise net needs an even accumulator, not {ACC_SIZE}")
+
+# Piece count 0..32 -> head, written by the exporter from the map training used.
+# Nets before v16 carry none and `_bucket` falls back to the equal-width formula
+# they were trained with, so they keep loading and scoring exactly as before.
+_BUCKET_MAP: Final = (
+    np.ascontiguousarray(_WEIGHTS["bucket_map"], dtype=np.int32)
+    if "bucket_map" in _WEIGHTS.files
+    else None
+)
+if _BUCKET_MAP is not None and (
+    _BUCKET_MAP.shape != (33,) or _BUCKET_MAP.min() < 0 or _BUCKET_MAP.max() >= BUCKETS
+):
+    raise RuntimeError(
+        f"bucket_map has shape {_BUCKET_MAP.shape} and range "
+        f"[{_BUCKET_MAP.min()}, {_BUCKET_MAP.max()}] for {BUCKETS} heads"
+    )
 
 
 def _bucket(pieces: int) -> int:
@@ -281,8 +314,45 @@ def _bucket(pieces: int) -> int:
     compares the engine against the torch model on positions spanning every
     band, so a disagreement here fails loudly.
     """
+    if _BUCKET_MAP is not None:
+        return int(_BUCKET_MAP[0 if pieces < 0 else (32 if pieces > 32 else pieces)])
     bucket = (pieces - 1) * BUCKETS // 32
     return 0 if bucket < 0 else (BUCKETS - 1 if bucket >= BUCKETS else bucket)
+
+# The head arrays, re-indexed by PIECE COUNT rather than by head. `_bucket` is
+# evaluated 33 times here, at import, and never again: the search indexes these
+# directly with the piece count it already has, so no bucket formula runs on the
+# hot path and no copy of the map can drift from the one the net was trained with.
+# Costs 8.6 MB of resident float32 at A = 1024 and saves an integer division and
+# two comparisons per evaluation.
+_HEAD_OF: Final = np.array([_bucket(p) for p in range(33)], dtype=np.int64)
+
+
+def _dual_pad(w3: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """W3 at the dual activation's full height, zero-filled for a net without one.
+
+    The kernel then has exactly one shape to handle: it always accumulates both
+    the relu and the clamped-square branch, and on a net that has no second branch
+    the extra 32 multiply-adds are against zeros. That is 0.1% of the head's work
+    against a branch on the hot path and a second copy of the loop to keep correct.
+    """
+    if w3.shape[1] == 2 * HIDDEN:
+        return w3
+    padded = np.zeros((w3.shape[0], 2 * HIDDEN, 1), dtype=np.float32)
+    padded[:, :HIDDEN] = w3
+    return padded
+
+
+# Read by the compiled kernels as numba globals, so they are compile-time
+# constants there and the pairwise branch costs nothing at run time.
+_HEAD_IN: Final = ACC_SIZE if PAIRWISE else 2 * ACC_SIZE
+_HALF: Final = ACC_SIZE // 2
+
+W2_P: Final = np.ascontiguousarray(W2[_HEAD_OF])   # (33, head_in, 32)
+B2_P: Final = np.ascontiguousarray(B2[_HEAD_OF])   # (33, 32)
+W3_P: Final = np.ascontiguousarray(_dual_pad(W3)[_HEAD_OF])  # (33, 64, 1)
+B3_P: Final = np.ascontiguousarray(B3[_HEAD_OF])   # (33, 1)
+
 
 # The network predicts a win-probability logit; centipawns are that times 400.
 # Getting this constant wrong scales the whole evaluation silently.
@@ -630,7 +700,9 @@ try:
     from numba import float32, int32, int64, njit
     from numba import types as _nbt
 
-    _W2T = np.ascontiguousarray(W2.transpose(0, 2, 1))  # (B, 32, 2A)
+    # (33, 32, head_in): transposed for the head loop and already indexed by
+    # piece count, so the kernels take the count straight from the position.
+    _W2T = np.ascontiguousarray(W2_P.transpose(0, 2, 1))
 
     @njit(
         float32(float32[:], float32[:], float32[:, ::1], float32[:], float32[:, ::1], float32[:]),
@@ -645,22 +717,41 @@ try:
         w3: npt.NDArray[np.float32],
         b3: npt.NDArray[np.float32],
     ) -> np.float32:
-        hidden = np.empty(2 * ACC_SIZE, dtype=np.float32)
-        for i in range(ACC_SIZE):
-            x = own[i]
-            x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-            hidden[i] = x * x
-            y = opponent[i]
-            y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
-            hidden[ACC_SIZE + i] = y * y
+        hidden = np.empty(_HEAD_IN, dtype=np.float32)
+        if PAIRWISE:
+            # Each perspective's own halves multiplied together: lane i pairs with
+            # lane i + A/2, giving A/2 values per perspective and _HEAD_IN in total.
+            for i in range(_HALF):
+                x0 = own[i]
+                x0 = 0.0 if x0 < 0.0 else (1.0 if x0 > 1.0 else x0)
+                x1 = own[_HALF + i]
+                x1 = 0.0 if x1 < 0.0 else (1.0 if x1 > 1.0 else x1)
+                hidden[i] = x0 * x1
+                y0 = opponent[i]
+                y0 = 0.0 if y0 < 0.0 else (1.0 if y0 > 1.0 else y0)
+                y1 = opponent[_HALF + i]
+                y1 = 0.0 if y1 < 0.0 else (1.0 if y1 > 1.0 else y1)
+                hidden[_HALF + i] = y0 * y1
+        else:
+            for i in range(ACC_SIZE):
+                x = own[i]
+                x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+                hidden[i] = x * x
+                y = opponent[i]
+                y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
+                hidden[ACC_SIZE + i] = y * y
         out = b3[0]
-        for j in range(32):
+        for j in range(HIDDEN):
             total = b2[j]
             row = w2t[j]
-            for i in range(2 * ACC_SIZE):
+            for i in range(_HEAD_IN):
                 total += hidden[i] * row[i]
             if total > 0.0:
                 out += total * w3[j, 0]
+            # The dual activation's second branch. W3 is zero-filled here for a net
+            # without one, so this runs unconditionally and costs nothing but time.
+            c = 0.0 if total < 0.0 else (1.0 if total > 1.0 else total)
+            out += c * c * w3[HIDDEN + j, 0]
         # numba infers this as float32; the annotation says so but mypy cannot see
         # through the decorator, so the accumulation reads as Any to it.
         result: np.float32 = out
@@ -692,15 +783,28 @@ try:
         cache 8 times instead of 32; fastsearch.evaluate is this loop verbatim."""
         hidden = scratch
         acc = ACC_SIZE
-        for i in range(acc):
-            x = own[i]
-            x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-            hidden[i] = x * x
-            y = opponent[i]
-            y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
-            hidden[acc + i] = y * y
+        if PAIRWISE:
+            for i in range(_HALF):
+                x0 = own[i]
+                x0 = 0.0 if x0 < 0.0 else (1.0 if x0 > 1.0 else x0)
+                x1 = own[_HALF + i]
+                x1 = 0.0 if x1 < 0.0 else (1.0 if x1 > 1.0 else x1)
+                hidden[i] = x0 * x1
+                y0 = opponent[i]
+                y0 = 0.0 if y0 < 0.0 else (1.0 if y0 > 1.0 else y0)
+                y1 = opponent[_HALF + i]
+                y1 = 0.0 if y1 < 0.0 else (1.0 if y1 > 1.0 else y1)
+                hidden[_HALF + i] = y0 * y1
+        else:
+            for i in range(acc):
+                x = own[i]
+                x = 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
+                hidden[i] = x * x
+                y = opponent[i]
+                y = 0.0 if y < 0.0 else (1.0 if y > 1.0 else y)
+                hidden[acc + i] = y * y
         out = b3[k, 0]
-        for j in range(0, 32, 4):
+        for j in range(0, HIDDEN, 4):
             t0 = b2[k, j]
             t1 = b2[k, j + 1]
             t2 = b2[k, j + 2]
@@ -709,7 +813,7 @@ try:
             r1 = w2t[k, j + 1]
             r2 = w2t[k, j + 2]
             r3 = w2t[k, j + 3]
-            for i in range(2 * acc):
+            for i in range(_HEAD_IN):
                 h = hidden[i]
                 t0 += h * r0[i]
                 t1 += h * r1[i]
@@ -723,6 +827,15 @@ try:
                 out += t2 * w3[k, j + 2, 0]
             if t3 > 0.0:
                 out += t3 * w3[k, j + 3, 0]
+            # Dual activation, against zeros on a net that has none: see _dual_pad.
+            c0 = 0.0 if t0 < 0.0 else (1.0 if t0 > 1.0 else t0)
+            c1 = 0.0 if t1 < 0.0 else (1.0 if t1 > 1.0 else t1)
+            c2 = 0.0 if t2 < 0.0 else (1.0 if t2 > 1.0 else t2)
+            c3 = 0.0 if t3 < 0.0 else (1.0 if t3 > 1.0 else t3)
+            out += c0 * c0 * w3[k, HIDDEN + j, 0]
+            out += c1 * c1 * w3[k, HIDDEN + j + 1, 0]
+            out += c2 * c2 * w3[k, HIDDEN + j + 2, 0]
+            out += c3 * c3 * w3[k, HIDDEN + j + 3, 0]
         result: np.float32 = out
         return result
 
@@ -800,9 +913,9 @@ try:
     _warm_b = B1.copy()
     _warm_stack = np.zeros((2, 2, ACC_SIZE), dtype=np.float32)
     _warm_idx = np.zeros(8, dtype=np.int32)
-    _eval_kernel(_warm_a, _warm_b, _W2T[0], B2[0], W3[0], B3[0])
+    _eval_kernel(_warm_a, _warm_b, _W2T[0], B2_P[0], W3_P[0], B3_P[0])
     _SCRATCH = np.zeros(2 * ACC_SIZE, dtype=np.float32)
-    _eval_bucket_kernel(_warm_a, _warm_b, 0, _W2T, B2, W3, B3, _SCRATCH)
+    _eval_bucket_kernel(_warm_a, _warm_b, 0, _W2T, B2_P, W3_P, B3_P, _SCRATCH)
     _push_kernel(_warm_a, _warm_b, _warm_stack, 0, W1, _warm_idx, 1, _warm_idx, 1, 0, 0)
     _warm_feats = np.zeros(32, dtype=np.int32)
     _refresh_kernel(_warm_a, B1, W1, _warm_feats, 1)
@@ -1070,18 +1183,30 @@ class Accumulator:
             own, opponent = self.white, self.black
         else:
             own, opponent = self.black, self.white
-        k = _bucket(pieces)
+        # The head arrays are indexed by piece count, not by head: see _HEAD_OF.
+        k = 0 if pieces < 0 else (32 if pieces > 32 else pieces)
         scale = float(PIECE_SCALE[pieces if 0 <= pieces <= 32 else 32])
         if self.fast:
             compiled: float = float(
-                _eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, _SCRATCH)
+                _eval_bucket_kernel(own, opponent, k, _W2T, B2_P, W3_P, B3_P, _SCRATCH)
             )
             return int(compiled * scale)
-        hidden = np.concatenate((own, opponent))
-        np.clip(hidden, 0.0, 1.0, out=hidden)
-        hidden *= hidden  # SCReLU
-        second = np.maximum(hidden @ W2[k] + B2[k], 0.0)
-        return int(float((second @ W3[k] + B3[k])[0]) * scale)
+        if PAIRWISE:
+            own_c = np.clip(own, 0.0, 1.0)
+            opp_c = np.clip(opponent, 0.0, 1.0)
+            hidden = np.concatenate(
+                (
+                    own_c[:_HALF] * own_c[_HALF:],
+                    opp_c[:_HALF] * opp_c[_HALF:],
+                )
+            )
+        else:
+            hidden = np.concatenate((own, opponent))
+            np.clip(hidden, 0.0, 1.0, out=hidden)
+            hidden *= hidden  # SCReLU
+        pre = hidden @ W2_P[k] + B2_P[k]
+        second = np.concatenate((np.maximum(pre, 0.0), np.clip(pre, 0.0, 1.0) ** 2))
+        return int(float((second @ W3_P[k] + B3_P[k])[0]) * scale)
 
 
 def _to_table(score: int, ply: int) -> int:
@@ -1529,6 +1654,13 @@ SINGULAR_EXT2: Final = False
 # so it costs no extra evaluate call. Verification (the qsearch) is what keeps
 # it safe -- a tactical shot still gets found.
 RAZOR: Final = False
+# PROBCUT / HINDSIGHT / FUTILITY_LMR: three search terms the reference engines
+# carry and this kernel did not, each reimplemented in fastsearch.py behind its own
+# slot (C_PROBCUT, C_HINDSIGHT, C_FUT_LMR -- the comments there say what each
+# does). Off = bit-identical kernel. Judged as one bundle by the 8 s gauntlet.
+PROBCUT: Final = False
+HINDSIGHT: Final = False
+FUTILITY_LMR: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2087,7 +2219,7 @@ def _warm_search(fs: Any) -> None:
     """Compile the search kernel. Runs on the import thread, or on INIT_ASYNC's."""
     global _WARM_FAILED
     try:
-        fs.warm_up(W1, B1, _W2T, B2, W3, B3, KING_ZONES)
+        fs.warm_up(W1, B1, _W2T, B2_P, W3_P, B3_P, KING_ZONES)
     except Exception:
         # Same meaning as a synchronous failure: no compiled search this game. The
         # joining move disables the fast path, which falls back to Engine.
@@ -2263,9 +2395,9 @@ class FastEngine:
         else:
             own, opponent = self.black, self.white
         pieces = int(meta[5])
-        k = _bucket(pieces)
+        k = 0 if pieces < 0 else (32 if pieces > 32 else pieces)
         score = int(
-            float(_eval_bucket_kernel(own, opponent, k, _W2T, B2, W3, B3, self.scratch))
+            float(_eval_bucket_kernel(own, opponent, k, _W2T, B2_P, W3_P, B3_P, self.scratch))
             * float(PIECE_SCALE[pieces])
         )
         # Mirror the kernel's ENDGAME_SHRINK blend so root contempt and any
@@ -2548,7 +2680,7 @@ class FastEngine:
         score = _fs.search(  # type: ignore[call-arg]
             pos.bb, pos.sq, pos.meta, pos.undo, pos.keys,
             W1, B1, self.white, self.black, self.astack, self.zones, KING_ZONES,
-            _W2T, B2, W3, B3, *self.tt,
+            _W2T, B2_P, W3_P, B3_P, *self.tt,
             self.killers2, self.butterfly, self.movebuf, self.scores2, self.rep_keys,
             ctrl, self.deadline, depth, alpha, beta, ply, self.scratch,
             self.counter, self.quiets, self.ec_key, self.ec_val, self.exts, self.conthist1,
@@ -2633,6 +2765,9 @@ class FastEngine:
             ctrl[_fs.C_SEE_QUIET] = 1 if SEE_QUIET else 0
             ctrl[_fs.C_SING_EXT2] = 1 if SINGULAR_EXT2 else 0
             ctrl[_fs.C_RAZOR] = 1 if RAZOR else 0
+            ctrl[_fs.C_PROBCUT] = 1 if PROBCUT else 0
+            ctrl[_fs.C_HINDSIGHT] = 1 if HINDSIGHT else 0
+            ctrl[_fs.C_FUT_LMR] = 1 if FUTILITY_LMR else 0
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
             ctrl[_fs.C_EG_WMIN] = ENDGAME_SHRINK_WMIN
             ctrl[_fs.C_EG_CAP] = ENDGAME_SHRINK_CAP

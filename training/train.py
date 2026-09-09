@@ -75,6 +75,42 @@ BUCKET_MAP_12: list[int] = [
 assert len(BUCKET_MAP_12) == MAX_PIECES + 1
 
 
+# Eight heads, endgame-dense: Alexandria 9.0's output-bucket index, which is
+# quadratic in piece count -- min((63 - count) * (32 - count) / 225, 7) -- rather
+# than our equal-width bands. Equal width spends five of eight heads above 16
+# pieces; this spends five of eight at 13 or fewer, which is where eval_rank puts
+# the loss (top-loss 239 at 13-16 and 106 at 9-12, against 206 at 25-32). Note the
+# ORDER is reversed against BUCKET_MAP_12: head 0 is the opening here, head 7 the
+# bare endgame. Nothing may depend on that order except this table.
+# index = piece count 0..32; bands 26-32 22-25 18-21 14-17 11-13 8-10 5-7 0-4.
+BUCKET_MAP_8Q: list[int] = [
+    7, 7, 7, 7, 7, 6, 6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 3,
+    3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+]
+assert len(BUCKET_MAP_8Q) == MAX_PIECES + 1
+assert BUCKET_MAP_8Q == [
+    min((63 - c) * (32 - c) // 225, 7) for c in range(MAX_PIECES + 1)
+], "table and the formula it was written from disagree"
+
+
+def bucket_table(buckets: int, endgame_dense: bool = False) -> list[int]:
+    """Piece count 0..32 -> output head, as an explicit 33-entry table.
+
+    The table is the single definition of the map. It is stored in the checkpoint,
+    written into the .npz, and baked into the exported head arrays, so the engine
+    never evaluates a bucket formula at all and cannot drift away from the one
+    training used -- the failure mode training/features.py warns about, where the
+    net loads, runs, and merely plays badly with nothing to catch it.
+    """
+    if endgame_dense:
+        if buckets != 8:
+            raise ValueError(f"no endgame-dense map for {buckets} heads, only 8")
+        return list(BUCKET_MAP_8Q)
+    if buckets == 12:
+        return list(BUCKET_MAP_12)
+    return [min(max((c - 1) * buckets // MAX_PIECES, 0), buckets - 1) for c in range(MAX_PIECES + 1)]
+
+
 def bucket_of(count: Tensor, buckets: int) -> Tensor:
     """Output head for a position with `count` pieces on the board, 1..32.
 
@@ -239,10 +275,33 @@ class Net(nn.Module):
         buckets: int = 1,
         king_zones: int = 1,
         mirrored: bool = False,
+        pairwise: bool = False,
+        dual: bool = False,
+        endgame_dense: bool = False,
+        factoriser: bool = False,
     ) -> None:
         super().__init__()
         self.buckets = buckets
         self.king_zones = king_zones
+        # PAIRWISE: the accumulator's two halves are multiplied together instead of
+        # each lane being squared on its own, so lane i learns a product with lane
+        # i + A/2 rather than a square of itself -- Alexandria 9.0's feature
+        # transformer activation. The head sees A values (A/2 per perspective), so
+        # at A = 1024 it sees exactly the 1024 that the A = 512 SCReLU net gave it,
+        # for the same head cost and twice the accumulator cost.
+        # SCReLU is the special case where both halves are equal, which is what
+        # makes the warm start from a squaring net exact: see warm_start.py.
+        self.is_pairwise = bool(pairwise)
+        # DUAL: each hidden neuron emits relu(z) AND clamp(z, 0, 1)**2, doubling
+        # the head's width for one extra clamp. Alexandria pairs clamp with
+        # clamp-squared; we keep the existing relu branch so that a warm start
+        # from a relu net is exact with the second branch's weights set to zero.
+        self.is_dual = bool(dual)
+        self.register_buffer("pairwise", torch.tensor(int(pairwise), dtype=torch.uint8))
+        self.register_buffer("dual", torch.tensor(int(dual), dtype=torch.uint8))
+        # The map travels in the state dict for the same reason `mirrored` does.
+        table = bucket_table(buckets, endgame_dense)
+        self.register_buffer("bucket_map", torch.tensor(table, dtype=torch.long))
         # A buffer, not a plain attribute, so the flag travels inside the state
         # dict: a mirrored net loaded as unmirrored would score nonsense on half
         # the positions and there would be nothing to catch it.
@@ -253,19 +312,55 @@ class Net(nn.Module):
         # padding_idx is not used: padding is masked by per-sample weights instead,
         # because index 0 is a real feature (own pawn on a1) even if unreachable.
         self.bag = nn.EmbeddingBag(FEATURES * king_zones, accumulator, mode="sum")
+        # FACTORISER: one 768-row plane shared by every king zone, summed into the
+        # accumulator alongside the zoned one. A position activates exactly one zone's
+        # rows, so with 16 zones each zone's weights see about a sixteenth of the data
+        # -- and far less than that for the zones where a king rarely stands. Most of
+        # what a feature means does not depend on where the king is, and without this
+        # the net has to rediscover that separately in every zone. The shared plane
+        # sees every position, so the zoned rows are left to learn the residual.
+        #
+        # Only for a warm start does this not matter: v10 -> v11 -> v12 grew zones by
+        # copying a trained plane into each new one (expand_zones), which is this idea
+        # applied once at initialisation. v15 is the one run that trained 16 zones from
+        # noise, and it lost the ranking gate while winning on val -- the signature of
+        # zones fitted to too little data.
+        #
+        # Costs nothing to ship: export.py folds it into every zone and drops it, so
+        # the .npz has the same shape and the engine never knows it existed.
+        self.has_factoriser = bool(factoriser)
+        if factoriser and king_zones <= 1:
+            raise ValueError("a factoriser is meaningless without king zones to share")
+        self.register_buffer("factoriser", torch.tensor(int(factoriser), dtype=torch.uint8))
+        if factoriser:
+            self.factor = nn.EmbeddingBag(FEATURES, accumulator, mode="sum")
+            nn.init.normal_(self.factor.weight, std=0.1)
         self.acc_bias = nn.Parameter(torch.zeros(accumulator))
-        self.head_w2 = nn.Parameter(torch.empty(buckets, 2 * accumulator, hidden))
+        # Pairwise halves each perspective before the head, so the head's input is
+        # A rather than 2A. Everything downstream reads these shapes.
+        self.head_in = accumulator if pairwise else 2 * accumulator
+        self.head_out = 2 * hidden if dual else hidden
+        self.head_w2 = nn.Parameter(torch.empty(buckets, self.head_in, hidden))
         self.head_b2 = nn.Parameter(torch.empty(buckets, hidden))
-        self.head_w3 = nn.Parameter(torch.empty(buckets, hidden))
+        self.head_w3 = nn.Parameter(torch.empty(buckets, self.head_out))
         self.head_b3 = nn.Parameter(torch.empty(buckets))
         # Sized so the accumulator lands inside SCReLU's active band. Summing ~22
         # pieces, an accumulator std of about 0.5 needs a per-weight std near 0.1;
         # at 0.02 the accumulator sat at std 0.094 and squaring it threw away
         # another order of magnitude before the first hidden layer saw anything.
         nn.init.normal_(self.bag.weight, std=0.1)
+        if factoriser:
+            # The accumulator is the SUM of the two planes, and std 0.1 was chosen for
+            # one of them: two independent planes at 0.1 would land it at 0.14 and push
+            # the pairwise product off the active band. Zeroing the zoned plane keeps
+            # the total at exactly 0.1 and starts the net as a plain 768 net -- every
+            # zone identical, which is the structure expand_zones produced for the warm
+            # -started lineage. The zoned rows still get gradient from step one; they
+            # are zero, not frozen.
+            nn.init.zeros_(self.bag.weight)
         # The same uniform(+/- 1/sqrt(fan_in)) that nn.Linear uses.
-        bound2 = 1.0 / (2 * accumulator) ** 0.5
-        bound3 = 1.0 / hidden**0.5
+        bound2 = 1.0 / self.head_in**0.5
+        bound3 = 1.0 / self.head_out**0.5
         nn.init.uniform_(self.head_w2, -bound2, bound2)
         nn.init.uniform_(self.head_b2, -bound2, bound2)
         nn.init.uniform_(self.head_w3, -bound3, bound3)
@@ -291,19 +386,50 @@ class Net(nn.Module):
                 white_king = white_king ^ white_flip
                 black_king = black_king ^ black_flip
             zones, mirrored = self.king_zones, self.is_mirrored
+            # The factoriser is indexed by the feature alone -- after the mirror flip,
+            # before the zone offset -- because that is the row a zone's weights sit in.
+            # export.py folds factor[f] into W1[zone * 768 + f] for every zone, and this
+            # is the index space that fold assumes.
+            white_base, black_base = white, black
             white = white + (zone_of(white_king, zones, mirrored) * FEATURES).unsqueeze(1)
             black = black + (zone_of(black_king, zones, mirrored) * FEATURES).unsqueeze(1)
+        else:
+            white_base, black_base = white, black
         acc_w = self.bag(white, per_sample_weights=mask) + self.acc_bias
         acc_b = self.bag(black, per_sample_weights=mask) + self.acc_bias
+        if self.has_factoriser:
+            acc_w = acc_w + self.factor(white_base, per_sample_weights=mask)
+            acc_b = acc_b + self.factor(black_base, per_sample_weights=mask)
         white_to_move = stm.unsqueeze(1).bool()
         own = torch.where(white_to_move, acc_w, acc_b)
         opp = torch.where(white_to_move, acc_b, acc_w)
-        x = torch.cat([own, opp], dim=1)
-        h1 = torch.clamp(x, 0.0, 1.0) ** 2
+        if self.is_pairwise:
+            # Each perspective's own two halves are clipped and multiplied, giving
+            # A/2 values per perspective and A in total -- the same width the
+            # squaring net handed the head at half the accumulator.
+            half = own.shape[1] // 2
+            own_c = torch.clamp(own, 0.0, 1.0)
+            opp_c = torch.clamp(opp, 0.0, 1.0)
+            h1 = torch.cat(
+                [
+                    own_c[:, :half] * own_c[:, half:],
+                    opp_c[:, :half] * opp_c[:, half:],
+                ],
+                dim=1,
+            )
+        else:
+            x = torch.cat([own, opp], dim=1)
+            h1 = torch.clamp(x, 0.0, 1.0) ** 2
         # (batch, B, H): every head, then keep the one this position belongs to.
-        h2 = torch.relu(torch.einsum("bi,kih->bkh", h1, self.head_w2) + self.head_b2)
+        pre = torch.einsum("bi,kih->bkh", h1, self.head_w2) + self.head_b2
+        h2 = torch.relu(pre)
+        if self.is_dual:
+            # Second activation of the SAME pre-activation, concatenated. Zero
+            # weights on this half leave the net exactly equal to the relu-only one.
+            h2 = torch.cat([h2, torch.clamp(pre, 0.0, 1.0) ** 2], dim=-1)
         all_heads = (h2 * self.head_w3).sum(-1) + self.head_b3
-        bucket = bucket_of(mask.sum(1).long(), self.buckets)
+        counts = mask.sum(1).long()
+        bucket = self.bucket_map[torch.clamp(counts, 0, MAX_PIECES)]
         out: Tensor = all_heads.gather(1, bucket.unsqueeze(1)).squeeze(1)
         return out
 
@@ -351,13 +477,32 @@ def load_checkpoint(
     heads = saved if buckets is None else buckets
     if heads < saved:
         raise SystemExit(f"{path} has {saved} output buckets, asked for {heads}")
-    net = Net(accumulator, int(state["head_w2"].shape[2]), heads, zones, mirrored)
+    # Architecture flags travel in the file, like `mirrored`: a pairwise net loaded
+    # as a squaring one would score nonsense with nothing to catch it.
+    pairwise = bool(state.pop("pairwise", torch.zeros(())).item())
+    dual = bool(state.pop("dual", torch.zeros(())).item())
+    saved_map = state.pop("bucket_map", None)
+    # "factor.weight" in the file is the fact of a factoriser; the flag is belt and braces
+    # for a checkpoint written before the buffer existed.
+    factoriser = bool(state.pop("factoriser", torch.zeros(())).item()) or "factor.weight" in state
+    hidden = int(state["head_w2"].shape[2])
+    net = Net(accumulator, hidden, heads, zones, mirrored, pairwise, dual, factoriser=factoriser)
     if zones != saved_zones:
         state["bag.weight"] = expand_zones(state["bag.weight"], zones, saved_zones)
     if heads != saved:
         for key in ("head_w2", "head_b2", "head_w3", "head_b3"):
             state[key] = expand_heads(state[key], heads, saved)
     state["mirrored"] = torch.tensor(int(mirrored), dtype=torch.uint8)
+    state["pairwise"] = torch.tensor(int(pairwise), dtype=torch.uint8)
+    state["dual"] = torch.tensor(int(dual), dtype=torch.uint8)
+    state["factoriser"] = torch.tensor(int(factoriser), dtype=torch.uint8)
+    # Keep the file's own map when the head count is unchanged; a net whose heads
+    # were just expanded has no map for its new count, so the default is rebuilt.
+    state["bucket_map"] = (
+        saved_map
+        if saved_map is not None and heads == saved
+        else torch.tensor(bucket_table(heads), dtype=torch.long)
+    )
     net.load_state_dict(state)
     return net
 
@@ -529,6 +674,11 @@ def train(
     buckets: int = 1,
     king_zones: int = 1,
     mirror: bool = False,
+    pairwise: bool = False,
+    dual: bool = False,
+    endgame_dense: bool = False,
+    factoriser: bool = False,
+    checkpoint_path: Path | None = None,
 ) -> tuple[Net, dict[str, float]]:
     """Train, cycling through `sources` one shard per epoch.
 
@@ -547,7 +697,14 @@ def train(
         )
     else:
         net = Net(
-            accumulator, buckets=buckets, king_zones=king_zones, mirrored=mirror
+            accumulator,
+            buckets=buckets,
+            king_zones=king_zones,
+            mirrored=mirror,
+            pairwise=pairwise,
+            dual=dual,
+            endgame_dense=endgame_dense,
+            factoriser=factoriser,
         ).to(device)
     val_batches = Batches(validation, batch, device) if validation is not None else None
     optimiser = torch.optim.AdamW(net.parameters(), lr=learning_rate)
@@ -623,6 +780,18 @@ def train(
                 best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
                 stale = 0
                 line += "  *best"
+                if checkpoint_path is not None:
+                    # Write every new best straight to disk. Until this existed the
+                    # only save was after the final epoch, so anything that killed the
+                    # process lost the whole run: a reboot at epoch 36 of 50 threw away
+                    # 8.75 hours of training and there was nothing on disk to recover.
+                    # ~50 MB and well under a second against epochs of 200-900 s.
+                    # Written beside the real output and renamed at the end, so a crash
+                    # mid-save cannot corrupt the file the pipeline reads.
+                    partial = checkpoint_path.with_suffix(".partial.pt")
+                    partial.parent.mkdir(parents=True, exist_ok=True)
+                    torch.save(best_state, partial)
+                    line += f" (saved {partial.name})"
             elif epoch > warmup_epochs:
                 stale += 1
         print(line, flush=True)
@@ -686,6 +855,22 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=16384)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--accumulator", type=int, default=ACC, help="first-layer width")
+    parser.add_argument(
+        "--pairwise", action="store_true",
+        help="multiply the accumulator's halves instead of squaring each lane",
+    )
+    parser.add_argument(
+        "--dual", action="store_true",
+        help="each hidden neuron emits relu(z) and clamp(z,0,1)**2",
+    )
+    parser.add_argument(
+        "--endgame-buckets", action="store_true",
+        help="quadratic (endgame-dense) 8-head map instead of equal-width bands",
+    )
+    parser.add_argument(
+        "--factoriser", action="store_true",
+        help="a 768-row plane shared by every king zone, folded in at export",
+    )
     parser.add_argument(
         "--buckets", type=int, default=1, help="output heads, selected by piece count"
     )
@@ -766,6 +951,11 @@ def main() -> None:
         buckets=arguments.buckets,
         king_zones=arguments.king_zones,
         mirror=arguments.mirror,
+        pairwise=arguments.pairwise,
+        dual=arguments.dual,
+        endgame_dense=arguments.endgame_buckets,
+        factoriser=arguments.factoriser,
+        checkpoint_path=arguments.out,
     )
 
     arguments.out.parent.mkdir(parents=True, exist_ok=True)

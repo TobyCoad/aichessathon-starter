@@ -50,7 +50,7 @@ evaluate() {  # name checkpoint
 
 if [ ! -f training/checkpoints/net_v15.json ]; then
     $PY -u training/train.py --data $SHARDS --val data/mixed_val.npy \
-        --resume training/checkpoints/net_v12-mixmirror.pt --mirror \
+        --mirror \
         --accumulator 512 --buckets 8 --king-zones 16 \
         --lr 1e-3 --epochs 300 --patience 60 --warmup-epochs 2 --skip-sanity --limit 40000000 \
         --out training/checkpoints/net_v15.pt > overnight/eval/train-v15.log 2>&1 || { say "v13 TRAIN FAILED"; exit 1; }
