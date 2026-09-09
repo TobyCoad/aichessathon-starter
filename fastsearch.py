@@ -67,6 +67,8 @@ HINDSIGHT_EVAL = 155       # sum of the two side-to-move evals; the reference's 
 FUT_LMR_MAX_DEPTH = 8      # prune2's table covers reduced depth <= 4; nominal 5..8 here
 TT_HMC_GUARD = 90          # fifty-move counter (plies) at which TT cutoffs stop
 LMR_DEEPER_MARGIN = 77     # reduced score must beat best_score by this + 2*(depth-1) to go deeper
+PAWNLESS_MAX_ADV = 380     # material lead (cp, MVV units) below which a pawnless lead is scaled
+PAWNLESS_DIV = 8           # score // 8: "a piece up with no pawns is worth a fraction of a pawn"
 # RAZOR (search.md #11): indexed by depth, cp below alpha at which a node is
 # assumed unrescuable by a quiet move and verified with a quiescence search.
 RAZOR_MARGIN = np.array([0, 500, 700, 900], dtype=np.int64)
@@ -291,6 +293,14 @@ C_LMR_BADCAP = 59
 # C_QS_HASH (ordering.md #5): quiescence orders the table move first and stores the move
 # that raised alpha or cut, instead of ordering by MVV-LVA alone and storing move 0.
 C_QS_HASH = 60
+# C_PAWNLESS (draw audit 9 Sep: 5 of 13 ahead-draws ended insufficient_material at
+# material +3): when the side ahead in material has NO pawns and leads by less than
+# PAWNLESS_MAX_ADV, the position is a book draw or nearly so -- K+B v K, K+R v K+B,
+# K+R+B v K+R -- and the net, trained on positions where such endings are rare, still
+# scores the extra piece. Pull the score toward zero so the search keeps its last pawns
+# when it is a piece up instead of trading into a dead ending. The classic scale-factor
+# every handcrafted eval carries; NNUE engines keep it too. Q v R (400) stays a win.
+C_PAWNLESS = 61
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -298,7 +308,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 61
+CTRL_SIZE = 62
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -381,6 +391,7 @@ _F_IMPROVING_LMR = _AGENT_FLAGS.get("IMPROVING_LMR", False)
 _F_LMR_DEEPER = _AGENT_FLAGS.get("LMR_DEEPER", False)
 _F_LMR_BADCAP = _AGENT_FLAGS.get("LMR_BADCAP", False)
 _F_QS_HASH = _AGENT_FLAGS.get("QS_HASH_MOVE", False)
+_F_PAWNLESS = _AGENT_FLAGS.get("PAWNLESS_SCALE", False)
 # SEE_VALUES_V2 (ordering.md #1): knight == bishop, so BxN and NxB defended both read as
 # an even trade instead of -10 / +10 -- the asymmetry pruned one in quiescence and ranked
 # it below every quiet while ranking the other above the killers. Compile-time table;
@@ -425,7 +436,7 @@ FOLDED = {
     C_SING_EXT2: _F_SING_EXT2, C_PROBCUT: _F_PROBCUT, C_HINDSIGHT: _F_HINDSIGHT,
     C_FUT_LMR: _F_FUT_LMR, C_MULTICUT: _F_MULTICUT, C_TT_HMC90: _F_TT_HMC90,
     C_IMPROVING_LMR: _F_IMPROVING_LMR, C_LMR_DEEPER: _F_LMR_DEEPER,
-    C_LMR_BADCAP: _F_LMR_BADCAP, C_QS_HASH: _F_QS_HASH,
+    C_LMR_BADCAP: _F_LMR_BADCAP, C_QS_HASH: _F_QS_HASH, C_PAWNLESS: _F_PAWNLESS,
 }
 
 
@@ -660,6 +671,24 @@ def evaluate(
         out += c2 * c2 * w3[k, hidden_n + j + 2, 0]
         out += c3 * c3 * w3[k, hidden_n + j + 3, 0]
     score = int(float(out) * PIECE_SCALE[meta[fb.PIECES]])
+    if (_F_PAWNLESS if _FOLD else ctrl[C_PAWNLESS] != 0) and abs(score) < DISTANCE_THRESHOLD:
+        wp = fb.popcount(bb[0])
+        bp = fb.popcount(bb[6])
+        if wp == 0 or bp == 0:
+            wm = (
+                fb.popcount(bb[1]) * MVV[1] + fb.popcount(bb[2]) * MVV[2]
+                + fb.popcount(bb[3]) * MVV[3] + fb.popcount(bb[4]) * MVV[4] + wp * MVV[0]
+            )
+            bm = (
+                fb.popcount(bb[7]) * MVV[1] + fb.popcount(bb[8]) * MVV[2]
+                + fb.popcount(bb[9]) * MVV[3] + fb.popcount(bb[10]) * MVV[4] + bp * MVV[0]
+            )
+            lead = wm - bm
+            # The stronger side must be the pawnless one for the scale to apply.
+            if (lead > 0 and wp == 0 and lead < PAWNLESS_MAX_ADV) or (
+                lead < 0 and bp == 0 and -lead < PAWNLESS_MAX_ADV
+            ):
+                score = score // PAWNLESS_DIV if score >= 0 else -((-score) // PAWNLESS_DIV)
     if (
         not (_F_EG_SHRINK if _FOLD else ctrl[C_EG_SHRINK] != 0)
         or meta[fb.PIECES] >= EG_HI

@@ -1683,6 +1683,9 @@ LMR_DEEPER: Final = False
 # ORDER2 (overnight/eval/v17/ordering.md): fastsearch C_LMR_BADCAP / C_QS_HASH comments.
 LMR_BADCAP: Final = False
 QS_HASH_MOVE: Final = False
+# PAWNLESS_SCALE: fastsearch C_PAWNLESS comment. Kernel eval only; the root's own
+# FastEngine.evaluate (contempt input) does not apply it.
+PAWNLESS_SCALE: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2796,6 +2799,7 @@ class FastEngine:
             ctrl[_fs.C_LMR_DEEPER] = 1 if LMR_DEEPER else 0
             ctrl[_fs.C_LMR_BADCAP] = 1 if LMR_BADCAP else 0
             ctrl[_fs.C_QS_HASH] = 1 if QS_HASH_MOVE else 0
+            ctrl[_fs.C_PAWNLESS] = 1 if PAWNLESS_SCALE else 0
             if IMPROVING and IMPROVING_LMR:
                 raise RuntimeError("IMPROVING_LMR is IMPROVING's LMR arm; enable one, not both")
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
