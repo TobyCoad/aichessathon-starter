@@ -1536,7 +1536,7 @@ ADJ_HORIZON: Final = 16  # non-zeroing plies the search credits as draw-reaching
 # a +170 cp draw score when behind and 37 cp of contempt when ahead, in an
 # ordinary middlegame. Under ADJ_V2 late is 0 there and the base contempts
 # (+20 / -25) stand until ply 300. Longest game on record is 323 plies.
-ADJ_V2: Final = False
+ADJ_V2: Final = True
 PLATFORM_PLY_CAP: Final = 600  # canonical rules: still running at 600 -> draw
 ADJ_BEHIND_LATE_V2: Final = 100  # cp; a draw is worth a pawn, never a rook
 # HISTORY2_FIX (v10 search.md 3.7): zero quiets[ply, searched] for non-quiet
