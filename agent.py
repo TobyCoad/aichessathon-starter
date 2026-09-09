@@ -196,7 +196,7 @@ ROOT_LMR_MIN_DEPTH: Final = 3    # never reduce in a shallow iteration
 # Do NOT enable this with CONT_HIST: at fastsearch.py's `adj` term a rescaled
 # butterfly saturates the +/-2 clamp on its own, so the result would measure butterfly, not
 # continuation history.
-HISTORY_V2: Final = False
+HISTORY_V2: Final = True
 
 
 def _block(zone: int, flip: int) -> int:
@@ -1601,7 +1601,7 @@ QS_TT: Final = True
 # 30 * depth^2 (the moved piece hangs). Guards: not in check, not the node's
 # first move, alpha away from mate. fb.see already handles quiet moves (victim
 # value 0, both sides free to stop), so no board change is needed.
-SEE_QUIET: Final = False
+SEE_QUIET: Final = True
 # ENDGAME_SHRINK (V10_PLAN #11, overnight/eval/v10/endgame_shrink.md): below 17
 # pieces blend the static eval toward pure material (_MATERIAL values,
 # side-to-move POV) inside fastsearch.evaluate, so the QS eval cache and the
