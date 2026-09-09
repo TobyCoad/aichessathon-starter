@@ -61,3 +61,12 @@ at 120 s; 8 s games rarely reach hmc > 40.
   cost class once E1 exists; LAZY_ACC already defers ours to the first evaluate on a line.
 - Output bucket map, dual activation, pairwise, factoriser, mirroring: identical ideas now.
 - Eval clamping to the non-mate range: DISTANCE_THRESHOLD guards do the same job.
+
+## E1 VERDICT (9 Sep 14:20): built, exact, OFF -- no measurable speed
+Implemented as ACC_CACHE (commit ebc438d), exact (check_nnue 5972/5972 plies match a full
+rebuild with it on; check_fastsearch 60/60 off). Depth-8 bench, three off/on pairs under
+gauntlet load: off 293/308/305 knps, on 318/296/293 -- the first pair's +8.5% did not repeat;
+the two clean pairs read on ~3% SLOWER. Nodes identical (897,348) as required. Zone crossings
+are rarer than the estimate above and the per-crossing fixed cost (12 occupancy diffs + a
+1024-float copy) outweighs the rows it saves at this crossing rate. Left OFF. Do not re-propose
+without a quiet-box measurement showing >= +3% knps.

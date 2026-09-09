@@ -65,6 +65,8 @@ PROBCUT_MARGIN = 300       # cp above beta the capture must hold; ~Alexandria's 
 PROBCUT_DEPTH_CUT = 4      # verification search depth = depth - 4, stored at depth - 3
 HINDSIGHT_EVAL = 155       # sum of the two side-to-move evals; the reference's default
 FUT_LMR_MAX_DEPTH = 8      # prune2's table covers reduced depth <= 4; nominal 5..8 here
+TT_HMC_GUARD = 90          # fifty-move counter (plies) at which TT cutoffs stop
+LMR_DEEPER_MARGIN = 77     # reduced score must beat best_score by this + 2*(depth-1) to go deeper
 # RAZOR (search.md #11): indexed by depth, cp below alpha at which a node is
 # assumed unrescuable by a quiet move and verified with a quiescence search.
 RAZOR_MARGIN = np.array([0, 500, 700, 900], dtype=np.int64)
@@ -261,6 +263,26 @@ C_HINDSIGHT = 53
 # table's margin at the reduced depth cannot reach alpha, skip the move. Same
 # margins as prune2, applied where the reference engines apply theirs (lmrDepth).
 C_FUT_LMR = 54
+# C_MULTICUT: the singular-extension probe (hash move excluded, window at sbeta) came
+# back >= beta -- a SECOND move already holds beta here, so the node fails high
+# without searching anything else. Two lines on the existing SINGULAR block; the
+# reference engines all do this (their "multi-cut" arm of singular extensions).
+C_MULTICUT = 55
+# C_TT_HMC90: no transposition cutoff once the fifty-move counter reaches 90: a
+# stored score from a line that never approached the rule can mask a draw the
+# real line is about to claim. Matters here because ADJUDICATION lowers C_HMC_DRAW
+# near the cap. Five lines, no cost.
+C_TT_HMC90 = 56
+# C_IMPROVING_LMR: the `improving` signal (static eval vs two plies ago) applied to
+# ONE consumer only -- LMR reduces a quiet one ply more when not improving -- and not
+# to the RFP depth or the prune2 futility table, which is where C_IMPROVING's 0.506x
+# over-pruning came from. The reference engines use it in exactly this arm.
+C_IMPROVING_LMR = 57
+# C_LMR_DEEPER: after a reduced search beats alpha, the confirming re-search goes one
+# ply DEEPER when the reduced score beat the best so far by a wide margin
+# (77 + 2*(depth-1)) and one ply SHALLOWER when it barely did (< best + depth-1);
+# otherwise the usual depth - 1. Do-deeper / do-shallower in the reference's terms.
+C_LMR_DEEPER = 58
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -268,7 +290,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 55
+CTRL_SIZE = 59
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -345,6 +367,10 @@ _F_RAZOR = _AGENT_FLAGS.get("RAZOR", False)
 _F_PROBCUT = _AGENT_FLAGS.get("PROBCUT", False)
 _F_HINDSIGHT = _AGENT_FLAGS.get("HINDSIGHT", False)
 _F_FUT_LMR = _AGENT_FLAGS.get("FUTILITY_LMR", False)
+_F_MULTICUT = _AGENT_FLAGS.get("SINGULAR_MULTICUT", False)
+_F_TT_HMC90 = _AGENT_FLAGS.get("TT_HMC90", False)
+_F_IMPROVING_LMR = _AGENT_FLAGS.get("IMPROVING_LMR", False)
+_F_LMR_DEEPER = _AGENT_FLAGS.get("LMR_DEEPER", False)
 _F_SEE_QUIET = _AGENT_FLAGS.get("SEE_QUIET", False)
 _F_SING_EXT2 = _AGENT_FLAGS.get("SINGULAR_EXT2", False)
 
@@ -381,7 +407,8 @@ FOLDED = {
     C_CAPTURE_ORDER: _F_CAPTURE_ORDER, C_CONT_HIST: _F_CONT_HIST,
     C_EG_SHRINK: _F_EG_SHRINK, C_RAZOR: _F_RAZOR, C_SEE_QUIET: _F_SEE_QUIET,
     C_SING_EXT2: _F_SING_EXT2, C_PROBCUT: _F_PROBCUT, C_HINDSIGHT: _F_HINDSIGHT,
-    C_FUT_LMR: _F_FUT_LMR,
+    C_FUT_LMR: _F_FUT_LMR, C_MULTICUT: _F_MULTICUT, C_TT_HMC90: _F_TT_HMC90,
+    C_IMPROVING_LMR: _F_IMPROVING_LMR, C_LMR_DEEPER: _F_LMR_DEEPER,
 }
 
 
@@ -1005,7 +1032,14 @@ def search(
             tt_depth = stored_depth
             tt_flag = flag
             tt_score = stored_score
-            if stored_depth >= depth and ply > 0:
+            if (
+                stored_depth >= depth
+                and ply > 0
+                and (
+                    not (_F_TT_HMC90 if _FOLD else ctrl[C_TT_HMC90] != 0)
+                    or meta[fb.HALFMOVE] < TT_HMC_GUARD
+                )
+            ):
                 if flag == 0:
                     return stored_score
                 if flag == 1 and stored_score > alpha:
@@ -1047,8 +1081,9 @@ def search(
     # through null, singular or probcut sees no reduction.
     exts[2 * fb.MAX_PLY + ply] = 0
     hindsight = _F_HINDSIGHT if _FOLD else ctrl[C_HINDSIGHT] != 0
+    improving_lmr = _F_IMPROVING_LMR if _FOLD else ctrl[C_IMPROVING_LMR] != 0
     improving = 1  # ply < 2 and sentinel ancestors default to improving (never over-prune)
-    if ctrl[C_IMPROVING] != 0 or hindsight:
+    if ctrl[C_IMPROVING] != 0 or hindsight or improving_lmr:
         if in_check:
             if excluded == 0:
                 exts[fb.MAX_PLY + ply] = -INFINITY  # sentinel: no usable eval at this ply
@@ -1321,6 +1356,14 @@ def search(
                 and exts[ply] + 2 <= SINGULAR_EXT_CAP
             ):
                 extend_hash = 2
+        elif (
+            (_F_MULTICUT if _FOLD else ctrl[C_MULTICUT] != 0)
+            and value >= beta
+            and abs(value) < DISTANCE_THRESHOLD
+        ):
+            # Multi-cut: with the hash move excluded a second move still reached
+            # beta at reduced depth, so this node fails high; nothing else to search.
+            return value
         elif sing2 and beta - alpha <= 1 and tt_score >= beta:
             extend_hash = -1
 
@@ -1442,7 +1485,7 @@ def search(
                     reduction = 0
             else:
                 reduction = LMR_TABLE[min(depth, 63), min(searched, 63)]
-            if ctrl[C_IMPROVING] != 0 and improving == 0:
+            if (ctrl[C_IMPROVING] != 0 or improving_lmr) and improving == 0:
                 reduction += 1
             if ctrl[C_CUTNODE] != 0 and cutnode != 0:
                 reduction += 1
@@ -1470,12 +1513,18 @@ def search(
                 # Beat alpha reduced: confirm at full depth. Under PVS a null window
                 # first (the full-window re-search below follows if it holds);
                 # without PVS the full window straight away, one search not two.
+                rs_depth = depth - 1
+                if _F_LMR_DEEPER if _FOLD else ctrl[C_LMR_DEEPER] != 0:
+                    if score > best_score + LMR_DEEPER_MARGIN + 2 * (depth - 1):
+                        rs_depth = depth  # the reduced score was emphatic: look deeper
+                    elif score < best_score + (depth - 1) and rs_depth > 1:
+                        rs_depth = depth - 2  # it only just beat alpha: confirm cheaper
                 if pvs:
                     score = -search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
+                        rs_depth, -alpha - 1, -alpha, ply + 1, scratch, counter, quiets,
                         ec_key, ec_val, exts, conthist1, scout_cut,
                     )
                 else:
@@ -1483,7 +1532,7 @@ def search(
                         bb, sq, meta, undo, keys, w1, b1, white, black, astack, zones,
                         king_zones, w2t, b2, w3, b3, tt_key, tt_data,
                         killers, butterfly, moves, scores, rep_keys, ctrl, deadline,
-                        depth - 1, -beta, -alpha, ply + 1, scratch, counter, quiets,
+                        rs_depth, -beta, -alpha, ply + 1, scratch, counter, quiets,
                         ec_key, ec_val, exts, conthist1, full_cut,
                     )
         elif pvs and searched > 0:

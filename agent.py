@@ -1668,6 +1668,14 @@ ACC_CACHE: Final = False
 PROBCUT: Final = False
 HINDSIGHT: Final = False
 FUTILITY_LMR: Final = False
+# S3 depth bundle (overnight/eval/v17/timett.md): four more reference-engine arms,
+# each behind its own slot in fastsearch.py (comments at C_MULTICUT, C_TT_HMC90,
+# C_IMPROVING_LMR, C_LMR_DEEPER). IMPROVING_LMR is NOT the closed IMPROVING: it feeds
+# the LMR arm only, never the RFP depth or the futility table.
+SINGULAR_MULTICUT: Final = False
+TT_HMC90: Final = False
+IMPROVING_LMR: Final = False
+LMR_DEEPER: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2775,6 +2783,12 @@ class FastEngine:
             ctrl[_fs.C_PROBCUT] = 1 if PROBCUT else 0
             ctrl[_fs.C_HINDSIGHT] = 1 if HINDSIGHT else 0
             ctrl[_fs.C_FUT_LMR] = 1 if FUTILITY_LMR else 0
+            ctrl[_fs.C_MULTICUT] = 1 if SINGULAR_MULTICUT else 0
+            ctrl[_fs.C_TT_HMC90] = 1 if TT_HMC90 else 0
+            ctrl[_fs.C_IMPROVING_LMR] = 1 if IMPROVING_LMR else 0
+            ctrl[_fs.C_LMR_DEEPER] = 1 if LMR_DEEPER else 0
+            if IMPROVING and IMPROVING_LMR:
+                raise RuntimeError("IMPROVING_LMR is IMPROVING's LMR arm; enable one, not both")
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
             ctrl[_fs.C_EG_WMIN] = ENDGAME_SHRINK_WMIN
             ctrl[_fs.C_EG_CAP] = ENDGAME_SHRINK_CAP
