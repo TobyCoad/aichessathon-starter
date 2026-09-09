@@ -32,6 +32,7 @@ compiled functions take:
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 import chess
@@ -40,6 +41,22 @@ import numpy as np
 from numba import boolean, float32, int32, int64, njit, uint64, void
 
 MAX_PLY = 128
+# ACC_CACHE layout (agent.ACC_CACHE). A king move that changes its W1 block used to
+# rebuild that perspective's accumulator from every piece on the board (~30 rows of
+# W1, 1024 floats each on v16f). Instead keep, per (side, block), the accumulator of
+# the last position seen in that block plus its 12 occupancy bitboards, and bring it
+# up to date by adding/removing only the pieces that differ -- a handful of rows.
+# Exact by construction: an entry always describes exactly the position its occupancy
+# records, so it never goes stale and never needs clearing. Same idea as the reference
+# engines' per-bucket accumulator caches ("Finny tables").
+# Stored without a new kernel argument, the way exts grew lanes: astack gets one extra
+# "ply" row per block (side on the middle axis), keys gets 13 words per (side, block):
+# 12 occupancy boards then a valid flag.
+ACC_CACHE_BLOCKS = 32                     # 16 zones x 2 mirror halves; unmirrored uses <= 16
+ASTACK_ROWS = MAX_PLY + ACC_CACHE_BLOCKS
+KEYS_CACHE_BASE = MAX_PLY + 1              # keys[0..MAX_PLY] stay the per-ply hash keys
+KEYS_CACHE_WORDS = 13
+KEYS_LEN = KEYS_CACHE_BASE + 2 * ACC_CACHE_BLOCKS * KEYS_CACHE_WORDS
 MOVE_CAP = 256
 
 SIDE, CASTLING, EP, HALFMOVE, PLY, PIECES, FULLMOVE = 0, 1, 2, 3, 4, 5, 6
@@ -644,6 +661,17 @@ except (KeyError, OSError, ValueError):
     _F_MIRRORED = False
 
 
+def _scan_agent_flag(name: str) -> bool:
+    try:
+        src = open(os.path.join(os.path.dirname(__file__), "agent.py"), encoding="utf-8").read()
+    except OSError:
+        return False
+    return re.search(rf"^{name}: Final = True$", src, re.MULTILINE) is not None
+
+
+_F_ACC_CACHE = _scan_agent_flag("ACC_CACHE")
+
+
 @njit(cache=False)
 def zone_of(square: Any, zones: Any) -> Any:
     """Mirrors training.features.king_zone for 1, 4, 8, 16 or 32 zones.
@@ -721,6 +749,42 @@ def rebuild(sqa: Any, w1: Any, b1: Any, out: Any, white_pov: Any, zone: Any) -> 
             row = w1[offset + feature(s, code, white_pov)]
             for i in range(width):
                 out[i] += row[i]
+
+
+@njit(cache=False)
+def rebuild_cached(
+    bb: Any, sqa: Any, w1: Any, b1: Any, acc: Any, white_pov: Any, block: Any,
+    astack: Any, keys: Any, side: Any,
+) -> Any:
+    """`rebuild` via the (side, block) cache: diff the cached occupancy against the
+    board, touch only the rows that differ, then publish the result both to the live
+    accumulator and back into the cache. First visit to a block does one full rebuild."""
+    width = acc.shape[0]
+    cache = astack[MAX_PLY + block, side]
+    kb = KEYS_CACHE_BASE + (side * ACC_CACHE_BLOCKS + block) * KEYS_CACHE_WORDS
+    one = np.uint64(1)
+    if keys[kb + 12] == 0:
+        rebuild(sqa, w1, b1, cache, white_pov, block)
+    else:
+        off = block * FEATURES
+        for code in range(12):
+            now = bb[code]
+            was = keys[kb + code]
+            added = now & ~was
+            removed = was & ~now
+            while added:
+                s = lsb(added)
+                added &= added - one
+                _acc_row_one(w1, cache, s, code, off, white_pov, 1)
+            while removed:
+                s = lsb(removed)
+                removed &= removed - one
+                _acc_row_one(w1, cache, s, code, off, white_pov, -1)
+    for code in range(12):
+        keys[kb + code] = bb[code]
+    keys[kb + 12] = 1
+    for i in range(width):
+        acc[i] = cache[i]
 
 
 @njit(
@@ -846,7 +910,12 @@ def make_full(
 
     if crossing:
         zones[us] = new_zone
-        if us == 0:
+        if _F_ACC_CACHE:
+            if us == 0:
+                rebuild_cached(bb, sqa, w1, b1, white, True, zones[0], astack, keys, 0)
+            else:
+                rebuild_cached(bb, sqa, w1, b1, black, False, zones[1], astack, keys, 1)
+        elif us == 0:
             rebuild(sqa, w1, b1, white, True, zones[0])
         else:
             rebuild(sqa, w1, b1, black, False, zones[1])
@@ -1172,7 +1241,7 @@ class Position:
         self.sq = np.full(64, -1, dtype=np.int8)
         self.meta = np.zeros(8, dtype=np.int64)
         self.undo = np.zeros((MAX_PLY, 8), dtype=np.int64)
-        self.keys = np.zeros(MAX_PLY + 1, dtype=np.uint64)
+        self.keys = np.zeros(KEYS_LEN, dtype=np.uint64)  # per-ply keys + ACC_CACHE occupancy
         self.load(board)
 
     def load(self, board: chess.Board) -> None:
@@ -1272,7 +1341,7 @@ def warm_up() -> None:
     b1 = np.zeros(width, dtype=np.float32)
     white = np.zeros(width, dtype=np.float32)
     black = np.zeros(width, dtype=np.float32)
-    astack = np.zeros((MAX_PLY, 2, width), dtype=np.float32)
+    astack = np.zeros((ASTACK_ROWS, 2, width), dtype=np.float32)
     zones = np.zeros(2, dtype=np.int64)
     refresh(pos.bb, pos.sq, pos.meta, w1, b1, white, black, zones, warm_zones)
     for i in range(n):

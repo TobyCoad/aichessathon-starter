@@ -1654,6 +1654,13 @@ SINGULAR_EXT2: Final = False
 # so it costs no extra evaluate call. Verification (the qsearch) is what keeps
 # it safe -- a tactical shot still gets found.
 RAZOR: Final = False
+# ACC_CACHE (overnight/eval/v17/eval.md E1): a king move that changes its W1 block no
+# longer rebuilds that perspective's accumulator from all ~30 pieces; fastboard keeps
+# one cached accumulator per (side, block) with its occupancy and updates it by the
+# pieces that differ. Read by fastboard at import (it cannot take a ctrl slot: make_full
+# has no ctrl). Exactness gate: training.check_nnue's accumulator-vs-rebuild check.
+# Pure speed: nodes at fixed depth must not change, only knps.
+ACC_CACHE: Final = False
 # PROBCUT / HINDSIGHT / FUTILITY_LMR: three search terms the reference engines
 # carry and this kernel did not, each reimplemented in fastsearch.py behind its own
 # slot (C_PROBCUT, C_HINDSIGHT, C_FUT_LMR -- the comments there say what each
@@ -2357,7 +2364,7 @@ class FastEngine:
         self.scores = np.zeros(_fb.MOVE_CAP, dtype=np.int64)
         self.white = B1.copy()
         self.black = B1.copy()
-        self.astack = np.zeros((_fb.MAX_PLY, 2, ACC_SIZE), dtype=np.float32)
+        self.astack = np.zeros((_fb.ASTACK_ROWS, 2, ACC_SIZE), dtype=np.float32)  # + ACC_CACHE rows
         self.zones = np.zeros(2, dtype=np.int64)
         self.pos = _fb.Position(chess.Board())
         self.deadline = 0.0

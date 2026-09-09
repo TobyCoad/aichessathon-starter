@@ -1645,7 +1645,7 @@ def warm_up(w1: Any, b1: Any, w2t: Any, b2: Any, w3: Any, b3: Any, king_zones: i
     acc = w1.shape[1]
     white = np.zeros(acc, dtype=np.float32)
     black = np.zeros(acc, dtype=np.float32)
-    astack = np.zeros((fb.MAX_PLY, 2, acc), dtype=np.float32)
+    astack = np.zeros((fb.ASTACK_ROWS, 2, acc), dtype=np.float32)
     zones = np.zeros(2, dtype=np.int64)
     fb.refresh(pos.bb, pos.sq, pos.meta, w1, b1, white, black, zones, king_zones)
     table = new_table()

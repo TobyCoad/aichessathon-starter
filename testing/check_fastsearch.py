@@ -92,7 +92,7 @@ class Kernel:
         acc = agent.ACC_SIZE
         self.white = np.zeros(acc, np.float32)
         self.black = np.zeros(acc, np.float32)
-        self.astack = np.zeros((fb.MAX_PLY, 2, acc), np.float32)
+        self.astack = np.zeros((fb.ASTACK_ROWS, 2, acc), np.float32)
         self.zones = np.zeros(2, np.int64)
         fb.refresh(
             self.pos.bb, self.pos.sq, self.pos.meta, agent.W1, agent.B1,
