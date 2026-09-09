@@ -283,6 +283,14 @@ C_IMPROVING_LMR = 57
 # (77 + 2*(depth-1)) and one ply SHALLOWER when it barely did (< best + depth-1);
 # otherwise the usual depth - 1. Do-deeper / do-shallower in the reference's terms.
 C_LMR_DEEPER = 58
+# C_LMR_BADCAP (ordering.md #3): a losing capture (CAPTURE_ORDER's band, SEE < 0) is
+# searched at reduced depth like a late quiet instead of at full depth. Above SEE_MAIN's
+# depth-5 cap such captures cost a whole subtree each today. Needs CAPTURE_ORDER on to
+# recognise the band; without it the test never fires.
+C_LMR_BADCAP = 59
+# C_QS_HASH (ordering.md #5): quiescence orders the table move first and stores the move
+# that raised alpha or cut, instead of ordering by MVV-LVA alone and storing move 0.
+C_QS_HASH = 60
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -290,7 +298,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 59
+CTRL_SIZE = 61
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -371,6 +379,14 @@ _F_MULTICUT = _AGENT_FLAGS.get("SINGULAR_MULTICUT", False)
 _F_TT_HMC90 = _AGENT_FLAGS.get("TT_HMC90", False)
 _F_IMPROVING_LMR = _AGENT_FLAGS.get("IMPROVING_LMR", False)
 _F_LMR_DEEPER = _AGENT_FLAGS.get("LMR_DEEPER", False)
+_F_LMR_BADCAP = _AGENT_FLAGS.get("LMR_BADCAP", False)
+_F_QS_HASH = _AGENT_FLAGS.get("QS_HASH_MOVE", False)
+# SEE_VALUES_V2 (ordering.md #1): knight == bishop, so BxN and NxB defended both read as
+# an even trade instead of -10 / +10 -- the asymmetry pruned one in quiescence and ranked
+# it below every quiet while ranking the other above the killers. Compile-time table;
+# fastboard and agent derive theirs from the same flag and check_fastsearch compares.
+if _AGENT_FLAGS.get("SEE_VALUES_V2", False):
+    MVV = np.array([100, 325, 325, 500, 900, 20000], dtype=np.int64)
 _F_SEE_QUIET = _AGENT_FLAGS.get("SEE_QUIET", False)
 _F_SING_EXT2 = _AGENT_FLAGS.get("SINGULAR_EXT2", False)
 
@@ -409,6 +425,7 @@ FOLDED = {
     C_SING_EXT2: _F_SING_EXT2, C_PROBCUT: _F_PROBCUT, C_HINDSIGHT: _F_HINDSIGHT,
     C_FUT_LMR: _F_FUT_LMR, C_MULTICUT: _F_MULTICUT, C_TT_HMC90: _F_TT_HMC90,
     C_IMPROVING_LMR: _F_IMPROVING_LMR, C_LMR_DEEPER: _F_LMR_DEEPER,
+    C_LMR_BADCAP: _F_LMR_BADCAP, C_QS_HASH: _F_QS_HASH,
 }
 
 
@@ -762,7 +779,8 @@ def unmake_move(
 
 @njit(cache=False, nogil=True)
 def qs_tt_store(
-    tt_key: Any, tt_data: Any, key: Any, score: Any, flag: Any, ply: Any, ctrl: Any
+    tt_key: Any, tt_data: Any, key: Any, score: Any, flag: Any, ply: Any, ctrl: Any,
+    move: Any,
 ) -> None:
     age = ctrl[C_AGE]
     slot = np.int64(key & TT_MASK)
@@ -782,7 +800,7 @@ def qs_tt_store(
     if unpack_depth(old) > 0 and (tt_key[slot] == key or unpack_age(old) == (age & 63)):
         return
     tt_key[slot] = key
-    tt_data[slot] = pack(to_table(score, ply), 0, flag, 0, age, NO_EVAL)
+    tt_data[slot] = pack(to_table(score, ply), move, flag, 0, age, NO_EVAL)
 
 
 @njit(cache=False, nogil=True)
@@ -800,6 +818,8 @@ def quiesce(
         return 0
 
     use_qtt = (_F_QS_TT if _FOLD else ctrl[C_QS_TT] != 0) and ctrl[C_TT_OFF] == 0
+    qs_hash = _F_QS_HASH if _FOLD else ctrl[C_QS_HASH] != 0
+    qhash = 0
     original_alpha = alpha
     if use_qtt:
         tkey = keys[meta[fb.PLY]]
@@ -812,6 +832,8 @@ def quiesce(
             data = tt_data[tslot]
             tflag = unpack_flag(data)
             tscore = from_table(unpack_score(data), ply)
+            if qs_hash:
+                qhash = unpack_move(data)
             if tflag == 0:
                 return tscore
             if tflag == 1 and tscore >= beta:
@@ -836,7 +858,7 @@ def quiesce(
         standing = evaluate(bb, meta, white, black, w2t, b2, w3, b3, scratch, ctrl)
     if standing >= beta:
         if use_qtt:
-            qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], standing, 1, ply, ctrl)
+            qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], standing, 1, ply, ctrl, 0)
         return standing
     if standing + BIG_DELTA < alpha:
         return standing
@@ -848,8 +870,9 @@ def quiesce(
     captures = moves[ply]
     n = fb.gen_legal(bb, sq, meta, captures, True)
     sc = scores[ply]
-    fb.score_moves(captures, n, sq, 0, 0, 0, butterfly, sc)
+    fb.score_moves(captures, n, sq, qhash, 0, 0, butterfly, sc)
     use_see = _F_SEE if _FOLD else ctrl[C_SEE] != 0
+    best_move = 0
     for i in range(n):
         move = fb.pick_move(captures, sc, i, n)
         victim = sq[(move >> 6) & 63]
@@ -872,13 +895,14 @@ def quiesce(
             return 0
         if score >= beta:
             if use_qtt:
-                qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], score, 1, ply, ctrl)
+                qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], score, 1, ply, ctrl, move if qs_hash else 0)
             return score
         if score > alpha:
             alpha = score
+            best_move = move
     if use_qtt and ctrl[C_ABORT] == 0:
         qflag = 0 if alpha > original_alpha else 2
-        qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], alpha, qflag, ply, ctrl)
+        qs_tt_store(tt_key, tt_data, keys[meta[fb.PLY]], alpha, qflag, ply, ctrl, best_move if qs_hash else 0)
     return alpha
 
 
@@ -1402,6 +1426,7 @@ def search(
         and standing != -INFINITY
     )
     aggr = _F_LMR_AGGR if _FOLD else ctrl[C_LMR_AGGR] != 0
+    badcap_on = _F_LMR_BADCAP if _FOLD else ctrl[C_LMR_BADCAP] != 0
     lmp = (
         (_F_LMP if _FOLD else ctrl[C_LMP] != 0)
         and depth <= 3 and not in_check and abs(alpha) < DISTANCE_THRESHOLD
@@ -1457,9 +1482,12 @@ def search(
         if lmp and plain and searched >= LMP_LIMIT[depth]:
             continue
         reduction = 0
+        # pick_move left this move's ordering score at sc[i]; CAPTURE_ORDER puts
+        # SEE-losing captures in the -(1 << 21) band, far below any quiet's history.
+        badcap = badcap_on and not quiet and (move >> 12) == 0 and sc[i] < -(1 << 20)
         if (
             lmr
-            and plain
+            and (plain or badcap)
             and searched >= (1 if aggr else 2)
             and move != hash_move
             and move != killers[ply, 0]

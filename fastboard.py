@@ -999,7 +999,7 @@ def unmake_null(meta: Any, undo: Any) -> Any:
 
 # --------------------------------------------------------- move ordering ----
 
-MVV = np.array([100, 320, 330, 500, 900, 20000], dtype=np.int64)
+MVV = np.array([100, 325, 325, 500, 900, 20000] if _scan_agent_flag("SEE_VALUES_V2") else [100, 320, 330, 500, 900, 20000], dtype=np.int64)
 CAPTURE_BONUS = 1 << 20
 KILLER_FIRST = (1 << 20) - 1
 KILLER_SECOND = (1 << 20) - 2
@@ -1120,7 +1120,7 @@ def pick_move(out: Any, scores: Any, i: Any, n: Any) -> Any:
     return m
 
 
-SEE_VALUE = np.array([100, 320, 330, 500, 900, 20000], dtype=np.int64)
+SEE_VALUE = np.array([100, 325, 325, 500, 900, 20000] if _scan_agent_flag("SEE_VALUES_V2") else [100, 320, 330, 500, 900, 20000], dtype=np.int64)
 
 
 @njit(cache=False)

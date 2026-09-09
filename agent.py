@@ -630,7 +630,11 @@ INFINITY: Final = 1 << 20
 # MVV-LVA: order captures by the value of the victim, tie-broken by the cheapness of
 # the attacker. Measured at 8-29x fewer nodes depending on depth -- close to two free
 # plies, and the single highest-value item in the whole engine per line of code.
-_MVV: Final = (100, 320, 330, 500, 900, 20000)
+# SEE_VALUES_V2 (overnight/eval/v17/ordering.md #1): knight == bishop in the SEE and
+# MVV tables. fastboard and fastsearch read this flag at import and switch their own
+# copies; check_fastsearch asserts all three agree.
+SEE_VALUES_V2: Final = False
+_MVV: Final = (100, 325, 325, 500, 900, 20000) if SEE_VALUES_V2 else (100, 320, 330, 500, 900, 20000)
 CAPTURE_BONUS: Final = 1 << 20
 # Below every capture, above every history-scored quiet move.
 KILLER_FIRST: Final = (1 << 20) - 1
@@ -1676,6 +1680,9 @@ SINGULAR_MULTICUT: Final = False
 TT_HMC90: Final = False
 IMPROVING_LMR: Final = False
 LMR_DEEPER: Final = False
+# ORDER2 (overnight/eval/v17/ordering.md): fastsearch C_LMR_BADCAP / C_QS_HASH comments.
+LMR_BADCAP: Final = False
+QS_HASH_MOVE: Final = False
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2787,6 +2794,8 @@ class FastEngine:
             ctrl[_fs.C_TT_HMC90] = 1 if TT_HMC90 else 0
             ctrl[_fs.C_IMPROVING_LMR] = 1 if IMPROVING_LMR else 0
             ctrl[_fs.C_LMR_DEEPER] = 1 if LMR_DEEPER else 0
+            ctrl[_fs.C_LMR_BADCAP] = 1 if LMR_BADCAP else 0
+            ctrl[_fs.C_QS_HASH] = 1 if QS_HASH_MOVE else 0
             if IMPROVING and IMPROVING_LMR:
                 raise RuntimeError("IMPROVING_LMR is IMPROVING's LMR arm; enable one, not both")
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0
