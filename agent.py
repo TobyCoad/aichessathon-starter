@@ -1748,6 +1748,18 @@ LOW_CLOCK: Final = 15.0
 # not off this paragraph, which has been wrong before. Absorbs TIME_V5's
 # 18-move floor. Needs COMPILED_SEARCH (per-root-move node counts from ctrl).
 TIME_V6: Final = True
+# TIME_V8 (10 Sep, postmortem of platform rounds 86-98): the budget plans for
+# `56 - 0.4 x fullmove` more moves, but our platform games run 150-390 plies, so the
+# bank is gone by move ~60 and every later move gets remaining/18 = 0.5 s -- and that is
+# where the last three decisive errors were made (moves 73-87 of rounds 94, 96, 97, all
+# classified "time"). Planning for 80 moves (floor 40) spends ~20% less on moves 1-40
+# and leaves ~39 s at move 60 instead of ~20, so moves 80-100 get ~1 s instead of ~0.55
+# (simulated with the stop-rule factor at 1.3). The low-clock regime is untouched, so
+# this cannot drain the clock any faster than TIME_V6 does. Opposite lever to TIME_V7,
+# which spent MORE early and read 46% at 120 s.
+TIME_V8: Final = True
+TIME_V8_BASE: Final = 80.0
+TIME_V8_FLOOR: Final = 40.0
 RESERVE_FRACTION_V6: Final = 0.06
 LOW_CLOCK_V6: Final = 12.0
 # LOW_CLOCK_EXTEND: below LOW_CLOCK_V6 the budget sets `hard = soft`, which collapses the
@@ -3498,7 +3510,10 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
     _LAST_REMAINING_S = remaining
     inc = _observed_increment()
-    expected = max(30.0, 56.0 - board.fullmove_number * 0.4)
+    if TIME_V8:
+        expected = max(TIME_V8_FLOOR, TIME_V8_BASE - board.fullmove_number * 0.4)
+    else:
+        expected = max(30.0, 56.0 - board.fullmove_number * 0.4)
     if remaining < LOW_CLOCK_V6:
         # An eighteenth of what is left, as a hard stop: with the kernel aborting at the
         # deadline (TIME_V4 keeps the partial result) the spend is exact, so the clock
