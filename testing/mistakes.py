@@ -306,8 +306,11 @@ def cmd_retest(arguments: argparse.Namespace) -> None:
             recorded = item.get("clock_ms")
             clock = arguments.base_ms if recorded is None else int(recorded)
             reset_state(agent)
+            spent_ms = 0
             try:
+                t0 = time.monotonic()
                 chosen = agent.get_move(board.fen(), int(clock))
+                spent_ms = int((time.monotonic() - t0) * 1000)
             # A crash here is a lost game on the platform, so it is counted, not raised.
             except Exception as exc:
                 crashed += 1
@@ -348,7 +351,7 @@ def cmd_retest(arguments: argparse.Namespace) -> None:
                 else:
                     same += 1
                     verdict = "no change"
-            rows.append({**item, "chosen": chosen, "new_loss_cp": new_loss, "verdict": verdict})
+            rows.append({**item, "chosen": chosen, "new_loss_cp": new_loss, "verdict": verdict, "spent_ms": spent_ms})
             print(
                 f"  [{index:>3}] {str(item['game'])[:34]:34s} played {item['played']} "
                 f"(-{old_loss:>4}) -> {chosen} (-{new_loss:>4})  {verdict}"

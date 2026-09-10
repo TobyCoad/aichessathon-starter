@@ -45,7 +45,7 @@ INFINITY = 1 << 20
 # testing/check_fastsearch compares both against the agent's own copies.
 OUTPUT_SCALE = 400.0
 EVAL_SCALE_VALUE = 300.0
-EVAL_SCALE_PHASE_FIT = (220.0, 255.0, 275.0, 270.0, 270.0, 250.0, 200.0, 125.0)
+EVAL_SCALE_PHASE_FIT = (408.0, 426.0, 397.0, 365.0, 340.0, 375.0, 330.0, 608.0)
 EVAL_SCALE_SMOOTH_FIT = (273.43, -24.18, -120.24)
 EVAL_SCALE_SMOOTH_CLIP = (150.0, 300.0)
 PIECE_SCALE = np.full(33, OUTPUT_SCALE, dtype=np.float64)

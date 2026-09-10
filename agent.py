@@ -441,9 +441,15 @@ OUTPUT_SCALE: Final = EVAL_SCALE_VALUE if EVAL_SCALE else 400.0
 #
 # EVAL_SCALE_PHASE SUPERSEDES EVAL_SCALE rather than composing with it: the table is
 # already at its own fitted level (mean 253), so applying both would rescale twice.
-EVAL_SCALE_PHASE: Final = False
-# MAE-optimal scale for the SHIPPED net, per output bucket, from the table above.
-EVAL_SCALE_PHASE_FIT: Final = (220.0, 255.0, 275.0, 270.0, 270.0, 250.0, 200.0, 125.0)
+EVAL_SCALE_PHASE: Final = True
+# 10 Sep (v17o-recal): the v17o fine-tune kept v16f's knowledge and improved it per
+# position, but shifted the net's loudness across phases (fit_scale per linear band:
+# full board 223 -> 339, bands 4-6 louder). With one flat 400 the search traded down too
+# readily and lost -74 at 8 s. This table is 400 x k_v17o / k_v16f per band, which gives
+# the v17o net the shipped net's phase balance; verified on 646 platform positions
+# (engine-cp gain per band within 0.04 of the shipped build). Bands are the LINEAR
+# (pieces - 1) * 8 // 32 of training/fit_scale, interpolated below by midpoint.
+EVAL_SCALE_PHASE_FIT: Final = (408.0, 426.0, 397.0, 365.0, 340.0, 375.0, 330.0, 608.0)
 
 # EVAL_SCALE_SMOOTH: the same correction as a three-parameter curve in piece count
 # instead of eight independent per-bucket numbers. Two measurements argue for it.
@@ -634,7 +640,9 @@ INFINITY: Final = 1 << 20
 # MVV tables. fastboard and fastsearch read this flag at import and switch their own
 # copies; check_fastsearch asserts all three agree.
 SEE_VALUES_V2: Final = False
-_MVV: Final = (100, 325, 325, 500, 900, 20000) if SEE_VALUES_V2 else (100, 320, 330, 500, 900, 20000)
+_MVV: Final = (
+    (100, 325, 325, 500, 900, 20000) if SEE_VALUES_V2 else (100, 320, 330, 500, 900, 20000)
+)
 CAPTURE_BONUS: Final = 1 << 20
 # Below every capture, above every history-scored quiet move.
 KILLER_FIRST: Final = (1 << 20) - 1
@@ -1751,6 +1759,37 @@ LOW_CLOCK_FLOOR: Final = 6.0        # seconds; under this, hard = soft as before
 LOW_CLOCK_HARD_MULT: Final = 2.5    # same multiple the normal regime allows
 LOW_CLOCK_HARD_FRACTION: Final = 0.15
 _STABILITY_SCALE: Final = (1.2, 1.1, 1.0, 0.9, 0.8)  # Ethereal-style, capped at 4
+# TIME_V7 (overnight/eval/v17/timett.md section 1, 10 Sep): the OPTIMUM is within 30% of
+# Alexandria's everywhere; the CEILING is 3-6x below it on the moves that decide games.
+# HORIZON.md: 33 horizon moves in 13 lost/drawn games, median clock 62 s, median move 45,
+# the engine already spending 2x its median there, and the fix needing 1.57x the soft
+# budget -- just past the 1.5 clamp -- while the median game banks 17 s it never uses.
+# TIME_V6 was tamed because an untamed cut drained the clock; so this widens the ceiling
+# ONLY while the clock is healthy (remaining > TIME_V7_GATE_S) and leaves everything below
+# the gate byte-for-byte as TIME_V6: hard = min(20% of the clock, 4 soft budgets) instead
+# of (10%, 2.5); stop-rule product clamped at 3.0 instead of 1.5; Alexandria's stability
+# table damped (2.0 .. 0.75 for a best move repeated 0..4 times), its node-effort term
+# (1.53 - fraction) * 1.74 floored at 0.5, and its symmetric eval-instability counter
+# (score within 10 cp of the running average (avg + score) / 2 -> 1.25 .. 0.87). The 6%
+# reserve still caps hard. Worst case at 120 s: one 10 s move (4 x 2.5 s), never 24.
+TIME_V7: Final = False
+TIME_V7_GATE_S: Final = 30.0
+TIME_V7_HARD_FRACTION: Final = 0.20
+TIME_V7_HARD_MULT: Final = 4.0
+TIME_V7_CLAMP_MAX: Final = 3.0
+_STABILITY_SCALE_V7: Final = (2.0, 1.25, 1.05, 0.9, 0.75)
+_EVAL_STABILITY_SCALE_V7: Final = (1.25, 1.15, 1.03, 0.92, 0.87)
+# Alexandria counts an iteration "stable" within 10 cp of the running average. Traced on
+# our search (10 Sep) the root score moves ~15 cp median between iterations (42, 45, 49,
+# 64, 56, 20, 35, -2 ...), so at 10 the counter almost never grows and the factor sits on
+# the clamp for every move: the retest spent 1.8x on healthy clocks for -10% cp lost.
+TIME_V7_EVAL_WINDOW: Final = 10
+# TIME_V7_EVAL_TERM: apply the eval-instability multiplier at all. With our score noise it
+# reads "unstable" (x1.25) nearly always, which with the stability-0 term (x2.0) pins the
+# product on the clamp for most middlegame moves.
+TIME_V7_EVAL_TERM: Final = True
+_LAST_REMAINING_S: float = 0.0  # what _budget_v6 last planned against; read by the stop rule
+TIME_DIAG: Final = False  # print the stop rule's inputs per iteration (diagnosis only)
 _INC_SAMPLES: list[float] = []  # observed increment, ms, last five moves
 # DRAW_BUDGET (rounds25-29 P2): round 27 spent 63.5 s -- 53% of the game clock --
 # on 61 moves whose reference evaluation was exactly 0. Once the root score has
@@ -2869,6 +2908,8 @@ class FastEngine:
         stable_streak = 0
         stability = 0  # TIME_V6: consecutive iterations that kept the best move
         score_hist: list[int] = []  # TIME_V6: one score per completed iteration
+        eval_avg: float | None = None  # TIME_V7: running average of the root score
+        eval_stable = 0  # TIME_V7: iterations in a row within 10 cp of that average
         prev_scores: dict[int, int] = {}
         last_nodes: dict[int, int] = {}
         for depth in range(1, 64):
@@ -3051,16 +3092,37 @@ class FastEngine:
                 elapsed = now - started
                 budget = soft_limit - started
                 factor = 1.0
+                fraction = -1.0
+                wide = TIME_V7 and _LAST_REMAINING_S > TIME_V7_GATE_S
+                if wide:
+                    if eval_avg is None:
+                        eval_avg = float(score)
+                    settled = abs(score - eval_avg) <= TIME_V7_EVAL_WINDOW
+                    eval_stable = eval_stable + 1 if settled else 0
+                    eval_avg = (eval_avg + score) / 2.0
                 if depth >= 5:
-                    factor = _STABILITY_SCALE[min(stability, 4)]
+                    factor = (_STABILITY_SCALE_V7 if wide else _STABILITY_SCALE)[min(stability, 4)]
                     if len(score_hist) >= 4:
                         drop = score_hist[-4] - score_hist[-1]
                         factor *= 2.0 ** (max(-100, min(100, drop)) / 100.0)
                     total_nodes = sum(root_nodes.values())
                     if total_nodes > 0:
                         fraction = root_nodes.get(best, 0) / total_nodes
-                        factor *= max(0.5, 2.0 - 1.6 * fraction)
-                    factor = max(0.4, min(1.5, factor))
+                        if wide:
+                            factor *= max(0.5, (1.53 - fraction) * 1.74)
+                        else:
+                            factor *= max(0.5, 2.0 - 1.6 * fraction)
+                    if wide and TIME_V7_EVAL_TERM:
+                        factor *= _EVAL_STABILITY_SCALE_V7[min(eval_stable, 4)]
+                    factor = max(0.4, min(TIME_V7_CLAMP_MAX if wide else 1.5, factor))
+                if TIME_DIAG:
+                    print(
+                        f"time-diag: d{depth} score {score} elapsed {elapsed:.2f}"
+                        f" budget {budget:.2f} factor {factor:.2f} stab {stability}"
+                        f" evstab {eval_stable} frac {fraction:.2f} wide {wide}"
+                        f" stop {elapsed > factor * budget}",
+                        file=sys.stderr,
+                    )
                     if WIN_FOCUS and _CONV_LO <= score <= _CONV_HI:
                         # Never throttle while a win is live: stability and node-effort
                         # both read "decided" here, and that is precisely wrong.
@@ -3424,8 +3486,10 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     `choose` scales by stability, score drop and node effort; the hard deadline is
     the only mid-iteration stop, 2.5 soft budgets or a tenth of the clock (and below
     LOW_CLOCK_V6 it collapses onto the soft budget unless LOW_CLOCK_EXTEND is on)."""
+    global _LAST_REMAINING_S
     now = time.monotonic()
     remaining = max(time_left_ms - 400.0, 50.0) / 1000.0  # 400 ms for the watchdog
+    _LAST_REMAINING_S = remaining
     inc = _observed_increment()
     expected = max(30.0, 56.0 - board.fullmove_number * 0.4)
     if remaining < LOW_CLOCK_V6:
@@ -3441,7 +3505,10 @@ def _budget_v6(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
             hard = soft
     else:
         soft = remaining / expected + 0.7 * inc
-        hard = min(remaining * 0.10, soft * 2.5)
+        if TIME_V7 and remaining > TIME_V7_GATE_S:
+            hard = min(remaining * TIME_V7_HARD_FRACTION, soft * TIME_V7_HARD_MULT)
+        else:
+            hard = min(remaining * 0.10, soft * 2.5)
     reserve = _MAX_CLOCK_MS * RESERVE_FRACTION_V6 / 1000.0
     if reserve > 0.0:
         hard = min(hard, max(soft, remaining - reserve))
