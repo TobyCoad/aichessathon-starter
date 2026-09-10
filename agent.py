@@ -1694,6 +1694,10 @@ QS_HASH_MOVE: Final = False
 # PAWNLESS_SCALE: fastsearch C_PAWNLESS comment. Kernel eval only; the root's own
 # FastEngine.evaluate (contempt input) does not apply it.
 PAWNLESS_SCALE: Final = False
+# STALEMATE_CONTEMPT: fastsearch C_STALEMATE comment. Stalemate inside the tree scores the
+# contempt-adjusted draw like a repetition instead of a flat 0. Round 96 (10 Sep): two rooks
+# up on an 11 s clock we captured a checking rook into a stalemate because 0 beat -contempt.
+STALEMATE_CONTEMPT: Final = True
 # INIT_FOLD (speed.md section 2): fastsearch scans this file at import and,
 # when this is True, compiles the settled switch slots (the eighteen in
 # _fs.FOLDED) as constants instead of ctrl reads -- numba prunes the dead arms
@@ -2638,7 +2642,9 @@ class FastEngine:
         moves = self.bufs[ply]
         n = _fb.gen_legal(bb, pos.sq, meta, moves, False)
         if n == 0:
-            return -MATE + ply if in_check else 0
+            if in_check:
+                return -MATE + ply
+            return self._draw() if STALEMATE_CONTEMPT else 0
         killers = self.killers[ply]
         _fb.order_moves(
             moves, n, pos.sq, hash_move, killers[0], killers[1], self.butterfly, self.scores
@@ -2839,6 +2845,7 @@ class FastEngine:
             ctrl[_fs.C_LMR_BADCAP] = 1 if LMR_BADCAP else 0
             ctrl[_fs.C_QS_HASH] = 1 if QS_HASH_MOVE else 0
             ctrl[_fs.C_PAWNLESS] = 1 if PAWNLESS_SCALE else 0
+            ctrl[_fs.C_STALEMATE] = 1 if STALEMATE_CONTEMPT else 0
             if IMPROVING and IMPROVING_LMR:
                 raise RuntimeError("IMPROVING_LMR is IMPROVING's LMR arm; enable one, not both")
             ctrl[_fs.C_EG_SHRINK] = 1 if ENDGAME_SHRINK else 0

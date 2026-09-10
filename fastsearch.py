@@ -301,6 +301,12 @@ C_QS_HASH = 60
 # when it is a piece up instead of trading into a dead ending. The classic scale-factor
 # every handcrafted eval carries; NNUE engines keep it too. Q v R (400) stays a win.
 C_PAWNLESS = 61
+# C_STALEMATE (platform round 96, 10 Sep: two rooks up, we took a checking rook into a
+# stalemate). A node with no legal moves and no check returned a flat 0 while a repetition
+# returns draw_score = the root contempt, so with CONTEMPT on and a winning root the
+# stalemate (0) outranked the repetition (-contempt) and every other drawing line. With
+# this on the stalemate is scored as the draw it is, contempt included.
+C_STALEMATE = 62
 SINGULAR_DOUBLE_MARGIN = 25
 EG_HI = 17
 EG_LO = 6
@@ -308,7 +314,7 @@ EG_VALUES = np.array([100, 300, 300, 500, 900], dtype=np.int64)
 EVAL_CACHE_BITS = 20
 EVAL_CACHE_SIZE = 1 << EVAL_CACHE_BITS
 EVAL_CACHE_MASK = np.uint64(EVAL_CACHE_SIZE - 1)
-CTRL_SIZE = 62
+CTRL_SIZE = 63
 
 # INIT_FOLD (agent.INIT_FOLD is the switch): compile the settled switches as
 # constants. The values are scanned from agent.py next to this file, so a sed
@@ -392,6 +398,7 @@ _F_LMR_DEEPER = _AGENT_FLAGS.get("LMR_DEEPER", False)
 _F_LMR_BADCAP = _AGENT_FLAGS.get("LMR_BADCAP", False)
 _F_QS_HASH = _AGENT_FLAGS.get("QS_HASH_MOVE", False)
 _F_PAWNLESS = _AGENT_FLAGS.get("PAWNLESS_SCALE", False)
+_F_STALEMATE = _AGENT_FLAGS.get("STALEMATE_CONTEMPT", False)
 # SEE_VALUES_V2 (ordering.md #1): knight == bishop, so BxN and NxB defended both read as
 # an even trade instead of -10 / +10 -- the asymmetry pruned one in quiescence and ranked
 # it below every quiet while ranking the other above the killers. Compile-time table;
@@ -437,6 +444,7 @@ FOLDED = {
     C_FUT_LMR: _F_FUT_LMR, C_MULTICUT: _F_MULTICUT, C_TT_HMC90: _F_TT_HMC90,
     C_IMPROVING_LMR: _F_IMPROVING_LMR, C_LMR_DEEPER: _F_LMR_DEEPER,
     C_LMR_BADCAP: _F_LMR_BADCAP, C_QS_HASH: _F_QS_HASH, C_PAWNLESS: _F_PAWNLESS,
+    C_STALEMATE: _F_STALEMATE,
 }
 
 
@@ -1423,7 +1431,9 @@ def search(
     mv = moves[ply]
     n = fb.gen_legal(bb, sq, meta, mv, False)
     if n == 0:
-        return -MATE + ply if in_check else 0
+        if in_check:
+            return -MATE + ply
+        return draw_score(meta, ctrl) if (_F_STALEMATE if _FOLD else ctrl[C_STALEMATE] != 0) else 0
     sc = scores[ply]
     base, ch_base = order_node(
         bb, sq, meta, undo, mv, n, sc, hash_move, killers[ply, 0], killers[ply, 1],
