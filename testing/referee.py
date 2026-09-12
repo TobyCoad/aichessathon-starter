@@ -30,7 +30,7 @@ from harness.sandbox import Agent, AgentFailure
 
 # The platform's numbers, not the stale ones in `harness/rules.py`.
 PLATFORM_PLY_CAP = 600
-PLATFORM_INIT_BUDGET_S = 90.0
+PLATFORM_INIT_BUDGET_S = 30.0  # the FINAL: 30 s (12 Sep rules)
 RESULT_HEADERS = {"white": "1-0", "black": "0-1", "draw": "1/2-1/2", "void": "*"}
 FAILED_TERMINATIONS = frozenset({"crash", "illegal", "flag", "init", "both_failed"})
 

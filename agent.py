@@ -1721,7 +1721,16 @@ INIT_ASYNC: Final = True
 # Seconds from the top of this module at which import gives up waiting. 72 of the
 # platform's 90 leaves 18 s for python start-up, the runner and their scheduling
 # jitter; the samples above say the compile itself usually lands well inside it.
-INIT_READY_S: Final = 72.0
+INIT_READY_S: Final = 22.0
+# FINAL (12 Sep): the init budget is 30 s, not 90. Locally the pre-compile part of the
+# import is ~5 s and the ready line prints at INIT_READY_S exactly (4/4 runs); their box
+# is ~2x slower, so 22 leaves ~4 s for python start-up and jitter under 30. The compile
+# then finishes on our clock: joined on move one (INIT_NOJOIN off, ~40 s of clock on
+# their box) or, with INIT_NOJOIN, played around -- book move, else a bounded wait, else
+# the python engine at a capped budget until the kernel is ready.
+INIT_NOJOIN: Final = False
+INIT_NOJOIN_WAIT_S: Final = 3.0    # per move: wait this long for the compile, then play without it
+INIT_NOJOIN_SOFT_S: Final = 2.5    # python-engine soft budget while the kernel compiles
 # How many earlier occurrences of a position make it a draw inside the search.
 _REPEAT_LIMIT: Final = 1 if REPETITION_TWOFOLD else 2
 
@@ -3595,6 +3604,62 @@ def _budget(board: chess.Board, time_left_ms: int) -> tuple[float, float]:
     return now + soft, now + hard
 
 
+def _wait_warmup(time_left_ms: int) -> int:
+    """INIT_NOJOIN: give the compile a bounded slice of this move, then carry on
+    without it if it is still running. Finalises exactly like _join_warmup once done."""
+    global _WARM_THREAD
+    thread = _WARM_THREAD
+    if thread is None:
+        return time_left_ms
+    started = time.monotonic()
+    thread.join(min(INIT_NOJOIN_WAIT_S, max(0.2, int(time_left_ms) * 0.03 / 1000.0)))
+    if not thread.is_alive():
+        return _join_warmup(time_left_ms)  # instant now; handles _WARM_FAILED
+    left = int(time_left_ms) - int((time.monotonic() - started) * 1000.0)
+    return max(200, left)
+
+
+def _get_move_pending(fen: str, time_left_ms: int) -> str:
+    """A move while the search kernel is still compiling: the book if it has one,
+    otherwise the python engine on a capped budget. Keeps the game histories in step
+    so the kernel inherits them when it takes over."""
+    board = chess.Board(fen)
+    if not board.legal_moves:
+        return "0000"
+    if TIME_V2:
+        _note_clock(time_left_ms)
+    key = _key(board)
+    _ENGINE.history[key] = _ENGINE.history.get(key, 0) + 1
+    if _FAST is not None:
+        fast_key = chess.polyglot.zobrist_hash(board)
+        _FAST.history[fast_key] = _FAST.history.get(fast_key, 0) + 1
+    try:
+        opening = _book_move(board) if BOOK_ENABLED else None
+    except Exception:
+        opening = None
+    if opening is not None and opening in board.legal_moves:
+        print("init-nojoin: book move while the kernel compiles", file=sys.stderr)
+        return opening.uci()
+    try:
+        _ENGINE.acc.refresh(board)
+        soft, hard = _budget(board, time_left_ms)
+        now = time.monotonic()
+        soft = min(soft, now + INIT_NOJOIN_SOFT_S)
+        hard = min(hard, now + INIT_NOJOIN_SOFT_S * 1.4)
+        move = _ENGINE.choose(board, soft, max(soft, hard))
+        if move not in board.legal_moves:
+            raise ValueError("python engine returned an illegal move")
+        print(
+            f"init-nojoin: python engine move {move.uci()} in {time.monotonic() - now:.1f}s"
+            " while the kernel compiles",
+            file=sys.stderr,
+        )
+        return move.uci()
+    except Exception:
+        print("init-nojoin: python engine raised; first legal move", file=sys.stderr)
+        return next(iter(board.legal_moves)).uci()
+
+
 def _join_warmup(time_left_ms: int) -> int:
     """Finish INIT_ASYNC's background compile and charge the wait to this move.
 
@@ -3633,7 +3698,12 @@ def get_move(fen: str, time_left_ms: int) -> str:
     started = time.monotonic()
     try:
         if INIT_ASYNC and _WARM_THREAD is not None:
-            time_left_ms = _join_warmup(time_left_ms)
+            if INIT_NOJOIN:
+                time_left_ms = _wait_warmup(time_left_ms)
+                if _WARM_THREAD is not None:
+                    return _get_move_pending(fen, time_left_ms)
+            else:
+                time_left_ms = _join_warmup(time_left_ms)
         return _get_move(fen, time_left_ms)
     finally:
         _LAST_SPENT_MS = (time.monotonic() - started) * 1000.0
