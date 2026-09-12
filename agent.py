@@ -1705,7 +1705,7 @@ STALEMATE_CONTEMPT: Final = True
 # and score exact by construction; prepare() asserts ctrl matches _fs.FOLDED.
 # Off in the tree so testing/check_fastsearch can still zero ctrl and hold the
 # kernel to the flags-off reference.
-INIT_FOLD: Final = False
+INIT_FOLD: Final = True
 # INIT_ASYNC (the #1 measured risk, 6 Sep): the platform starts a FRESH PROCESS for
 # every ladder game and gives `import agent` a fixed 90 s budget; a game whose import
 # overruns is lost outright ("game ended white by init"), before a move is played.
@@ -1721,7 +1721,7 @@ INIT_ASYNC: Final = True
 # Seconds from the top of this module at which import gives up waiting. 72 of the
 # platform's 90 leaves 18 s for python start-up, the runner and their scheduling
 # jitter; the samples above say the compile itself usually lands well inside it.
-INIT_READY_S: Final = 22.0
+INIT_READY_S: Final = 26.0
 # FINAL (12 Sep): the init budget is 30 s, not 90. Locally the pre-compile part of the
 # import is ~5 s and the ready line prints at INIT_READY_S exactly (4/4 runs); their box
 # is ~2x slower, so 22 leaves ~4 s for python start-up and jitter under 30. The compile
